@@ -8,6 +8,10 @@ src-tauri/target/
 src-tauri/gen/
 # Dead: PyInstaller build of the removed rapidocr sidecar (~230MB); OCR is WASM now
 src-tauri/sidecar/
+# ffmpeg sidecar is provisioned at build time (CI via ffmpeg-static for macOS;
+# locally via `npm i ffmpeg-static` for Windows) — too large to commit (~79 MB).
+# yt-dlp binaries ARE committed; only ffmpeg is fetched.
+src-tauri/binaries/ffmpeg-*
 extension.zip
 
 # Vite
