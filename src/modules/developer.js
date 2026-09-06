@@ -488,6 +488,19 @@ export function initDeveloper() {
       return
     }
 
+    // Dev preview: fake an available update so the update bar (grid.js →
+    // renderUpdateBar) renders under the tag pills, without a real release.
+    if (cmd === 'blt_update') {
+      e.preventDefault()
+      searchInput.value = ''
+      store.emit(events.NAVIGATE, { view: 'grid' })   // bar lives in the home grid
+      store.emit(events.UPDATE_AVAILABLE, {
+        version: '1.0.1',
+        notes:   'Preview — mock update to test the update bar.',
+      })
+      return
+    }
+
     if (cmd === 'blt_logout') {
       e.preventDefault()
       searchInput.value = ''
