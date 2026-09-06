@@ -232,7 +232,7 @@ const strings = {
     'grid.drop':            'Drop to import',
 
     // App update
-    'update.ready':         'qooti v{version} is ready to install',
+    'update.ready':         'A new version of qooti is ready to install',
     'update.btn':           'Update',
     'update.installing':    'Installing…',
     'update.failed':        'Update failed',
@@ -484,7 +484,7 @@ const strings = {
     'grid.drop':            'Import uchun tashlang',
 
     // App update
-    'update.ready':         "qooti v{version} o'rnatishga tayyor",
+    'update.ready':         "qootining yangi versiyasi o'rnatishga tayyor",
     'update.btn':           'Yangilash',
     'update.installing':    "O'rnatilmoqda…",
     'update.failed':        'Yangilash muvaffaqiyatsiz',
