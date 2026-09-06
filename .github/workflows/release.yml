@@ -1,0 +1,93 @@
+# Builds and publishes qooti releases (Windows + macOS) to GitHub Releases.
+# Triggered by pushing a version tag:  git tag v1.0.1 && git push --tags
+#
+# No secrets are required for the basic build — installers are produced unsigned
+# (bundle.createUpdaterArtifacts is currently false in tauri.conf.json).
+#
+# To enable AUTO-UPDATES later, set bundle.createUpdaterArtifacts=true, put the
+# public key from `npm run tauri signer generate` into tauri.conf.json →
+# plugins.updater.pubkey, and add these repo secrets (Settings → Secrets → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY          — the generated private key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — the password you chose
+#
+# macOS notes:
+#   • Built for Apple Silicon (aarch64). Intel Macs are not covered yet (would need a
+#     universal build + x86_64 sidecars).
+#   • Ships UNSIGNED (no Apple Developer cert) — users get a Gatekeeper "unidentified
+#     developer" warning and open it via right-click → Open the first time.
+#   • ffmpeg is fetched at build time (ffmpeg-static); yt-dlp arm64 is committed in binaries/.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    permissions:
+      contents: write   # needed to create GitHub Releases
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            tauri_args: ''
+            ffmpeg_name: ffmpeg-x86_64-pc-windows-msvc.exe
+          - platform: macos-latest        # GitHub's macos-latest is Apple Silicon
+            rust_target: aarch64-apple-darwin
+            tauri_args: '--target aarch64-apple-darwin'
+            ffmpeg_name: ffmpeg-aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ffmpeg is fetched at build time (it's >100 MB, so not committed). yt-dlp is
+      # committed; ensure the mac binary keeps its +x bit (git may drop it).
+      - name: Provision ffmpeg sidecar
+        shell: bash
+        run: |
+          npm i ffmpeg-static --no-save
+          cp "$(node -e "console.log(require('ffmpeg-static'))")" "src-tauri/binaries/${{ matrix.ffmpeg_name }}"
+          chmod +x src-tauri/binaries/* || true
+          ls -la src-tauri/binaries/
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN:                        ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY:           ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD:  ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName:               ${{ github.ref_name }}
+          releaseName:           'qooti ${{ github.ref_name }}'
+          releaseBody:           'See the release notes below.'
+          releaseDraft:          true
+          prerelease:            false
+          updaterJsonPreferNsis: true
+          args:                  ${{ matrix.tauri_args }}
