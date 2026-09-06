@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "updated_at": "2026-05-19",
+  "tags": [
+    {
+      "id": "minimal",
+      "en": "Minimal",
+      "uz": "Minimal",
+      "prompts": [
+        "single isolated element centered on a vast empty white or off-white background, extreme negative space, nothing else visible",
+        "razor-thin sans-serif text on a solid-color field, no textures, no images, no decorations, maximum breathing room",
+        "one geometric shape or single word floating on a flat monochrome surface, no shadows, no gradients, no secondary elements"
+      ]
+    },
+    {
+      "id": "typographic",
+      "en": "Typographic",
+      "uz": "Tipografik",
+      "prompts": [
+        "large bold display typeface filling most of the frame, text is the only visual element, letters tightly cropped or heavily kerned on solid background",
+        "multiple font weights layered to form a dense all-text composition, no photographs or illustrations, just stacked typographic hierarchy",
+        "oversized experimental lettering in high-contrast black and white, overlapping or distorted characters used as the sole design element"
+      ]
+    },
+    {
+      "id": "poster",
+      "en": "Poster",
+      "uz": "Poster",
+      "prompts": [
+        "vertical format graphic with large title text, supporting subtitle below, and a full-bleed background image — clear poster layout with strong text hierarchy",
+        "film or event poster with bold headline at top or center, dark dramatic background, and layered text at bottom listing names or dates",
+        "concert or album release poster with high-contrast photography combined with large typographic title, vertical rectangle format"
+      ]
+    },
+    {
+      "id": "dark_cinematic",
+      "en": "Dark Cinematic",
+      "uz": "Qorong'u Kinematografik",
+      "prompts": [
+        "extremely dark frame with a single subject lit by a narrow rim light or spotlight, deep shadows filling 70% of the image, film grain texture",
+        "cinematic widescreen composition with moody underexposed scene, subtle orange and teal color grading, atmospheric haze or fog",
+        "noir-style low-key lighting with strong shadows, single source of warm light illuminating a face or object against near-black background"
+      ]
+    },
+    {
+      "id": "neon_glow",
+      "en": "Neon Glow",
+      "uz": "Neon",
+      "prompts": [
+        "glowing neon pink and blue light tubes or text against a wet dark urban background at night, strong bloom and light bleed effect",
+        "synthwave-style glowing grid lines in electric purple and cyan on a black background with a gradient horizon and neon sun",
+        "bright saturated neon color strokes or typography emitting visible glow halos on a completely black background, no ambient light"
+      ]
+    },
+    {
+      "id": "3d_render",
+      "en": "3D Render",
+      "uz": "3D Render",
+      "prompts": [
+        "computer-generated 3D object with visible subsurface scattering, soft studio lighting, and smooth gradient background — clearly rendered not photographed",
+        "abstract 3D shape with glossy or metallic material, studio environment reflection, depth of field blur in background",
+        "3D rendered scene with physically-based materials, global illumination, and crisp shadow edges on a clean neutral surface"
+      ]
+    },
+    {
+      "id": "abstract",
+      "en": "Abstract",
+      "uz": "Abstrakt",
+      "prompts": [
+        "non-representational composition of flowing organic shapes or geometric forms in multiple colors with no recognizable objects or text",
+        "generative art pattern of repeating mathematical curves, noise fields, or particle systems forming a dense abstract texture",
+        "paint-like abstract composition with large color field blocks, gestural brushstrokes, or ink bleed effects and no readable subject matter"
+      ]
+    },
+    {
+      "id": "retro_vintage",
+      "en": "Retro / Vintage",
+      "uz": "Retro",
+      "prompts": [
+        "faded color palette with visible halftone grain, aged paper texture, and hand-drawn or serif typography in a 1960s–1980s graphic style",
+        "vintage poster aesthetic with limited color palette, distressed ink textures, and retro illustration style using flat shapes and outlines",
+        "70s or 80s inspired design with warm muted tones, thick decorative borders, serif or slab-serif fonts, and a worn printed quality"
+      ]
+    },
+    {
+      "id": "color_grading",
+      "en": "Color Grading",
+      "uz": "Rang Gradatsiyasi",
+      "prompts": [
+        "film still or scene showing strong orange and teal color grade, crushed blacks, and stylized skin tones that look cinematically processed",
+        "video frame with heavy color correction visible: lifted shadows, specific hue shift on highlights, visually processed look distinct from natural photography",
+        "split-toned image with warm shadows and cool highlights or vice versa, visible LUT-style color treatment across the entire frame"
+      ]
+    },
+    {
+      "id": "ui_design",
+      "en": "UI Design",
+      "uz": "UI Dizayn",
+      "prompts": [
+        "mobile or desktop application interface screenshot showing navigation bars, buttons, cards, and form inputs arranged in a software layout",
+        "app screen design with system UI components: tab bars, modals, or dashboards with data charts, icons, and typography at small scale",
+        "web or app wireframe or high-fidelity mockup displayed on a device frame, showing screens with menus, lists, and interactive elements"
+      ]
+    },
+    {
+      "id": "logo",
+      "en": "Logo",
+      "uz": "Logo",
+      "prompts": [
+        "single branded symbol or wordmark centered on a clean white or neutral background, no other design elements, just the mark itself",
+        "company logo comprising an icon and a typographic name side by side or stacked, isolated on solid background with no surrounding layout",
+        "vector-style brand mark with geometric or abstract symbol above or beside a company name in a clean sans-serif typeface"
+      ]
+    },
+    {
+      "id": "collage",
+      "en": "Collage",
+      "uz": "Kollaj",
+      "prompts": [
+        "multiple cut-out photographs or illustrations overlapping each other at different angles with visible paper edges and mixed textures",
+        "mixed-media composition combining photographic cutouts, hand-drawn elements, and printed text fragments layered in a scrapbook arrangement",
+        "digital collage with disparate images composited together without seamless blending, showing intentional layering and material mixing"
+      ]
+    },
+    {
+      "id": "kinetic_typography",
+      "en": "Kinetic Typography",
+      "uz": "Kinetik Tipografiya",
+      "prompts": [
+        "single frame from motion graphics showing large animated text mid-transition, blurred or partially off-frame suggesting movement",
+        "typographic composition designed for animation: letters at dynamic angles, scale contrast, and directional energy implying motion",
+        "motion design still with oversized words in bold geometric typeface arranged on a colored background in a layout built for movement"
+      ]
+    },
+    {
+      "id": "brand_identity",
+      "en": "Brand Identity",
+      "uz": "Brend Identifikatsiyasi",
+      "prompts": [
+        "brand style guide or identity mockup showing logo, color palette swatches, and typography specimens arranged on a presentation layout",
+        "multiple branded items together: business card, letterhead, and packaging shown in a cohesive visual identity flat-lay",
+        "brand identity sheet with consistent color palette, logotype variants, and pattern system displayed on a neutral background"
+      ]
+    },
+    {
+      "id": "music_cover",
+      "en": "Music Cover",
+      "uz": "Musiqa Muqovasi",
+      "prompts": [
+        "square format album artwork with artist name and album title, strong single image or abstract visual filling the entire square",
+        "music album cover design with bold graphic illustration or heavily edited photograph, artist name in large type across top or bottom",
+        "EP or single cover art: square composition with atmospheric image, minimal text, designed to work at small streaming thumbnail size"
+      ]
+    },
+    {
+      "id": "social_media",
+      "en": "Social Media",
+      "uz": "Ijtimoiy Tarmoq",
+      "prompts": [
+        "square or portrait format graphic optimized for Instagram: bold text overlay on photograph, high saturation, designed for mobile feed",
+        "social media post design with large readable headline, brand colors, and simple layout that reads clearly at small screen size",
+        "story or reel cover graphic with vertical 9:16 ratio, full-bleed background, and short punchy text in the center third"
+      ]
+    },
+    {
+      "id": "infographic",
+      "en": "Infographic",
+      "uz": "Infografika",
+      "prompts": [
+        "data visualization layout combining charts, icons, and statistics with connecting lines and numbered sections on a structured grid",
+        "visual data presentation with bar graphs, pie charts, or flow diagrams integrated with explanatory text and illustrative icons",
+        "information design with multiple data points organized into a visual hierarchy using shapes, arrows, and color-coded categories"
+      ]
+    },
+    {
+      "id": "dark_ui",
+      "en": "Dark UI",
+      "uz": "Qorong'u UI",
+      "prompts": [
+        "software or app interface with near-black background, subtle dark card surfaces, and light-colored text and icon elements",
+        "dark mode dashboard or application screen with deep gray layered surfaces, accent color highlights, and glowing active states",
+        "night-mode UI design with very low luminance backgrounds, thin light borders between panels, and muted icon colors"
+      ]
+    },
+    {
+      "id": "packaging",
+      "en": "Packaging",
+      "uz": "Qadoqlash",
+      "prompts": [
+        "product package or box design shown as a 3D mockup or flat die-cut, displaying label graphics, brand name, and surface print design",
+        "physical product packaging photographed or rendered: bottle, box, or bag with branded label, ingredient text, and visual identity",
+        "packaging dieline or product label design with structured layout of logo, product name, regulatory text, and decorative graphic elements"
+      ]
+    },
+    {
+      "id": "motion_graphics",
+      "en": "Motion Graphics",
+      "uz": "Motion Grafika",
+      "prompts": [
+        "single frame from a motion graphics sequence showing animated geometric shapes mid-movement on a solid colored background with no photography",
+        "broadcast graphics still with animated lower-third text bars, countdown timers, or animated icons overlaid on a clean colored field",
+        "explainer video frame with flat illustration style, animated characters or icons at mid-action, and bold sans-serif titles"
+      ]
+    }
+  ]
+}

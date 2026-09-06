@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>qooti</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <header class="header">
+    <img src="icons/logo-solo.png" alt="" class="header-logo" />
+    <span class="header-name">qooti</span>
+    <span class="status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Connecting…</span>
+    </span>
+  </header>
+
+  <div class="section">
+    <button type="button" class="toggle-row" id="picker-toggle-row" role="switch" aria-checked="false">
+      <span class="toggle-label">
+        <span class="toggle-title">Collection picker</span>
+        <span class="toggle-sub">after saving</span>
+      </span>
+      <span class="toggle-switch" id="picker-toggle" aria-hidden="true"><span class="toggle-thumb"></span></span>
+    </button>
+
+    <button type="button" class="toggle-row" id="panel-toggle-row" role="switch" aria-checked="false">
+      <span class="toggle-label">
+        <span class="toggle-title">Download panel</span>
+        <span class="toggle-sub">while downloading</span>
+      </span>
+      <span class="toggle-switch" id="panel-toggle" aria-hidden="true"><span class="toggle-thumb"></span></span>
+    </button>
+  </div>
+
+  <footer class="footer">
+    <button class="footer-btn" id="btn-disconnect">Disconnect</button>
+    <span class="footer-version" id="footer-version"></span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,159 @@
+/* ── Type: Geist, matching the qooti desktop app ──────────────────── */
+@font-face {
+  font-family: 'Geist';
+  src: url('fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0F0F0F;
+  --text:      #F2F2F2;
+  --text-2:    #8A8A8A;   /* secondary / descriptors */
+  --text-3:    #585858;   /* muted / meta            */
+  --line:      rgba(255, 255, 255, 0.06);
+  --hover:     rgba(255, 255, 255, 0.04);
+  --accent:    #2563EB;   /* toggle "on" — qooti accent */
+  --track:     rgba(255, 255, 255, 0.13);
+  --success:   #4ADE80;
+  --danger:    #F87171;
+  --ease:      cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body {
+  width: 252px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  animation: pop-in 240ms var(--ease) both;
+}
+
+@keyframes pop-in { from { opacity: 0; transform: translateY(-3px); } }
+
+/* ── Header: wordmark left, status right ──────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 15px 16px 12px;
+}
+
+.header-logo { width: 21px; height: 21px; object-fit: contain; flex-shrink: 0; }
+
+.header-name {
+  margin-right: auto;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: -0.01em;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex-shrink: 0;
+  transition: background 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+
+.status-dot--on  { background: var(--success); box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.14); }
+.status-dot--off { background: var(--danger); }
+
+/* ── Toggles ──────────────────────────────────────────────────────── */
+
+.section { padding: 4px 8px 6px; }
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms var(--ease);
+}
+
+.toggle-row:hover { background: var(--hover); }
+.toggle-row:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.55); }
+
+.toggle-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.toggle-title { font-size: 13px; font-weight: 500; color: var(--text); }
+.toggle-sub   { font-size: 11px; color: var(--text-2); letter-spacing: -0.005em; }
+
+.toggle-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--track);
+  transition: background 200ms var(--ease);
+}
+
+.toggle-switch--on { background: var(--accent); }
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 220ms var(--ease);
+}
+
+.toggle-switch--on .toggle-thumb { transform: translateX(14px); }
+
+/* ── Footer ───────────────────────────────────────────────────────── */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px 13px;
+  border-top: 1px solid var(--line);
+}
+
+.footer-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 140ms var(--ease);
+}
+
+.footer-btn:hover,
+.footer-btn:focus-visible { outline: none; color: var(--danger); }
+
+.footer-version { font-size: 11px; color: var(--text-3); letter-spacing: -0.01em; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, body { animation: none !important; transition: none !important; }
+}

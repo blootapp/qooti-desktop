@@ -1,0 +1,29 @@
+{
+  "name": "qooti",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@gutenye/ocr-browser": "^1.4.8",
+    "@huggingface/transformers": "^3.8.1",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "@tauri-apps/plugin-notification": "^2",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-updater": "^2",
+    "geist": "^1.7.2",
+    "onnxruntime-web": "^1.29.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "vite": "^6"
+  }
+}

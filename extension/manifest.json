@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "qooti",
+  "description": "Save images and videos to your local qooti library with one click.",
+  "version": "1.0.0",
+  "icons": {
+    "16":  "icons/icon-16.png",
+    "48":  "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16":  "icons/icon-16.png",
+      "48":  "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "qooti"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "https://bloot.app/*",
+        "https://www.bloot.app/*",
+        "https://account.bloot.app/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "contextMenus", "cookies", "clipboardWrite"],
+  "host_permissions": [
+    "http://127.0.0.1:1420/*",
+    "https://*.instagram.com/*",
+    "https://*.tiktok.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/logo-solo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="58" viewBox="0 0 200 58">
+  <!-- PLACEHOLDER: Light-mode qooti wordmark. Replace with real asset when designed. -->
+  <rect width="200" height="58" rx="4" fill="#F0F0F0" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="100" y="24" font-family="system-ui, sans-serif" font-size="11" fill="#999999" text-anchor="middle">logo-light.svg</text>
+  <text x="100" y="40" font-family="system-ui, sans-serif" font-size="10" fill="#BBBBBB" text-anchor="middle">placeholder — replace before light mode ships</text>
+</svg>

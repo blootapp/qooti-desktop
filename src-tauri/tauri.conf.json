@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "qooti",
+  "version": "1.0.0",
+  "identifier": "app.bloot.qooti",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1430",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "qooti",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": true,
+        "center": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      },
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost data: blob:; media-src 'self' asset: https://asset.localhost data: blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: blob:; worker-src 'self' blob:;"
+    }
+  },
+"bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": false,
+    "externalBin": ["binaries/yt-dlp", "binaries/ffmpeg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "sidebarImage": "../assets/installer-sidebar.nsis.bmp"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["qooti"]
+      }
+    },
+    "updater": {
+      "endpoints": [
+        "https://api.bloot.app/update/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "dialog": false,
+      "pubkey": "REPLACE_WITH_YOUR_PUBLIC_KEY"
+    }
+  }
+}

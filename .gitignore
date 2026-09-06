@@ -1,0 +1,41 @@
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+# Dead: PyInstaller build of the removed rapidocr sidecar (~230MB); OCR is WASM now
+src-tauri/sidecar/
+extension.zip
+
+# Vite
+*.local
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+
+# ─── Secrets / signing — NEVER commit ─────────────────────────────
+keys/
+*.p12
+*.pem
+*.mobileprovision
+.tauri-key
+.tauri-key.pub
+.env
+.dev.vars
+worker/.dev.vars
+
+# ─── Not part of this (public, desktop-app-only) repo ─────────────
+# Other qooti surfaces deploy separately; MD/ (arch doc) describes server-side
+# licensing/anti-fraud, so it's kept out of the public repo.
+mobile/
+dashboard/
+bloot.app/
+worker/
+MD/
+Sample/
+design/

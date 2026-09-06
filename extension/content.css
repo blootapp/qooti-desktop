@@ -1,0 +1,629 @@
+/* qooti content script styles */
+
+/* ── Badge (circle) ─────────────────────────────────────────────── */
+
+.qooti-badge {
+  position: fixed;
+  z-index: 2147483647;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 100px;
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.09);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  animation: qooti-in 160ms cubic-bezier(0.34,1.56,0.64,1) both;
+  transition: box-shadow 140ms ease;
+  pointer-events: all;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@keyframes qooti-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.qooti-badge:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.15);
+}
+
+/* Logo button inside badge — grab cursor signals it's draggable */
+.qooti-badge-logo-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: grab;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.qooti-badge-logo-btn:active {
+  cursor: grabbing;
+}
+
+.qooti-badge-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  display: block;
+}
+
+/* ── Pill expansion ─────────────────────────────────────────────── */
+
+/* Options container — hidden until pill expands */
+.qooti-badge-options {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  max-width: 0;
+  overflow: hidden;
+  transition: max-width 340ms cubic-bezier(0.22,1,0.36,1),
+              padding   340ms cubic-bezier(0.22,1,0.36,1);
+  pointer-events: none;
+}
+
+.qooti-badge--pill .qooti-badge-options {
+  max-width: 200px;     /* wide enough for 4 buttons */
+  padding: 0 4px;
+  pointer-events: all;
+}
+
+/* Divider: always between logo and options, regardless of which side options are on.
+   When expandRight=true → [logo][options]: divider on logo's right.
+   When expandRight=false → [options][logo]: divider on logo's left.
+   We target the logo-btn sibling relationship via :first-child vs :last-child. */
+.qooti-badge--pill .qooti-badge-logo-btn:first-child {
+  border-right: 1px solid rgba(255,255,255,0.1);
+  border-left:  none;
+}
+.qooti-badge--pill .qooti-badge-logo-btn:last-child {
+  border-left:  1px solid rgba(255,255,255,0.1);
+  border-right: none;
+}
+
+/* Individual option button inside pill */
+.qooti-badge-opt {
+  width: 30px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.7);
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 120ms, color 120ms, transform 100ms;
+}
+
+.qooti-badge-opt svg {
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.qooti-badge-opt:hover {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+.qooti-badge-opt:active {
+  transform: scale(0.88);
+}
+
+/* ── Badge state modifiers ──────────────────────────────────────── */
+
+.qooti-badge--saving {
+  animation: qooti-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes qooti-pulse {
+  0%,100% { box-shadow: 0 0 0 0   rgba(99,102,241,0.7); }
+  50%     { box-shadow: 0 0 0 6px rgba(99,102,241,0); }
+}
+
+.qooti-badge--done  { background: rgba(16, 185, 129, 0.92) !important; }
+.qooti-badge--error { background: rgba(239, 68,  68,  0.92) !important; }
+
+.qooti-badge--hide {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+/* ── Notification toast (base — used for "not running" etc.) ────── */
+
+.qooti-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 15, 17, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 10px 14px 10px 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  opacity: 0;
+  pointer-events: all;
+  transition: opacity 200ms ease, transform 200ms cubic-bezier(0.34,1.3,0.64,1);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.qooti-toast--in {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.qooti-toast-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
+
+.qooti-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.qooti-toast-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.qooti-toast-msg {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  line-height: 1.3;
+}
+
+.qooti-toast-close {
+  width: 14px;
+  height: 14px;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 4px;
+  transition: color 120ms;
+}
+
+.qooti-toast-close:hover { color: rgba(255,255,255,0.7); }
+
+/* ── Download progress toast ────────────────────────────────────── */
+
+.qooti-toast--dl {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 340px;
+  max-width: 500px;
+  padding: 12px 12px 12px 12px;
+  border-radius: 18px;
+}
+
+.qooti-toast--dl .qooti-toast-logo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+/* Right column: [title + pct] then [bar] */
+.qooti-toast-dl-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* Title + percentage on the same line */
+.qooti-toast-dl-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qooti-toast--dl .qooti-toast-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qooti-toast-pct {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* ── Progress bar — inside the right content column only ─────────── */
+
+.qooti-toast-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.qooti-toast-fill {
+  height: 100%;
+  width: 0%;
+  background: rgba(255,255,255,0.9);
+  border-radius: 2px;
+  transition: width 600ms ease-out, background 400ms ease;
+}
+
+/* Indeterminate shimmer while waiting for yt-dlp to report progress */
+.qooti-toast-fill--pending {
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0)   0%,
+    rgba(255,255,255,0.7) 40%,
+    rgba(255,255,255,0.9) 50%,
+    rgba(255,255,255,0.7) 60%,
+    rgba(255,255,255,0)   100%
+  );
+  background-size: 200% 100%;
+  animation: qooti-shimmer 1.4s linear infinite;
+}
+
+@keyframes qooti-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── View button (inside download toast and already-exists toast) ── */
+
+.qooti-toast-view-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms;
+}
+
+.qooti-toast-view-btn:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.25);
+}
+
+/* ── Download toast action buttons ──────────────────────────────── */
+
+.qooti-toast-dl-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.qooti-toast-dl-close {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(255,255,255,0.35);
+  padding: 0;
+  flex-shrink: 0;
+  align-self: flex-start;
+  transition: background 130ms, color 130ms, border-color 130ms;
+}
+
+.qooti-toast-dl-close svg {
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+}
+
+.qooti-toast-dl-close:hover {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── Screenshot confirmation toast ──────────────────────────────── */
+
+.qooti-toast-screenshot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qooti-toast-screenshot-sub {
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  flex: 1;
+  white-space: nowrap;
+}
+
+.qooti-toast-screenshot-yes,
+.qooti-toast-screenshot-no {
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 4px 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms, color 120ms, opacity 120ms;
+}
+
+.qooti-toast-screenshot-yes {
+  color: #fff;
+  background: rgba(99,102,241,0.82);
+  border: 1px solid rgba(99,102,241,0.5);
+}
+
+.qooti-toast-screenshot-yes:hover:not(:disabled) {
+  background: rgba(99,102,241,1);
+  border-color: rgba(99,102,241,0.8);
+}
+
+.qooti-toast-screenshot-yes:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.qooti-toast-screenshot-no {
+  color: rgba(255,255,255,0.55);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.qooti-toast-screenshot-no:hover:not(:disabled) {
+  background: rgba(255,255,255,0.13);
+  color: rgba(255,255,255,0.85);
+}
+
+/* Drain bar — reuses @keyframes qooti-drain from the picker */
+.qooti-toast-drain {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(99,102,241,0.8), rgba(139,92,246,0.8));
+  transform-origin: left;
+  animation: qooti-drain 5000ms linear forwards;
+}
+
+/* ── Collection picker ──────────────────────────────────────────── */
+
+.qooti-picker {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2147483646;
+  width: 276px;
+  background: #111111;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.75), 0 1px 0 rgba(255,255,255,0.07) inset;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
+  transition: opacity 200ms ease, transform 250ms cubic-bezier(0.34,1.4,0.64,1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  pointer-events: all;
+}
+
+.qooti-picker--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* ── Head ── */
+.qooti-picker-head {
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.qooti-picker-title-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.qooti-picker-check {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  border-radius: 50%;
+  background: rgba(16,185,129,0.13);
+  border: 1px solid rgba(16,185,129,0.28);
+  box-shadow: 0 0 10px rgba(16,185,129,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(16,185,129);
+  flex-shrink: 0;
+}
+
+.qooti-picker-check svg { width: 12px; height: 12px; }
+
+.qooti-picker-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #F0F0F0;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.qooti-picker-sub {
+  font-size: 11.5px;
+  color: #5A5A5A;
+  line-height: 1.3;
+  padding-left: 35px;
+}
+
+.qooti-picker-close {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255,255,255,0.3);
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 130ms, color 130ms;
+}
+
+.qooti-picker-close svg { width: 10px; height: 10px; }
+
+.qooti-picker-close:hover {
+  background: rgba(255,255,255,0.1);
+  color: #F0F0F0;
+}
+
+/* ── Collection list ── */
+.qooti-picker-list {
+  padding: 6px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.qooti-picker-list::-webkit-scrollbar { display: none; }
+
+/* Bordered card items — match qooti app's raised surface style */
+.qooti-picker-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1A1A1A;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms, border-color 150ms, transform 80ms;
+}
+
+.qooti-picker-btn:hover {
+  background: rgba(27,79,216,0.12);
+  border-color: rgba(27,79,216,0.32);
+}
+
+.qooti-picker-btn:hover .qooti-picker-btn-icon {
+  color: #6BA3FF;
+}
+
+.qooti-picker-btn:hover .qooti-picker-btn-label {
+  color: #F0F0F0;
+}
+
+.qooti-picker-btn:hover .qooti-picker-btn-check {
+  opacity: 1;
+}
+
+.qooti-picker-btn:active {
+  background: rgba(27,79,216,0.18);
+  transform: scale(0.98);
+}
+
+.qooti-picker-btn-icon {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  color: #5A5A5A;
+  flex-shrink: 0;
+  transition: color 150ms;
+}
+
+.qooti-picker-btn-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #9A9A9A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  transition: color 150ms;
+}
+
+.qooti-picker-btn-check {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  color: #6BA3FF;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 150ms;
+}
+
+/* ── Drain bar — qooti blue ── */
+.qooti-picker-bar {
+  height: 3px;
+  background: linear-gradient(90deg, #1B4FD8, #2563EB, #6BA3FF);
+  transform-origin: left;
+  animation: qooti-drain 4500ms linear forwards;
+}
+
+@keyframes qooti-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}

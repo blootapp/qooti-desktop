@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>qooti</title>
+  <link rel="stylesheet" href="./styles/global.css" />
+</head>
+<body>
+
+  <!-- Custom title bar — shown only on Windows via JS -->
+  <div id="title-bar" class="title-bar" hidden>
+    <span class="title-bar-name" data-tauri-drag-region>qooti</span>
+    <div class="title-bar-controls">
+      <button id="btn-minimize" class="tb-btn tb-minimize" aria-label="minimise"></button>
+      <button id="btn-maximize" class="tb-btn tb-maximize" aria-label="maximise"></button>
+      <button id="btn-close"    class="tb-btn tb-close"    aria-label="close"></button>
+    </div>
+  </div>
+
+  <!-- App shell -->
+  <div id="app" class="app-shell">
+
+    <!-- Top navigation bar -->
+    <header id="top-bar" class="top-bar" data-tauri-drag-region>
+
+      <!-- Left: hamburger + logo (hidden in collection mode) -->
+      <div id="top-bar-left" class="top-bar-left">
+        <button id="nav-drawer-toggle" class="top-bar-icon-btn" title="Menu" aria-label="Navigation menu"></button>
+        <a class="top-bar-brand" href="#" tabindex="-1">
+          <img src="/assets/logo.png" alt="qooti" class="top-bar-logo" draggable="false" />
+        </a>
+      </div>
+
+      <!-- Left: collection nav (shown only in collection mode) -->
+      <div id="col-left-nav" class="col-left-nav" hidden>
+        <button id="col-nav-home" class="col-nav-btn" aria-label="Go to home">
+          <span class="icon icon-14" style="mask-image:url('/icons/house.svg');-webkit-mask-image:url('/icons/house.svg')" aria-hidden="true"></span>
+          Home
+        </button>
+        <span class="col-nav-sep" aria-hidden="true">/</span>
+        <button id="col-nav-collections" class="col-nav-btn" aria-label="Go to collections">
+          <span class="icon icon-14" style="mask-image:url('/icons/folders.svg');-webkit-mask-image:url('/icons/folders.svg')" aria-hidden="true"></span>
+          Collections
+        </button>
+      </div>
+
+      <!-- Center: search ring wrapper (ring lives here) + search bar inside -->
+      <div class="search-ring-wrap" id="search-ring-wrap">
+
+        <!-- Shown instead of the search bar when browsing a collection -->
+        <div class="collection-topbar" id="collection-topbar" hidden>
+          <span class="collection-topbar-name" id="collection-topbar-name"></span>
+        </div>
+
+        <div class="top-bar-search-wrap">
+          <button class="search-submit-btn" id="search-submit-btn" title="Search" aria-label="Search"><span class="icon icon-14" style="mask-image:url('/icons/magnifying-glass.svg');-webkit-mask-image:url('/icons/magnifying-glass.svg')" aria-hidden="true"></span></button>
+          <input class="top-bar-search" id="top-bar-search" placeholder="Search..." autocomplete="off" spellcheck="false" />
+          <span class="ring-label" id="ring-label" aria-live="polite"></span>
+          <button class="cp-trigger" id="color-swatch-btn" title="Filter by color" aria-label="Filter by color">
+            <span class="icon-cp icon icon-16" style="mask-image:url('/icons/painting.svg');-webkit-mask-image:url('/icons/painting.svg')" aria-hidden="true"></span>
+            <span class="icon-dl"><span class="icon icon-16" style="mask-image:url('/icons/download-simple.svg');-webkit-mask-image:url('/icons/download-simple.svg')" aria-hidden="true"></span></span>
+            <span class="icon-cancel"><span class="icon icon-16" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: actions (hidden in collection mode) -->
+      <div id="top-bar-right" class="top-bar-right">
+        <button id="top-bar-import-btn" class="top-bar-icon-btn" title="Import files"></button>
+        <button id="top-bar-update-btn" class="top-bar-update-btn" hidden title="Update available"></button>
+        <!-- Download indicator — always visible -->
+        <button id="dl-indicator-btn" class="top-bar-icon-btn dl-indicator" title="Downloads">
+          <span class="dl-indicator-icon"></span>
+          <span class="dl-indicator-badge" hidden>0</span>
+        </button>
+        <button id="top-bar-avatar" class="top-bar-avatar" title="Profile" aria-label="Profile">A</button>
+      </div>
+
+      <!-- Right: collection actions (shown only in collection mode) -->
+      <div id="col-right-nav" class="col-right-nav" hidden>
+        <button id="col-nav-export" class="col-nav-btn col-nav-btn--export" aria-label="Export collection">
+          <span class="icon icon-14" style="mask-image:url('/icons/arrow-square-out.svg');-webkit-mask-image:url('/icons/arrow-square-out.svg')" aria-hidden="true"></span>
+          Export
+        </button>
+      </div>
+
+    </header>
+
+    <!-- Main content -->
+    <main id="main-content" class="main-content">
+      <div id="view-grid"          class="view"></div>
+      <div id="view-collections"   class="view" hidden></div>
+      <div id="view-search"        class="view" hidden></div>
+      <div id="view-milestones"    class="view" hidden></div>
+      <div id="view-notifications" class="view" hidden></div>
+      <div id="view-settings"      class="view" hidden></div>
+      <div id="view-activity"      class="view activity-view" hidden></div>
+    </main>
+
+  </div>
+
+  <!-- Nav drawer (toggled by hamburger) -->
+  <div id="nav-drawer" class="nav-drawer">
+    <div class="nav-drawer-backdrop" id="nav-drawer-backdrop"></div>
+    <div class="nav-drawer-panel">
+      <nav id="drawer-nav-primary"   class="nav-drawer-nav"></nav>
+      <div class="nav-drawer-spacer"></div>
+      <nav id="drawer-nav-secondary" class="nav-drawer-nav"></nav>
+    </div>
+  </div>
+
+  <!-- Overlay portal (modals, popovers, tooltips) -->
+  <div id="overlays"></div>
+
+  <!-- Onboarding layer -->
+  <div id="onboarding-root" hidden></div>
+
+  <!-- Splash screen -->
+  <div id="splash" class="splash">
+    <img class="splash-logo" src="/assets/logo.png" alt="qooti" />
+    <span class="splash-error" hidden></span>
+  </div>
+
+  <!-- Developer overlay (triggered by typing blt_developer in search) -->
+  <div id="dev-overlay" class="dev-overlay" hidden></div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
