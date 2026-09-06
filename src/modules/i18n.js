@@ -226,6 +226,35 @@ const strings = {
     // Errors
     'error.no_internet':    'qooti needs an internet connection to get started. Connect and relaunch.',
     'error.generic':        'Something went wrong. Please try again.',
+
+    // Home grid
+    'filter.recent':        'Recent',
+    'grid.drop':            'Drop to import',
+
+    // App update
+    'update.ready':         'qooti v{version} is ready to install',
+    'update.btn':           'Update',
+    'update.installing':    'Installing…',
+    'update.failed':        'Update failed',
+    'update.dismiss':       'Dismiss',
+    'update.toast_fail':    'Update failed: {error}',
+
+    // Grid / cards / collections (imperatively rendered)
+    'grid.scroll_left':          'Scroll left',
+    'grid.scroll_right':         'Scroll right',
+    'grid.could_not_load':       'Could not load',
+    'card.save_copy':            'Save a copy to folder',
+    'card.copy_video_ok':        'Video file copied to clipboard.',
+    'card.copy_image_ok':        'Image copied to clipboard.',
+    'card.copy_failed':          'Copy failed: {error}',
+    'collection.export_title':   'Export collection',
+    'collection.new_title':      'New collection',
+    'collection.name_ph':        'Collection name…',
+    'collection.readonly_free':  'This collection is read-only on the free plan. Upgrade to Pro to edit it.',
+    'suggest.question':          'Is this about {name}?',
+    'suggest.not_this':          'Not this',
+    'suggest.yes':               'Yes',
+    'suggest.yes_title':         'Yes — tag as "{name}"',
   },
 
   uz: {
@@ -449,6 +478,35 @@ const strings = {
     // Errors
     'error.no_internet':    "qooti boshlash uchun internet aloqasi kerak. Ulanib, qayta ishga tushiring.",
     'error.generic':        "Xatolik yuz berdi. Qayta urinib ko'ring.",
+
+    // Home grid
+    'filter.recent':        "So'nggi",
+    'grid.drop':            'Import uchun tashlang',
+
+    // App update
+    'update.ready':         "qooti v{version} o'rnatishga tayyor",
+    'update.btn':           'Yangilash',
+    'update.installing':    "O'rnatilmoqda…",
+    'update.failed':        'Yangilash muvaffaqiyatsiz',
+    'update.dismiss':       'Yopish',
+    'update.toast_fail':    'Yangilash muvaffaqiyatsiz: {error}',
+
+    // Grid / cards / collections (imperatively rendered)
+    'grid.scroll_left':          'Chapga aylantirish',
+    'grid.scroll_right':         "O'ngga aylantirish",
+    'grid.could_not_load':       "Yuklab bo'lmadi",
+    'card.save_copy':            'Nusxani papkaga saqlash',
+    'card.copy_video_ok':        'Video fayl vaqtinchalik xotiraga nusxalandi.',
+    'card.copy_image_ok':        'Rasm vaqtinchalik xotiraga nusxalandi.',
+    'card.copy_failed':          'Nusxa olishda xatolik: {error}',
+    'collection.export_title':   "To'plamni eksport qilish",
+    'collection.new_title':      "Yangi to'plam",
+    'collection.name_ph':        "To'plam nomi…",
+    'collection.readonly_free':  "Bu to'plam bepul tarifda faqat o'qish uchun. Tahrirlash uchun Pro ga o'ting.",
+    'suggest.question':          'Bu {name} haqidami?',
+    'suggest.not_this':          'Bu emas',
+    'suggest.yes':               'Ha',
+    'suggest.yes_title':         '"{name}" deb belgilash',
   },
 }
 
@@ -461,6 +519,9 @@ export function setLang(newLang) {
   if (!strings[newLang]) return
   lang = newLang
   applyToDOM()
+  // Notify modules that render text imperatively (t() at build time) so they
+  // can re-render — data-i18n elements are handled by applyToDOM above.
+  document.dispatchEvent(new CustomEvent('i18n:changed', { detail: { lang } }))
 }
 
 export function currentLang() { return lang }

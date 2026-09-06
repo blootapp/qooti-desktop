@@ -90,7 +90,7 @@ pub fn disk_free_bytes(path: &PathBuf) -> Option<u64> {
         let c_path = CString::new(path.to_string_lossy().as_bytes()).ok()?;
         let mut stat: libc::statvfs = unsafe { mem::zeroed() };
         let ret = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
-        if ret == 0 { Some(stat.f_bavail * stat.f_frsize as u64) } else { None }
+        if ret == 0 { Some(stat.f_bavail as u64 * stat.f_frsize as u64) } else { None }
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {

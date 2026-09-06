@@ -75,6 +75,10 @@ let _animateCards = true
 let _ctxMenu = null
 let _ctxListeners = null
 
+// Set when the backend emits update-available (30 s after launch). Drives the
+// update bar under the tag pills; survives grid re-renders (see renderShell).
+let _pendingUpdate = null
+
 const SHELF_ASPECT_THRESHOLD = 0.67
 const SHELF_CARD_HEIGHT      = 240
 const SHELF_CHUNK_SIZE       = 20  // short-form videos per shelf row
@@ -129,6 +133,13 @@ export function init(el, _settings) {
     if (view !== 'grid' && filter.collectionId) exitCollectionMode(false)
   })
   store.on(events.AUTO_TAG_BATCH_DONE, ({ ids }) => refreshCardPills(ids))
+  store.on(events.UPDATE_AVAILABLE, (info) => {
+    _pendingUpdate = info
+    log.info('update_available', { version: info?.version })
+    renderUpdateBar()
+  })
+  // Re-render the (imperatively built) update bar text when the language changes.
+  document.addEventListener('i18n:changed', () => renderUpdateBar())
 
   // Propagate dominant collection tags to untagged items once on startup.
   // No reload needed — the auto-tagger picks up the queued items and
@@ -153,6 +164,7 @@ function enterCollectionMode(id, name) {
   if (topbar) topbar.hidden = false
   if (searchWrap) searchWrap.hidden = true
   if (chipsBar) chipsBar.hidden = true
+  renderUpdateBar()  // hides the update bar while in collection mode
 
   // Swap left bar
   document.getElementById('top-bar-left').hidden = true
@@ -177,7 +189,7 @@ function enterCollectionMode(id, name) {
     const save = await getSaveDialog()
     if (!save) return
     const savePath = await save({
-      title: 'Export collection',
+      title: t('collection.export_title'),
       defaultPath: `${name}.qooti`,
       filters: [{ name: 'qooti Pack', extensions: ['qooti'] }],
     })
@@ -205,6 +217,7 @@ function exitCollectionMode(navigateToCollections) {
   if (topbar) topbar.hidden = true
   if (searchWrap) searchWrap.hidden = false
   if (chipsBar) chipsBar.hidden = false
+  renderUpdateBar()  // restore the update bar (if a version is pending)
 
   document.getElementById('top-bar-left').hidden = false
   document.getElementById('col-left-nav').hidden = true
@@ -223,7 +236,14 @@ function renderShell() {
   container.innerHTML = `
     <div class="filter-chips-bar" id="filter-chips-bar">
       <button class="chip active" data-filter="all"><span class="icon icon-14" style="mask-image:url('/icons/shuffle.svg');-webkit-mask-image:url('/icons/shuffle.svg')" aria-hidden="true"></span>qootify</button>
-      <button class="chip" data-filter="recent">Recent</button>
+      <button class="chip" data-filter="recent" data-i18n="filter.recent">${t('filter.recent')}</button>
+    </div>
+
+    <div class="update-bar" id="update-bar" hidden>
+      ${I('download-simple', 16)}
+      <span class="update-bar-text" id="update-bar-text"></span>
+      <button class="update-bar-btn" id="update-bar-btn"></button>
+      <button class="update-bar-dismiss" id="update-bar-dismiss" aria-label="">${I('x', 12)}</button>
     </div>
 
     <div class="grid-scroll" id="grid-scroll"></div>
@@ -231,7 +251,7 @@ function renderShell() {
     <div class="drop-overlay hidden" id="drop-overlay">
       <div class="drop-overlay-box">
         ${I('upload-simple', 28)}
-        <span class="drop-overlay-label">Drop to import</span>
+        <span class="drop-overlay-label" data-i18n="grid.drop">${t('grid.drop')}</span>
       </div>
     </div>
   `
@@ -278,6 +298,53 @@ function renderShell() {
       _dragged = false
     }
   }, true)
+
+  // Restore the update bar if a new version was detected before this render.
+  renderUpdateBar()
+}
+
+// ─── Update bar ──────────────────────────────────────────────────
+// Shown under the tag pills when the backend reports a newer version.
+// Clicking Update downloads + installs it, then the app restarts.
+function renderUpdateBar() {
+  const bar = container?.querySelector('#update-bar')
+  if (!bar) return
+  if (!_pendingUpdate || filter.collectionId) { bar.hidden = true; return }
+
+  const { version } = _pendingUpdate
+  const textEl = bar.querySelector('#update-bar-text')
+  const btn    = bar.querySelector('#update-bar-btn')
+  const dismiss = bar.querySelector('#update-bar-dismiss')
+
+  textEl.textContent = t('update.ready', { version })
+  btn.textContent    = t('update.btn')
+  btn.disabled       = false
+  dismiss.setAttribute('aria-label', t('update.dismiss'))
+  dismiss.title      = t('update.dismiss')
+  bar.hidden = false
+
+  // .onclick (not addEventListener) so re-renders never stack duplicate handlers.
+  btn.onclick = async () => {
+    btn.textContent = t('update.installing')
+    btn.disabled    = true
+    log.info('update_install_started', { version })
+    try {
+      await api.applyUpdate()   // backend downloads, installs, then restarts the app
+    } catch (err) {
+      log.warn('update_install_failed', { error: String(err) })
+      btn.textContent = t('update.failed')
+      btn.disabled    = false
+      store.emit(events.SYSTEM_TOAST, {
+        type: 'error',
+        message: t('update.toast_fail', { error: String(err) }),
+        duration: 8000,
+      })
+    }
+  }
+  dismiss.onclick = () => {
+    bar.hidden = true
+    log.info('update_dismissed', { version })
+  }
 }
 
 // ─── Filter chips ─────────────────────────────────────────────────
@@ -705,13 +772,13 @@ function makeShelf(shortItems, allItems, indexOfItem = null) {
 
   const prevBtn = document.createElement('button')
   prevBtn.className = 'shelf-nav-btn'
-  prevBtn.title = 'Scroll left'
+  prevBtn.title = t('grid.scroll_left')
   prevBtn.innerHTML = I('caret-left', 14)
   prevBtn.disabled = true
 
   const nextBtn = document.createElement('button')
   nextBtn.className = 'shelf-nav-btn'
-  nextBtn.title = 'Scroll right'
+  nextBtn.title = t('grid.scroll_right')
   nextBtn.innerHTML = I('caret-right', 14)
 
   nav.append(prevBtn, nextBtn)
@@ -902,7 +969,7 @@ function makeCard(item, idx) {
   overlay.className = 'card-hover-overlay'
   overlay.innerHTML = `
     <div class="card-overlay-top">
-      <button class="card-action-btn" data-action="copy" title="Save a copy to folder">${I('copy', 14)}</button>
+      <button class="card-action-btn" data-action="copy" title="${t('card.save_copy')}">${I('copy', 14)}</button>
     </div>
   `
   overlay.querySelector('[data-action="copy"]').addEventListener('click', e => {
@@ -987,16 +1054,16 @@ function makeSuggestionRow(item, canonicalTag) {
 
   const q = document.createElement('span')
   q.className = 'suggestion-q'
-  q.innerHTML = `Is this about <strong>${displayName}</strong>?`
+  q.innerHTML = t('suggest.question', { name: `<strong>${displayName}</strong>` })
 
   const yes = document.createElement('button')
   yes.className = 'suggestion-yes'
-  yes.title = `Yes — tag as "${displayName}"`
-  yes.textContent = 'Yes'
+  yes.title = t('suggest.yes_title', { name: displayName })
+  yes.textContent = t('suggest.yes')
 
   const no = document.createElement('button')
   no.className = 'suggestion-no'
-  no.title = 'Not this'
+  no.title = t('suggest.not_this')
   no.innerHTML = I('x', 14)
 
   yes.addEventListener('click', e => { e.stopPropagation(); applySuggestion(item, canonicalTag, displayName, row) })
@@ -1389,7 +1456,7 @@ function showContextMenu(x, y, item, idx) {
         if (col.locked) {
           store.emit(events.SYSTEM_TOAST, {
             type: 'info',
-            message: 'This collection is read-only on the free plan. Upgrade to Pro to edit it.',
+            message: t('collection.readonly_free'),
             duration: 4000,
           })
           return
@@ -1413,10 +1480,10 @@ function showContextMenu(x, y, item, idx) {
     createWrap.className = 'ctx-submenu-create'
     const createBtn = document.createElement('button')
     createBtn.className = 'ctx-item ctx-col-create'
-    createBtn.innerHTML = `${I('plus', 14)}<span>New collection</span>`
+    createBtn.innerHTML = `${I('plus', 14)}<span>${t('collection.new_title')}</span>`
     createBtn.addEventListener('click', async () => {
       closeCtxMenu()
-      const name = await showPrompt({ title: 'New collection', placeholder: 'Collection name…', icon: 'folder' })
+      const name = await showPrompt({ title: t('collection.new_title'), placeholder: t('collection.name_ph'), icon: 'folder' })
       if (!name) return
       try {
         await api.createCollection(name)
@@ -1433,7 +1500,7 @@ function showContextMenu(x, y, item, idx) {
     submenu.innerHTML = ''
     const err = document.createElement('div')
     err.className = 'ctx-empty-sub'
-    err.textContent = 'Could not load'
+    err.textContent = t('grid.could_not_load')
     submenu.appendChild(err)
   })
 
@@ -1499,7 +1566,7 @@ async function handleCopy(item, btn) {
     if (item.type === 'video') {
       // Copy the actual file to the OS clipboard (pasteable in Finder/Explorer)
       await api.copyFileToClipboard(item.stored_path)
-      store.emit(events.SYSTEM_TOAST, { type: 'success', message: 'Video file copied to clipboard.' })
+      store.emit(events.SYSTEM_TOAST, { type: 'success', message: t('card.copy_video_ok') })
     } else {
       // Images/GIFs: fetch file, re-encode as PNG, write to clipboard
       const url  = IS_TAURI ? convertFileSrc(item.stored_path) : item.stored_path
@@ -1512,12 +1579,12 @@ async function handleCopy(item, btn) {
       bitmap.close()
       const png = await new Promise(res => canvas.toBlob(res, 'image/png'))
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
-      store.emit(events.SYSTEM_TOAST, { type: 'success', message: 'Image copied to clipboard.' })
+      store.emit(events.SYSTEM_TOAST, { type: 'success', message: t('card.copy_image_ok') })
     }
   } catch (err) {
     console.error('[grid] copy failed:', err)
     if (btn) { btn.innerHTML = I('x', 14); btn.style.color = 'var(--error)' }
-    store.emit(events.SYSTEM_TOAST, { type: 'error', message: `Copy failed: ${err}` })
+    store.emit(events.SYSTEM_TOAST, { type: 'error', message: t('card.copy_failed', { error: String(err) }) })
   } finally {
     if (btn) setTimeout(() => { btn.innerHTML = prev; btn.style.color = '' }, 1200)
   }

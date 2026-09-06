@@ -1,12 +1,16 @@
-# Builds and publishes qooti releases (Windows + macOS) to GitHub Releases.
-# Triggered by pushing a version tag:  git tag v1.0.1 && git push --tags
+# Builds the macOS (Apple Silicon) qooti installer and attaches it to a draft
+# GitHub Release. Triggered by pushing a version tag:  git tag v1.0.1 && git push --tags
 #
-# No secrets are required for the basic build — installers are produced unsigned
-# (bundle.createUpdaterArtifacts is currently false in tauri.conf.json).
+# GitHub is used ONLY to build the macOS .dmg (a Mac runner is required — you can't
+# produce a mac build from Windows). The Windows installer is built locally on the
+# developer's machine. Installer files for the in-app updater are hosted on
+# Cloudflare (R2 + Worker at api.bloot.app), NOT on GitHub Releases — grab the
+# .dmg produced here, then upload it to Cloudflare alongside the local Windows build.
 #
-# To enable AUTO-UPDATES later, set bundle.createUpdaterArtifacts=true, put the
-# public key from `npm run tauri signer generate` into tauri.conf.json →
-# plugins.updater.pubkey, and add these repo secrets (Settings → Secrets → Actions):
+# The build is UNSIGNED for updates today (bundle.createUpdaterArtifacts=false).
+# To enable AUTO-UPDATES: set createUpdaterArtifacts=true, put the public key from
+# `npm run tauri signer generate` into tauri.conf.json → plugins.updater.pubkey, and
+# add these repo secrets (Settings → Secrets → Actions) so CI can sign the mac build:
 #   TAURI_SIGNING_PRIVATE_KEY          — the generated private key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — the password you chose
 #
@@ -33,10 +37,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest
-            rust_target: x86_64-pc-windows-msvc
-            tauri_args: ''
-            ffmpeg_name: ffmpeg-x86_64-pc-windows-msvc.exe
           - platform: macos-latest        # GitHub's macos-latest is Apple Silicon
             rust_target: aarch64-apple-darwin
             tauri_args: '--target aarch64-apple-darwin'

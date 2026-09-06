@@ -385,39 +385,9 @@ function showToast({ type = 'info', message, duration = 5000 }) {
   }
 }
 
-// ─── Update notification ─────────────────────────────────────────
-function setupUpdateButton() {
-  const btn = document.getElementById('top-bar-update-btn')
-  if (!btn) return
-
-  store.on(events.UPDATE_AVAILABLE, ({ version, notes }) => {
-    btn.textContent = `Update v${version}`
-    btn.hidden = false
-    btn.title  = notes ? `What's new:\n${notes}` : `qooti v${version} is available`
-
-    btn.addEventListener('click', async () => {
-      const { showConfirm } = await import('./modules/dialog.js')
-      const ok = await showConfirm({
-        title:        `Update to qooti v${version}`,
-        message:      `The app will restart to apply the update.${notes ? '\n\n' + notes : ''}`,
-        confirmLabel: 'Install & Restart',
-        icon:         'arrow-circle-up',
-      })
-      if (!ok) return
-
-      btn.textContent = 'Installing…'
-      btn.disabled    = true
-      try {
-        await api.applyUpdate()
-      } catch (err) {
-        console.error('[update] install failed:', err)
-        btn.textContent = 'Update failed'
-        btn.disabled    = false
-        showToast({ type: 'error', message: `Update failed: ${err}`, duration: 8000 })
-      }
-    }, { once: true })
-  })
-}
+// The update notification now lives as a bar under the tag pills in the home
+// grid (see grid.js → renderUpdateBar), driven by the same UPDATE_AVAILABLE
+// event. No top-bar button anymore.
 
 // ─── Store listeners ─────────────────────────────────────────────
 function bindStoreListeners() {
@@ -447,9 +417,9 @@ async function boot() {
     applyVisualSettings(settings)
     setupTopBar(settings)
 
-    // Bridge Tauri download events into the store (also wires update-available)
+    // Bridge Tauri download events into the store (also wires update-available,
+    // which the home grid picks up to show the update bar under the tag pills).
     await initDownloadListeners()
-    setupUpdateButton()
 
     // Start background OCR — PP-OCRv4 in a WASM worker (no native sidecar).
     // Only inside Tauri: it needs real vault files (browser mock has none).
