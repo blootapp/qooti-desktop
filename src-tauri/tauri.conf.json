@@ -35,7 +35,7 @@
 "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "externalBin": ["binaries/yt-dlp", "binaries/ffmpeg"],
     "icon": [
       "icons/32x32.png",
@@ -62,7 +62,7 @@
         "https://api.bloot.app/update/{{target}}/{{arch}}/{{current_version}}"
       ],
       "dialog": false,
-      "pubkey": "REPLACE_WITH_YOUR_PUBLIC_KEY"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFQTdGREFBOTBFNjk1QjMKUldTemxlYVFxdjJuN29FYUxhTlRTM2xUdmZRYVV4K3dubmxBT1pobFJXV2tNY3BRbjVDQmswODEK"
     }
   }
 }
