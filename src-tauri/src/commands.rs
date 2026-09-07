@@ -12,6 +12,20 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::vault;
 
+/// Builds a `std::process::Command` that never flashes a console window on
+/// Windows. Console child processes (yt-dlp, ffmpeg, taskkill, powershell…)
+/// otherwise pop a CMD window because the GUI app has no console of its own.
+/// CREATE_NO_WINDOW (0x0800_0000) suppresses it. No-op on other platforms.
+pub fn hidden_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 // ─── Active download PID registry (for cancellation) ──────────────
 static ACTIVE_PIDS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
 fn active_pids() -> &'static Mutex<HashMap<String, u32>> {
@@ -99,12 +113,12 @@ pub fn cancel_download(download_id: String, app: AppHandle) -> Result<(), String
     if let Some(pid) = pid {
         log::info!(target: "Download", "cancel_running pid={pid} download_id={download_id}");
         #[cfg(windows)]
-        std::process::Command::new("taskkill")
+        hidden_command("taskkill")
             .args(["/F", "/PID", &pid.to_string()])
             .spawn()
             .ok();
         #[cfg(not(windows))]
-        std::process::Command::new("kill")
+        hidden_command("kill")
             .args(["-9", &pid.to_string()])
             .spawn()
             .ok();
@@ -1189,14 +1203,14 @@ pub fn reset_all_auto_tags(state: State<AppState>) -> Result<u64, String> {
 pub fn reveal_in_folder(path: String) -> Result<(), String> {
     #[cfg(windows)]
     {
-        std::process::Command::new("explorer")
+        hidden_command("explorer")
             .arg(format!("/select,{}", path))
             .spawn()
             .map_err(|e| format!("reveal: {}", e))?;
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
+        hidden_command("open")
             .args(["-R", &path])
             .spawn()
             .map_err(|e| format!("reveal: {}", e))?;
@@ -1206,7 +1220,7 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
         let parent = std::path::Path::new(&path)
             .parent()
             .unwrap_or(std::path::Path::new("/"));
-        std::process::Command::new("xdg-open")
+        hidden_command("xdg-open")
             .arg(parent)
             .spawn()
             .map_err(|e| format!("reveal: {}", e))?;
@@ -1222,7 +1236,7 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), String> {
     {
         let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
         let script  = format!("set the clipboard to POSIX file \"{}\"", escaped);
-        let out = std::process::Command::new("osascript")
+        let out = hidden_command("osascript")
             .args(["-e", &script])
             .output()
             .map_err(|e| format!("copy_file_to_clipboard: {}", e))?;
@@ -1242,7 +1256,7 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), String> {
              [System.Windows.Forms.Clipboard]::SetFileDropList($c)",
             escaped
         );
-        let out = std::process::Command::new("powershell")
+        let out = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-STA", "-Command", &script])
             .output()
             .map_err(|e| format!("copy_file_to_clipboard: {}", e))?;
@@ -2652,7 +2666,7 @@ fn ffmpeg_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
     }
 
     // Fall back to system ffmpeg in PATH
-    if std::process::Command::new("ffmpeg").arg("-version")
+    if hidden_command("ffmpeg").arg("-version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status().is_ok()
@@ -2671,7 +2685,7 @@ fn video_meta(path: &std::path::Path, app: &AppHandle) -> (Option<f64>, Option<f
         Some(f) => f,
         None    => return (None, None),
     };
-    let mut child = match std::process::Command::new(&ffmpeg)
+    let mut child = match hidden_command(&ffmpeg)
         .args(["-i", &path.to_string_lossy().into_owned()])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -2779,12 +2793,12 @@ pub fn cancel_download_for_ext_id(ext_id: &str, app: &AppHandle) {
         if let Some(pid) = pid {
             log::info!(target: "Download", "cancel pid={pid} ext_id={ext_id}");
             #[cfg(windows)]
-            std::process::Command::new("taskkill")
+            hidden_command("taskkill")
                 .args(["/F", "/PID", &pid.to_string()])
                 .spawn()
                 .ok();
             #[cfg(not(windows))]
-            std::process::Command::new("kill")
+            hidden_command("kill")
                 .args(["-9", &pid.to_string()])
                 .spawn()
                 .ok();
@@ -3068,7 +3082,7 @@ fn run_ytdlp(
             .map(|e| e.path())
             .collect();
 
-    let mut child = match std::process::Command::new(&binary)
+    let mut child = match hidden_command(&binary)
         .args(&base_args)
         .env("PYTHONUNBUFFERED", "1")
         .env("PYTHONIOENCODING", "utf-8")
@@ -3113,11 +3127,11 @@ fn run_ytdlp(
                 log::warn!(target: "Download", "watchdog_timeout download_id={wd_did}");
                 if let Some(pid) = active_pids().lock().unwrap().remove(&wd_did) {
                     #[cfg(windows)]
-                    std::process::Command::new("taskkill")
+                    hidden_command("taskkill")
                         .args(["/F", "/PID", &pid.to_string()])
                         .spawn().ok();
                     #[cfg(not(windows))]
-                    std::process::Command::new("kill")
+                    hidden_command("kill")
                         .args(["-9", &pid.to_string()])
                         .spawn().ok();
                 }
@@ -3348,7 +3362,7 @@ fn run_ytdlp(
                 }
                 fallback_args.extend_from_slice(&["--format", fallback_format, &url]);
 
-                let fallback_output = std::process::Command::new(&binary)
+                let fallback_output = hidden_command(&binary)
                     .args(&fallback_args)
                     .env("PYTHONUNBUFFERED", "1")
                     .env("PYTHONIOENCODING", "utf-8")

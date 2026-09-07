@@ -458,10 +458,12 @@ async function boot() {
     initMilestones(document.getElementById('view-milestones'))
     initActivityView(document.getElementById('view-activity'))
 
-    const onboardingState = settings.onboarding_state ?? 'pending_survey'
+    // First launch (and any non-complete state) goes straight to the bloot ID
+    // sign-in — no name/photo prompt, no full-screen guide. Onboarding is a
+    // single step now; orientation is handled by the in-app spotlight tour.
+    const onboardingState = settings.onboarding_state ?? 'pending_login'
     // If onboarding was previously completed but bloot_id is now missing
-    // (e.g. cleared after a 404, or a corrupted preferences row), treat it
-    // as pending_login so the user must sign in before accessing the library.
+    // (e.g. cleared after a 404, or a corrupted preferences row), require sign-in.
     const effectiveState  = (onboardingState === 'complete' && !settings.bloot_id)
       ? 'pending_login'
       : onboardingState

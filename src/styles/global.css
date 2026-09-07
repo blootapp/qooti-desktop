@@ -1322,9 +1322,22 @@ a:hover { text-decoration: underline; }
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(ellipse 65% 55% at 25% 35%, rgba(27,79,216,0.18) 0%, transparent 100%),
-    radial-gradient(ellipse 45% 65% at 78% 70%, rgba(107,163,255,0.09) 0%, transparent 100%),
+    radial-gradient(ellipse 65% 55% at 25% 35%, rgba(27,79,216,0.18) 0%, rgba(27,79,216,0.06) 45%, transparent 78%),
+    radial-gradient(ellipse 45% 65% at 78% 70%, rgba(107,163,255,0.09) 0%, rgba(107,163,255,0.03) 50%, transparent 80%),
     var(--bg-base);
+}
+
+/* Dithering overlay — a faint grayscale noise breaks up the visible colour
+   banding in the dark radial gradient (8-bit gradients step on large areas). */
+#onboarding-root::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 
@@ -1350,6 +1363,8 @@ a:hover { text-decoration: underline; }
   width: 360px;
   text-align: center;
   margin-top: -60px;
+  position: relative;
+  z-index: 1;
 }
 
 .ob-heading {

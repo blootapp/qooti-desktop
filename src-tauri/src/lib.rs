@@ -93,7 +93,7 @@ pub fn run() {
             // Log yt-dlp version so we can confirm which binary is active.
             {
                 let binary = commands::ytdlp_binary_path(app.handle());
-                if let Ok(out) = std::process::Command::new(&binary).arg("--version").output() {
+                if let Ok(out) = commands::hidden_command(&binary).arg("--version").output() {
                     log::info!(target: "Boot", "ytdlp_version={}", String::from_utf8_lossy(&out.stdout).trim());
                 } else {
                     log::warn!(target: "Boot", "ytdlp_missing path={:?}", binary);
