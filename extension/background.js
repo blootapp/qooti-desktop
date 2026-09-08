@@ -74,6 +74,15 @@ async function ensurePaired() {
   return key
 }
 
+// Force a fresh pairing. Used when the desktop rejects our stored key (401) —
+// e.g. after the app was reinstalled/reset and generated a new pairing key, so
+// our cached key is stale. Clears it and pairs again so the user never has to
+// manually reconnect.
+async function repair() {
+  await chrome.storage.local.remove(STORAGE_KEY)
+  return pair()
+}
+
 // ─── Collections ─────────────────────────────────────────────────
 
 // Returns [{ id, name }] cached up to 5 minutes.
@@ -111,15 +120,19 @@ function invalidateCollectionsCache() {
 async function saveItem(payload) {
   const key = await ensurePaired()
   if (!key) throw new Error('qooti is not running')
-  const r = await fetch(`${DESKTOP}/extension/save`, {
+  const post = k => fetch(`${DESKTOP}/extension/save`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Qooti-Key': key,
-    },
+    headers: { 'Content-Type': 'application/json', 'X-Qooti-Key': k },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(3000),
   })
+  let r = await post(key)
+  // Stale key (desktop was reinstalled/reset) → re-pair once and retry, so saving
+  // keeps working without the user having to manually reconnect the extension.
+  if (r.status === 401) {
+    const fresh = await repair()
+    if (fresh) r = await post(fresh)
+  }
   if (!r.ok) {
     const text = await r.text()
     throw new Error(text || `HTTP ${r.status}`)

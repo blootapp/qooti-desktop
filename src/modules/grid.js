@@ -141,6 +141,14 @@ export function init(el, _settings) {
   // Re-render the (imperatively built) update bar text when the language changes.
   document.addEventListener('i18n:changed', () => renderUpdateBar())
 
+  // The free/Pro state is decided at render time. When the licence validates
+  // after boot (or an upgrade completes), the plan can flip to Pro — reload so
+  // the free-plan blocker/limit disappears without the user restarting the app.
+  store.on(events.LICENSE_STATUS_CHANGED, () => {
+    const nowFree = getSetting('plan') === 'free' || !getSetting('plan')
+    if (_lastView && _lastView.isFree !== nowFree) reload()
+  })
+
   // Propagate dominant collection tags to untagged items once on startup.
   // No reload needed — the auto-tagger picks up the queued items and
   // emits AUTO_TAG_BATCH_DONE → refreshCardPills() when done.
@@ -671,9 +679,9 @@ function render(items, colCount, trimOrphans = false) {
     grid.innerHTML = `
       <div class="empty-state">
         ${I('image', 32)}
-        <span class="empty-state-title">Nothing here yet</span>
-        <p class="empty-state-body">Add your first inspiration — drag &amp; drop files,<br>or paste a link to download.</p>
-        <button class="empty-state-btn" id="empty-add-btn">${I('plus', 16)}Add inspiration</button>
+        <span class="empty-state-title">${t('empty.grid.title')}</span>
+        <p class="empty-state-body">${t('empty.grid.body')}</p>
+        <button class="empty-state-btn" id="empty-add-btn">${I('plus', 16)}${t('empty.grid.btn')}</button>
       </div>
     `
     grid.querySelector('#empty-add-btn')?.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
@@ -1318,6 +1326,10 @@ function calcColCount() {
   const gap   = parseFloat(style.getPropertyValue('--grid-gap'))       || 4
   // 12px = .inspiration-grid padding (6px × 2 sides). scrollbar-gutter:stable
   // keeps clientWidth constant regardless of overflow, so this is reliable.
+  // While the grid view is hidden (e.g. on the Settings page) clientWidth is 0.
+  // Don't recompute to 1 column then — it corrupts the cached layout and flashes
+  // the first card full-width for a moment when the grid is shown again.
+  if (scrollEl.clientWidth === 0) return Math.max(1, currentColCount)
   const availW = Math.max(0, scrollEl.clientWidth - 12)
   const cols = Math.max(1, Math.floor((availW + gap) / (minW + gap)))
 
@@ -1330,6 +1342,10 @@ function calcColCount() {
 function onGridResize() {
   clearTimeout(_resizeTimer)
   _resizeTimer = setTimeout(() => {
+    // Ignore resize ticks while the grid is hidden (width 0) — those come from
+    // switching to another view and must not trigger a 1-column relayout.
+    const scrollEl = container?.querySelector('#grid-scroll')
+    if (!scrollEl || scrollEl.clientWidth === 0) return
     const newCount = calcColCount()
     // Re-lay-out from cache (no DB round-trip, no re-shuffle) rather than reload.
     if (newCount !== currentColCount) relayout()

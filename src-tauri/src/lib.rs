@@ -38,7 +38,7 @@ pub struct AppState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init();
-    log::info!(target: "Boot", "qooti starting version=1.0.0");
+    log::info!(target: "Boot", "qooti starting version=1.0.1");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

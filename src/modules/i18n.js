@@ -32,6 +32,9 @@ const strings = {
 
     'empty.grid':        'Your library is empty',
     'empty.grid.hint':   'Save your first inspiration using the Chrome extension',
+    'empty.grid.title':  'Nothing here yet',
+    'empty.grid.body':   'Add your first inspiration — drag &amp; drop files,<br>or paste a link to download.',
+    'empty.grid.btn':    'Add inspiration',
     'empty.collections': 'No collections yet',
     'empty.search':      'No results found',
     'empty.milestones':  'No milestones yet',
@@ -284,6 +287,9 @@ const strings = {
 
     'empty.grid':        "Kutubxonangiz bo'sh",
     'empty.grid.hint':   'Chrome kengaytmasi orqali birinchi ilhomingizni saqlang',
+    'empty.grid.title':  'Hali hech narsa yo‘q',
+    'empty.grid.body':   'Birinchi ilhomingizni qo‘shing — fayllarni torting,<br>yoki yuklab olish uchun havola joylang.',
+    'empty.grid.btn':    'Ilhom qo‘shish',
     'empty.collections': "Hali to'plamlar yo'q",
     'empty.search':      'Natija topilmadi',
     'empty.milestones':  "Hali yutuqlar yo'q",
