@@ -8,7 +8,9 @@
   // ─── Settings ────────────────────────────────────────────────────
   let badgePosition = 'top-left'
   let showPicker    = true
-  let bannedSites   = []
+  // Sites where the qooti badge must never appear. Defaults applied until the
+  // user edits the list in the popup (which writes to chrome.storage.sync).
+  let bannedSites   = ['flaticon.com', 'bloot.app']
 
   chrome.storage.sync.get(['badgePosition', 'showPicker', 'bannedSites'], res => {
     if (res.badgePosition)       badgePosition = res.badgePosition
@@ -31,10 +33,22 @@
     customBadgePos = res[_posKey] ?? null
   })
 
+  // Normalise any user-typed entry to a bare host: strips scheme (http/https),
+  // path/query, port, and a leading "www." — so "https://www.flaticon.com/x"
+  // and "flaticon.com" both become "flaticon.com".
+  function normHost(v) {
+    return String(v || '')
+      .trim().toLowerCase()
+      .replace(/^[a-z]+:\/\//, '')   // scheme
+      .split('/')[0]                 // path/query/hash
+      .split(':')[0]                 // port
+      .replace(/^www\./, '')         // www.
+  }
+
   function isCurrentSiteBanned() {
-    const host = location.hostname.replace(/^www\./, '').toLowerCase()
+    const host = normHost(location.hostname)
     return bannedSites.some(entry => {
-      const s = entry.trim().toLowerCase().replace(/^www\./, '')
+      const s = normHost(entry)
       return s && (host === s || host.endsWith('.' + s))
     })
   }
@@ -355,6 +369,7 @@
 
   // ─── Show / hide badge ───────────────────────────────────────────
   function showBadge(el) {
+    if (isCurrentSiteBanned()) return   // no badge on blocked sites
     if (currentTarget === el) return
     removeBadge(true)
     currentTarget = el

@@ -38,9 +38,25 @@ pub struct AppState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init();
-    log::info!(target: "Boot", "qooti starting version=1.0.1");
+    log::info!(target: "Boot", "qooti starting version=1.0.0");
 
     tauri::Builder::default()
+        // Must be the FIRST plugin. When the app is already running and the user
+        // launches it again (Start menu, taskbar, etc.), focus the existing window
+        // instead of opening a second one.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+            // A qooti:// deep link delivered via the second launch (Windows) —
+            // handle plan-sync so a Pro upgrade re-validates while the app runs.
+            if argv.iter().any(|a| a.starts_with("qooti://plan-sync")) {
+                use tauri::Emitter;
+                let _ = app.emit("license-status-push", ());
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

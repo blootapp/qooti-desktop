@@ -62,6 +62,84 @@ panelRow.addEventListener('click', () => {
   })
 })
 
+// ─── Blocked sites ───────────────────────────────────────────────
+// The qooti badge never appears on these sites. Entries are stored as bare
+// hosts; content.js matches the current page (www/scheme-insensitive).
+
+const DEFAULT_BANNED = ['flaticon.com', 'bloot.app']
+const banInput  = document.getElementById('ban-input')
+const banAddBtn = document.getElementById('ban-add-btn')
+const banList   = document.getElementById('ban-list')
+let bannedSites = []
+
+// "https://www.flaticon.com/x" and "flaticon.com" → "flaticon.com"
+function normHost(v) {
+  return String(v || '')
+    .trim().toLowerCase()
+    .replace(/^[a-z]+:\/\//, '')
+    .split('/')[0]
+    .split(':')[0]
+    .replace(/^www\./, '')
+}
+
+function renderBanList() {
+  banList.innerHTML = ''
+  if (!bannedSites.length) {
+    const li = document.createElement('li')
+    li.className = 'ban-empty'
+    li.textContent = 'No blocked sites'
+    banList.appendChild(li)
+    return
+  }
+  for (const host of bannedSites) {
+    const li = document.createElement('li')
+    li.className = 'ban-item'
+    const span = document.createElement('span')
+    span.className = 'ban-item-host'
+    span.textContent = host
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'ban-remove'
+    btn.setAttribute('aria-label', `Remove ${host}`)
+    btn.textContent = '×'
+    btn.addEventListener('click', () => removeBan(host))
+    li.append(span, btn)
+    banList.appendChild(li)
+  }
+}
+
+function saveBanned() { chrome.storage.sync.set({ bannedSites }) }
+
+function addBan() {
+  const host = normHost(banInput.value)
+  banInput.value = ''
+  banInput.focus()
+  if (!host || bannedSites.includes(host)) return
+  bannedSites.push(host)
+  bannedSites.sort()
+  saveBanned()
+  renderBanList()
+}
+
+function removeBan(host) {
+  bannedSites = bannedSites.filter(h => h !== host)
+  saveBanned()
+  renderBanList()
+}
+
+chrome.storage.sync.get('bannedSites', res => {
+  if (Array.isArray(res.bannedSites)) {
+    bannedSites = res.bannedSites
+  } else {
+    bannedSites = DEFAULT_BANNED.slice()   // seed defaults on first open
+    saveBanned()
+  }
+  renderBanList()
+})
+
+banAddBtn.addEventListener('click', addBan)
+banInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addBan() } })
+
 // ─── Disconnect ──────────────────────────────────────────────────
 
 document.getElementById('btn-disconnect').addEventListener('click', () => {

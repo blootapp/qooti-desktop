@@ -128,6 +128,96 @@ body {
 
 .toggle-switch--on .toggle-thumb { transform: translateX(14px); }
 
+/* ── Blocked sites ────────────────────────────────────────────────── */
+
+.ban-section { border-top: 1px solid var(--line); padding: 12px 16px 10px; }
+
+.ban-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+.ban-title { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
+.ban-sub   { font-size: 10.5px; color: var(--text-3); letter-spacing: -0.005em; }
+
+.ban-add { display: flex; gap: 6px; }
+
+.ban-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 140ms var(--ease);
+}
+.ban-input::placeholder { color: var(--text-3); }
+.ban-input:focus { border-color: rgba(37, 99, 235, 0.55); }
+
+.ban-add-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity 140ms var(--ease);
+}
+.ban-add-btn:hover { opacity: 0.9; }
+.ban-add-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.55); }
+
+.ban-list {
+  list-style: none;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+.ban-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  transition: background 140ms var(--ease);
+}
+.ban-item:hover { background: var(--hover); }
+.ban-item-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ban-remove {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.ban-remove:hover { color: var(--danger); background: rgba(248, 113, 113, 0.12); }
+
+.ban-empty { font-size: 11.5px; color: var(--text-3); padding: 4px 8px; }
+
 /* ── Footer ───────────────────────────────────────────────────────── */
 
 .footer {
