@@ -45,10 +45,21 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["qooti"],
+        "name": "qooti collection",
+        "description": "qooti collection pack",
+        "mimeType": "application/x-qooti",
+        "role": "Editor"
+      }
+    ],
+    "resources": ["icons/qooti-file.ico"],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "sidebarImage": "../assets/installer-sidebar.nsis.bmp"
+        "sidebarImage": "../assets/installer-sidebar.nsis.bmp",
+        "installerHooks": "./windows/nsis-hooks.nsh"
       }
     }
   },

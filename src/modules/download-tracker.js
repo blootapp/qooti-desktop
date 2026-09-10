@@ -72,21 +72,26 @@ export function init() {
     const e = _entries.get(download_id)
     if (!e) { console.warn('[tracker] DOWNLOAD_ERROR for unknown id:', download_id); return }
     const isCancelled = (message ?? '').toLowerCase() === 'cancelled'
-    const status = isCancelled ? 'cancelled' : 'failed'
-    console.info('[tracker]', status, download_id, message ?? '')
-    e.status = status
+    // User cancel: drop the entry cleanly — no lingering "cancelled" row, no
+    // error styling. The progress ring already dismisses itself smoothly.
+    if (isCancelled) {
+      console.info('[tracker] cancelled', download_id)
+      _entries.delete(download_id)
+      store.emit(events.DOWNLOADS_CHANGED)
+      return
+    }
+    console.info('[tracker] failed', download_id, message ?? '')
+    e.status = 'failed'
     e.error  = message ?? null
     store.emit(events.DOWNLOADS_CHANGED)
-    // Persist non-cancelled failures so the activity view shows them after restart
-    if (!isCancelled) {
-      try {
-        await api.logFailedDownload(
-          e.id, e.url, e.quality, e.importSource, 'failed',
-          message ?? null, e.filename ?? null,
-        )
-      } catch (err) {
-        console.warn('[tracker] logFailedDownload failed — entry will not persist across restarts:', err)
-      }
+    // Persist real failures so the activity view shows them after restart
+    try {
+      await api.logFailedDownload(
+        e.id, e.url, e.quality, e.importSource, 'failed',
+        message ?? null, e.filename ?? null,
+      )
+    } catch (err) {
+      console.warn('[tracker] logFailedDownload failed — entry will not persist across restarts:', err)
     }
   })
 }

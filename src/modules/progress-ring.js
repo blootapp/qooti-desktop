@@ -214,5 +214,17 @@ export function startTask(id, {
       sync()
       remove(id, 1600)
     },
+
+    // User-initiated cancel — a clean, quick dismissal with no red error state
+    // (cancelling on purpose shouldn't look like a failure).
+    cancel() {
+      const t = tasks.get(id)
+      if (!t) return
+      t.error         = false
+      t.indeterminate = false
+      t.label         = ''
+      sync()
+      remove(id, 200)
+    },
   }
 }

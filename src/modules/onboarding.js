@@ -1,6 +1,7 @@
 import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
+import { registerDevice } from './licensing.js'
 
 let root = null
 
@@ -87,6 +88,11 @@ function renderLoginStep() {
     await api.setSetting('bloot_id', id)
     if (data.display_name) await api.setSetting('display_name', data.display_name)
     if (data.plan)         await api.setSetting('plan', data.plan)
+
+    // Stamp the login moment (so a later admin device-reset logs us out) and
+    // bind this install to the account. Failures here never block sign-in.
+    await api.setSetting('logged_in_at', String(Date.now()))
+    try { await registerDevice(id) } catch {}
 
     signIn.textContent = 'Signing in…'
     await complete()

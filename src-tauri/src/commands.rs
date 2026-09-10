@@ -32,6 +32,32 @@ fn active_pids() -> &'static Mutex<HashMap<String, u32>> {
     ACTIVE_PIDS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+// ─── .qooti file open (double-click / "Open with") ────────────────
+// The .qooti file the app was launched with, captured once at startup so the
+// frontend can pull it after it's ready to import. Subsequent opens (while the
+// app runs) come through the single-instance callback / macOS Opened event.
+static LAUNCH_FILE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+fn launch_file() -> &'static Mutex<Option<String>> {
+    LAUNCH_FILE.get_or_init(|| Mutex::new(None))
+}
+
+/// First existing `*.qooti` path among the given CLI args.
+pub fn qooti_path_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter()
+        .find(|a| a.to_lowercase().ends_with(".qooti") && std::path::Path::new(a).is_file())
+}
+
+/// Stash the launch file (called once at startup from lib.rs).
+pub fn set_launch_file(path: Option<String>) {
+    *launch_file().lock().unwrap() = path;
+}
+
+/// Frontend pulls (and clears) the launch file on boot.
+#[tauri::command]
+pub fn take_launch_file() -> Option<String> {
+    launch_file().lock().unwrap().take()
+}
+
 // ─── Download queue ───────────────────────────────────────────────
 // Serial queue: at most one yt-dlp process at a time.  All download_url
 // calls enqueue immediately and return a download_id; the queue is drained
@@ -452,7 +478,11 @@ pub fn set_autostart(enabled: bool) {
         else { return };
         if enabled {
             if let Ok(exe) = std::env::current_exe() {
-                let _ = run_key.set_value("qooti", &exe.to_string_lossy().as_ref());
+                // Quote the path: the Run value is parsed as a command line, so an
+                // unquoted path with spaces (e.g. a username containing a space, like
+                // "C:\Users\Windows 11\...\qooti.exe") fails to launch at login.
+                let value = format!("\"{}\"", exe.to_string_lossy());
+                let _ = run_key.set_value("qooti", &value);
             }
         } else {
             let _ = run_key.delete_value("qooti");
@@ -535,6 +565,44 @@ pub fn set_setting(key: String, value: String, state: State<AppState>) -> Result
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Stable, random per-install identifier for license device-binding.
+/// Generated once and persisted in `preferences.device_id` (blacklisted from the
+/// generic settings get/set, so it never leaves the machine via export/sync).
+/// This is a random UUID — NOT derived from any hardware — so we collect zero
+/// hardware information while still giving each install a distinct identity.
+#[tauri::command]
+pub fn get_device_id(state: State<AppState>) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    if let Ok(existing) = db.query_row(
+        "SELECT value FROM preferences WHERE key = 'device_id'",
+        [],
+        |row| row.get::<_, String>(0),
+    ) {
+        if !existing.trim().is_empty() {
+            return Ok(existing);
+        }
+    }
+    let id = Uuid::new_v4().to_string();
+    db.execute(
+        "INSERT OR REPLACE INTO preferences (key, value) VALUES ('device_id', ?1)",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Coarse device label (OS family only — no hostname or serial) so the account's
+/// device list is human-readable without collecting anything identifying.
+#[tauri::command]
+pub fn device_label() -> String {
+    match std::env::consts::OS {
+        "windows" => "Windows".to_string(),
+        "macos"   => "macOS".to_string(),
+        "linux"   => "Linux".to_string(),
+        other     => other.to_string(),
+    }
 }
 
 // ─── Inspirations ─────────────────────────────────────────────────

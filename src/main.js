@@ -484,6 +484,13 @@ async function boot() {
     } else {
       navigate('grid')
       if (!walkthroughDone) setTimeout(startWalkthrough, 700)
+
+      // If the app was launched by double-clicking a .qooti file (cold start),
+      // the backend stashed the path — pull it now and open the importer.
+      try {
+        const lf = await api.takeLaunchFile()
+        if (lf) store.emit(events.QOOTI_FILE_OPEN, { path: lf })
+      } catch {}
     }
 
     const elapsed = performance.now() - t0

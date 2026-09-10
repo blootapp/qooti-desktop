@@ -242,10 +242,10 @@ export function checkUrl(value) {
 // Called by main.js when the swatch/download button is clicked
 // Returns true if it handled the click (caller should skip color picker)
 export async function handleSwatchClick() {
-  // Cancel an active download
+  // Cancel an active download — clean dismissal, not an error flash.
   if (_activeId) {
     const idToCancel = _activeId
-    _activeTask?.fail('Cancelled')
+    _activeTask?.cancel()
     _activeTask = null
     _finishDownload()  // clears _activeUrl too
     _resetSearchBar()

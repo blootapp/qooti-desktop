@@ -14,6 +14,11 @@ src-tauri/sidecar/
 src-tauri/binaries/ffmpeg-*
 extension.zip
 
+# Local installer builds (distributed via Cloudflare R2, never committed)
+/qooti_*-setup.exe
+/qooti_*-setup.exe.sig
+*.new
+
 # Vite
 *.local
 

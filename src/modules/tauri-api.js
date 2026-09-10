@@ -195,6 +195,9 @@ const tauriApi = {
   saveThumbnail:  (id, bytes) => _invoke('save_thumbnail', { id, bytes }),
   applyUpdate:    ()         => _invoke('apply_update'),
   getFreePlanInfo: ()        => _invoke('get_free_plan_info'),
+  takeLaunchFile:  ()        => _invoke('take_launch_file'),
+  getDeviceId:     ()        => _invoke('get_device_id'),
+  deviceLabel:     ()        => _invoke('device_label'),
 
   openUrl: async url => {
     const { open } = await import('@tauri-apps/plugin-shell')
@@ -230,6 +233,9 @@ export async function initDownloadListeners() {
   })
   await _listen('update-available', e => {
     store.emit(events.UPDATE_AVAILABLE, e.payload)
+  })
+  await _listen('open-qooti-file', e => {
+    if (e.payload) store.emit(events.QOOTI_FILE_OPEN, { path: e.payload })
   })
   await _listen('extension:open-item', async e => {
     const { inspiration_id } = e.payload

@@ -44,6 +44,14 @@ export function init() {
   store.on(events.FILES_DROPPED, ({ paths }) => {
     if (_isOpen) handleDroppedPaths(paths)
   })
+
+  // A .qooti file opened from the OS (double-click / "Open with") → open the
+  // importer and analyse it, surfacing the existing import options.
+  store.on(events.QOOTI_FILE_OPEN, ({ path }) => {
+    if (!path) return
+    openModal()
+    handleDroppedPaths([path])
+  })
 }
 
 // ─── Open / close ────────────────────────────────────────────────

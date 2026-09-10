@@ -40,6 +40,10 @@ pub fn run() {
     logger::init();
     log::info!(target: "Boot", "qooti starting version=1.0.0");
 
+    // Capture a .qooti file passed on the command line (double-click / "Open With")
+    // on the FIRST launch; the frontend pulls it via take_launch_file() once ready.
+    commands::set_launch_file(commands::qooti_path_from_args(std::env::args()));
+
     tauri::Builder::default()
         // Must be the FIRST plugin. When the app is already running and the user
         // launches it again (Start menu, taskbar, etc.), focus the existing window
@@ -55,6 +59,12 @@ pub fn run() {
             if argv.iter().any(|a| a.starts_with("qooti://plan-sync")) {
                 use tauri::Emitter;
                 let _ = app.emit("license-status-push", ());
+            }
+            // A .qooti file opened (double-click / "Open with") while the app is
+            // already running → tell the frontend to import it.
+            if let Some(path) = commands::qooti_path_from_args(argv.iter().cloned()) {
+                use tauri::Emitter;
+                let _ = app.emit("open-qooti-file", path);
             }
         }))
         .plugin(tauri_plugin_shell::init())
@@ -239,6 +249,8 @@ pub fn run() {
             commands::get_app_info,
             commands::get_settings,
             commands::set_setting,
+            commands::get_device_id,
+            commands::device_label,
             commands::window_minimize,
             commands::window_maximize,
             commands::window_close,
@@ -313,10 +325,26 @@ pub fn run() {
             commands::queue_ext_download,
             commands::reset_app,
             commands::get_free_plan_info,
+            commands::take_launch_file,
             updater::apply_update,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // On macOS a .qooti file opened while the app runs arrives as an Opened
+            // event (there is no argv second-launch like on Windows).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                use tauri::Emitter;
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        if path.extension().and_then(|e| e.to_str()) == Some("qooti") {
+                            let _ = _app.emit("open-qooti-file", path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        });
 }
 
 fn secs_until_local_midnight() -> u64 {

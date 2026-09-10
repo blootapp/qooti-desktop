@@ -38,6 +38,7 @@ export const FILES_DROPPED    = 'files:dropped'    // { paths: string[] } — OS
 export const FILES_IMPORTING  = 'files:importing'  // { total: number }
 export const FILES_IMPORTED   = 'files:imported'   // { imported: number, skipped: number }
 export const IMPORT_REQUESTED = 'import:requested' // — top-bar import button clicked
+export const QOOTI_FILE_OPEN  = 'qooti:file-open'  // { path } — a .qooti opened via double-click / OS "Open with"
 
 // ─── Extension ───────────────────────────────────────────────────
 export const EXTENSION_ITEM_RECEIVED     = 'extension:item-received'      // payload from extension
