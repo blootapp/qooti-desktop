@@ -2,7 +2,7 @@ import { api } from './tauri-api.js'
 import { t } from './i18n.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
-const EXT_URL  = 'https://chromewebstore.google.com/detail/lifmjigeaehakiebfalcanlgjplbcdjf?utm_source=item-share-cb'
+const EXT_URL  = 'https://chromewebstore.google.com/detail/feopgkjmnlaokclcpphaejjlpgdncdjf?utm_source=item-share-cb'
 
 const PAD = 6   // spotlight padding around target element
 
