@@ -148,6 +148,7 @@ const tauriApi = {
   getLicenseCache:    () => _invoke('get_license_cache'),
   clearLicenseCache:  () => _invoke('clear_license_cache'),
   updateLicensePlan:  planType => _invoke('update_license_plan', { planType }),
+  touchLicenseValidated: () => _invoke('touch_license_validated'),
   listMilestones:  () => _invoke('list_milestones'),
 
   getNotifications:      ()  => _invoke('get_notifications'),
@@ -236,6 +237,10 @@ export async function initDownloadListeners() {
   })
   await _listen('open-qooti-file', e => {
     if (e.payload) store.emit(events.QOOTI_FILE_OPEN, { path: e.payload })
+  })
+  await _listen('grid:reload-ratios', () => {
+    // One-time image-ratio backfill finished → re-lay-out the masonry with real ratios.
+    store.emit(events.GRID_RELOAD)
   })
   await _listen('extension:open-item', async e => {
     const { inspiration_id } = e.payload

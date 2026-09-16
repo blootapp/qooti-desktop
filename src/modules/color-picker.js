@@ -260,8 +260,11 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
   })
 
   // ── Outside click dismisses ──
+  // Use anchor.contains() so a click on the trigger's inner icon isn't treated as
+  // "outside" (which would close on mousedown, then the click would reopen). The
+  // trigger's own click handler owns open/close toggling.
   function onOutside(e) {
-    if (!el.contains(e.target) && e.target !== anchor) close()
+    if (!el.contains(e.target) && !anchor.contains(e.target)) close()
   }
   requestAnimationFrame(() => document.addEventListener('mousedown', onOutside))
 
@@ -271,3 +274,9 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
 
   return close
 }
+
+/** True while the color picker popover is open. */
+export function isColorPickerOpen() { return !!activePopover }
+
+/** Close the color picker if it's open (no-op otherwise). */
+export function closeColorPicker() { activePopover?._close() }

@@ -9,12 +9,16 @@ import { getTagLabel } from './auto-tag.js'
 import { showPrompt } from './dialog.js'
 import { t } from './i18n.js'
 import { getSetting } from './settings.js'
+import { getPlan } from './licensing.js'
 import { makeLogger } from './logger.js'
 
 const log = makeLogger('Grid')
 
 const FREE_ITEM_LIMIT  = 200
 const FREE_ITEM_TEASER = 40
+// Pro is unlimited — fetch effectively everything (there's no infinite-scroll
+// pagination, so a low limit would silently hide items from paying users).
+const PRO_ITEM_LIMIT   = 100000
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 
@@ -47,6 +51,18 @@ const PLATFORM_ICONS = {
 function platformIcon(platform) {
   if (!platform) return 'hard-drive'
   return PLATFORM_ICONS[platform.toLowerCase()] ?? 'link-simple'
+}
+
+// The user is Pro if EITHER the validated license cache OR the persisted setting
+// says so. Trusting both prevents a stale preferences.plan (e.g. on the first
+// boot after upgrading, before the plan re-validates against the server) from
+// wrongly flashing the free teaser/200-cap at a paying user.
+function isFreePlan() {
+  const cachePlan = getPlan()            // last validated plan (licensing.js cache)
+  const prefPlan  = getSetting('plan')
+  const isPro = (cachePlan && cachePlan.startsWith('pro')) ||
+                (prefPlan  && prefPlan.startsWith('pro'))
+  return !isPro
 }
 
 // ─── State ───────────────────────────────────────────────────────
@@ -144,10 +160,16 @@ export function init(el, _settings) {
   // The free/Pro state is decided at render time. When the licence validates
   // after boot (or an upgrade completes), the plan can flip to Pro — reload so
   // the free-plan blocker/limit disappears without the user restarting the app.
-  store.on(events.LICENSE_STATUS_CHANGED, () => {
-    const nowFree = getSetting('plan') === 'free' || !getSetting('plan')
+  const reloadOnPlanFlip = () => {
+    const nowFree = isFreePlan()
     if (_lastView && _lastView.isFree !== nowFree) reload()
-  })
+  }
+  store.on(events.LICENSE_STATUS_CHANGED, reloadOnPlanFlip)
+  // Also react the instant the `plan` setting itself flips — the Settings page
+  // updates the plan via its own fetch (setSetting('plan')) which doesn't fire
+  // LICENSE_STATUS_CHANGED, so without this the grid would keep showing the free
+  // teaser/limit for a few seconds after upgrading until the next validation.
+  store.on(events.SETTINGS_CHANGED, ({ key }) => { if (key === 'plan') reloadOnPlanFlip() })
 
   // Propagate dominant collection tags to untagged items once on startup.
   // No reload needed — the auto-tagger picks up the queued items and
@@ -500,7 +522,7 @@ async function importPaths(paths) {
 async function reload() {
   const gen = ++_reloadGen
   try {
-    const isFree = getSetting('plan') === 'free' || !getSetting('plan')
+    const isFree = isFreePlan()
     const colCount = calcColCount()
     const teaserSlots = colCount * 3
 
@@ -515,7 +537,7 @@ async function reload() {
         // 200 most recently imported items. Qootify shuffle happens client-side.
         sort:    isFree ? 'recent' : (filter.sort ?? undefined),
         page:    filter.page,
-        limit:   isFree ? (FREE_ITEM_LIMIT + FREE_ITEM_TEASER) : filter.limit,
+        limit:   isFree ? (FREE_ITEM_LIMIT + FREE_ITEM_TEASER) : PRO_ITEM_LIMIT,
       }),
       isFree ? api.getFreePlanInfo() : Promise.resolve(null),
     ])
@@ -526,9 +548,17 @@ async function reload() {
     // Pre-count regular items in the response so we can snap to a multiple of
     // colCount that doesn't exceed what actually exists — otherwise the last
     // grid segment gets an un-alignable remainder and orphan cards appear.
+    // Snap regular items to complete rows for the free-plan teaser layout — but
+    // ONLY on the unfiltered home grid, and only when there are enough regular
+    // items to fill at least one full row. Filtered views (tag/collection/search/
+    // color) and small libraries must show everything, otherwise a handful of
+    // items snaps to zero and the empty state wrongly appears.
+    const isFilteredView = !!(filter.collectionId || filter.query || filter.color || filter.tagIds.length)
+    const regularInResponse = items.filter(i => !isShortForm(i)).length
+    const applyFreeSnap = isFree && !isFilteredView && regularInResponse >= colCount
+
     let totalSnap
-    if (isFree) {
-      const regularInResponse = items.filter(i => !isShortForm(i)).length
+    if (applyFreeSnap) {
       const regularSnap = Math.floor(Math.min(regularInResponse, FREE_ITEM_LIMIT) / colCount) * colCount
       totalSnap = 0
       let regularCount = 0
@@ -552,7 +582,7 @@ async function reload() {
       : []
     const extraCount = planInfo ? Math.max(0, planInfo.item_total - totalSnap) : 0
 
-    render(visibleItems, colCount, isFree)
+    render(visibleItems, colCount, applyFreeSnap)
 
     // Await recommendations first so teaser is always the final element —
     // nothing gets appended after it, preventing the banner from disappearing
@@ -618,22 +648,17 @@ function renderFreeTeaser(teaserItems, extraCount, colCount) {
   const wrap = document.createElement('div')
   wrap.className = 'free-teaser-wrap'
 
-  // Real cards rendered blurred — fills exactly 2 complete rows
-  const teaserGrid = document.createElement('div')
-  teaserGrid.className = 'inspiration-grid free-teaser-grid'
-
   // Prefer items that already have a thumbnail — videos without one render blank
   // until the video file loads, making the blurred teaser look broken.
   const withThumbs = teaserItems.filter(i => i.thumbnail_path)
   const teaserSource = withThumbs.length >= 3 ? withThumbs : teaserItems
 
+  // Real cards rendered blurred behind the upgrade banner, as a short waterfall.
   const needed = colCount * 3
   const padded = Array.from({ length: needed }, (_, i) => teaserSource[i % teaserSource.length])
-  padded.forEach(item => {
-    const card = makeCard(item, -1)
-    card.classList.add('free-teaser-card')
-    teaserGrid.appendChild(card)
-  })
+  const teaserGrid = buildMasonry(padded, -1)
+  teaserGrid.classList.add('free-teaser-grid')
+  teaserGrid.querySelectorAll('.card').forEach(c => c.classList.add('free-teaser-card'))
   wrap.appendChild(teaserGrid)
 
   // Centered overlay with frosted-glass banner
@@ -690,59 +715,77 @@ function render(items, colCount, trimOrphans = false) {
     return
   }
 
-  const shortForm = items.filter(isShortForm)
-  const regular   = items.filter(i => !isShortForm(i))
-  const sfChunks  = chunkShortForm(shortForm)
+  // ── Masonry (waterfall) layout ──
+  // Everything — images AND short-form videos — flows into ONE shortest-column
+  // masonry, each card at its native aspect ratio (no crop, no shelves). Column
+  // count is responsive (calcColCount → --grid-min-width breakpoints). Items are
+  // placed in order into whichever column is currently shortest, so reading order
+  // is preserved as much as possible while the column bottoms stay level.
+  currentColCount = Math.max(1, colCount ?? calcColCount())
+  const masonry = buildMasonry(items, 0)
+  masonry.classList.add('inspiration-grid')   // keep for context-menu + empty-state hooks
+  scrollEl.appendChild(masonry)
+  gridEls.push(masonry)
+  gridEl = masonry
+}
 
-  // Use the column count measured before the DOM was cleared — avoids the
-  // scrollbar-disappears-on-clear discrepancy that causes off-by-one column counts.
-  currentColCount   = Math.max(1, colCount ?? calcColCount())
-  const aboveFold   = currentColCount * 2
-  const betweenRows = currentColCount * 3
+// Build a shortest-column masonry (waterfall) from `items`, each card at its
+// native aspect ratio. Items are placed in order into whichever column is
+// currently shortest, so reading order is preserved as much as possible while
+// column bottoms stay level. `idxBase` offsets card indices for card-detail
+// navigation (reco cards continue numbering after the main grid). Column heights
+// are computed from aspect_ratio + gap at the current column width — no measuring.
+// Layout state of the main grid's masonry, kept so recommendations can CONTINUE
+// the same columns instead of starting a fresh section below. A separate section
+// leaves an ugly empty band under the ragged bottom of the main-grid columns.
+let _masonryState = null
 
-  // Slice regular items into segments interleaved between shelves:
-  // segment[0] = aboveFold items before first shelf
-  // segment[1..N-1] = betweenRows items between each pair of shelves
-  // segment[N] = all remaining items after last shelf
-  const segments = []
-  if (!sfChunks.length) {
-    segments.push(regular)
-  } else {
-    let rem = [...regular]
-    segments.push(rem.splice(0, aboveFold))
-    for (let i = 1; i < sfChunks.length; i++) segments.push(rem.splice(0, betweenRows))
-    segments.push(rem)
+// Place `items` into the shortest column of an existing masonry, in order.
+function fillMasonryCols(state, items, idxBase) {
+  const { colEls, colHeight, colW, gap } = state
+  let dealIdx = 0
+  items.forEach((item, i) => {
+    let s = 0
+    for (let c = 1; c < colEls.length; c++) if (colHeight[c] < colHeight[s]) s = c
+
+    const card = makeCard(item, idxBase + i)
+    if (_animateCards) {
+      card.classList.add('deal-in')
+      card.style.animationDelay = `${Math.min(dealIdx++, 20) * 22}ms`
+    }
+    // Card height at this column width → used only to balance the columns
+    // (images still lazy-load natively via loading="lazy").
+    const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
+    colHeight[s] += colW / ar + gap
+
+    colEls[s].appendChild(card)
+  })
+}
+
+function buildMasonry(items, idxBase = 0) {
+  const scrollEl = container?.querySelector('#grid-scroll')
+  const cols   = Math.max(1, currentColCount)
+  const gap    = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap')) || 4
+  const availW = Math.max(0, (scrollEl?.clientWidth ?? 0) - 12)   // 12 = .masonry padding (6 × 2)
+  const colW   = Math.max(1, (availW - (cols - 1) * gap) / cols)
+
+  const masonry = document.createElement('div')
+  masonry.className = 'masonry'
+  masonry.style.setProperty('--masonry-cols', cols)
+
+  const colEls    = []
+  const colHeight = new Array(cols).fill(0)
+  for (let c = 0; c < cols; c++) {
+    const col = document.createElement('div')
+    col.className = 'masonry-col'
+    masonry.appendChild(col)
+    colEls.push(col)
   }
 
-  // Guarantee no orphan card in the last row: trim any partial last row from
-  // the final grid segment. This is the definitive fix — regardless of any
-  // upstream count mismatch, the last segment always ends on a complete row.
-  if (trimOrphans && currentColCount > 1 && segments.length > 0) {
-    const last = segments[segments.length - 1]
-    const orphans = last.length % currentColCount
-    if (orphans > 0) last.splice(last.length - orphans, orphans)
-  }
-
-  // Map every item to its index in `items` once (O(n)) so per-card lookups
-  // below are O(1) instead of items.indexOf() (which made rendering O(n²)).
-  const indexOfItem = new Map(items.map((item, i) => [item, i]))
-
-  let _dealIdx = 0
-  for (let i = 0; i < segments.length; i++) {
-    const grid = _makeGridEl(i === 0 ? 'inspiration-grid' : null)
-    segments[i].forEach(item => {
-      const card = makeCard(item, indexOfItem.get(item))
-      if (_animateCards) {
-        card.classList.add('deal-in')
-        card.style.animationDelay = `${Math.min(_dealIdx++, 20) * 22}ms`
-      }
-      grid.appendChild(card)
-    })
-    scrollEl.appendChild(grid)
-    if (i < sfChunks.length) scrollEl.appendChild(makeShelf(sfChunks[i], items, indexOfItem))
-  }
-
-  gridEl = gridEls[0] ?? null
+  const state = { colEls, colHeight, colW, gap }
+  fillMasonryCols(state, items, idxBase)
+  _masonryState = state
+  return masonry
 }
 
 function _makeGridEl(id = null) {
@@ -902,6 +945,10 @@ function makeCard(item, idx) {
   // ── Media ──
   const media = document.createElement('div')
   media.className = 'card-media'
+  // Native aspect ratio (width/height) drives the masonry card height — no crop.
+  // Falls back to 1 for items whose ratio hasn't been computed/backfilled yet.
+  const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
+  media.style.aspectRatio = String(ar)
 
   if (item.type === 'video') {
     if (item.thumbnail_path) {
@@ -1181,27 +1228,12 @@ async function loadRecommendations(allItems, gen = _reloadGen) {
 // list. Split out of loadRecommendations so relayout() can re-render reco cards
 // on resize without re-fetching. Respects the _animateCards flag.
 function renderReco(extra, allItems) {
-  const scrollEl = container?.querySelector('#grid-scroll')
-  if (!scrollEl) return
-
-  const grid = document.createElement('div')
-  grid.className = 'inspiration-grid reco-grid'
-  gridEls.push(grid)
-
-  // Combined list so card-detail arrow navigation covers reco cards too
-  const combined = [...allItems, ...extra]
-  let _dealIdx = 0
-  extra.forEach((item, i) => {
-    const card = makeCard(item, allItems.length + i)
-    if (_animateCards) {
-      card.classList.add('deal-in')
-      card.style.animationDelay = `${Math.min(_dealIdx++, 20) * 22}ms`
-    }
-    grid.appendChild(card)
-  })
-  renderedItems = combined
-
-  scrollEl.appendChild(grid)
+  // Continue the SAME masonry columns with the reco items → one continuous
+  // waterfall, so there's no empty band between the main grid and the reco
+  // (card indices continue after allItems so card-detail nav covers reco too).
+  if (!_masonryState || !extra.length) return
+  fillMasonryCols(_masonryState, extra, allItems.length)
+  renderedItems = [...allItems, ...extra]
 }
 
 

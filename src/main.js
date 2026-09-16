@@ -16,13 +16,13 @@ import { init as initLicensing } from './modules/licensing.js'
 import { init as initNotifications } from './modules/notifications.js'
 import { init as initMilestones } from './modules/milestones.js'
 import { init as initExtension } from './modules/extension.js'
-import { openColorPicker } from './modules/color-picker.js'
+import { openColorPicker, isColorPickerOpen, closeColorPicker } from './modules/color-picker.js'
 import { startTask } from './modules/progress-ring.js'
 import { initDownloader, checkUrl, handleSwatchClick } from './modules/downloader.js'
 import { init as initCardDetail } from './modules/card-detail.js'
 import { init as initOcr, startIndexing as startOcr } from './modules/ocr.js'
 import { initAutoTag } from './modules/auto-tag.js'
-import { initDeveloper } from './modules/developer.js'
+import { initDeveloper, runDevCommand } from './modules/developer.js'
 import { syncTagVocab } from './modules/tag-sync.js'
 import { init as initImporter } from './modules/importer.js'
 import { init as initDownloadTracker } from './modules/download-tracker.js'
@@ -37,7 +37,6 @@ window.__progressRing = { startTask }
 const PRIMARY_NAV = [
   { view: 'grid',        icon: 'house',            labelKey: 'nav.home' },
   { view: 'collections', icon: 'folder',           labelKey: 'nav.collections' },
-  { view: 'search',      icon: 'magnifying-glass', labelKey: 'nav.search' },
 ]
 
 const SECONDARY_NAV = [
@@ -112,17 +111,23 @@ function setupTopBar(settings) {
     // Reset grid immediately when input is cleared
     if (!searchInput.value.trim()) emitSearch()
   })
-  searchInput.addEventListener('keydown', async e => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      const handled = await handleSwatchClick()
-      if (!handled && searchInput.value.trim()) emitSearch()
+  // Shared submit for Enter + the search button. Secret blt_ commands are
+  // dispatched here and NEVER trigger a normal search.
+  const submitSearch = async () => {
+    const value = searchInput.value.trim()
+    if (value.startsWith('blt_')) {
+      const handled = await runDevCommand(value)
+      if (!handled) searchInput.value = ''   // unknown blt_ command — clear, don't search
+      return
     }
-  })
-  searchSubmitBtn?.addEventListener('click', async () => {
     const handled = await handleSwatchClick()
-    if (!handled && searchInput.value.trim()) emitSearch()
+    if (!handled && value) emitSearch()
+  }
+
+  searchInput.addEventListener('keydown', async e => {
+    if (e.key === 'Enter') { e.preventDefault(); await submitSearch() }
   })
+  searchSubmitBtn?.addEventListener('click', submitSearch)
 
   document.addEventListener('contextmenu', e => e.preventDefault())
 
@@ -262,20 +267,23 @@ function setupColorSwatch() {
     const handled = await handleSwatchClick()
     if (handled) return
 
+    // Toggle: a second click on the swatch closes the open picker instead of reopening.
+    if (isColorPickerOpen()) { closeColorPicker(); return }
+
     openColorPicker(btn, {
       initialColor: activeColorFilter,
       initialTolerance: activeColorTolerance,
       onSearch: (hex, tolerance) => {
         activeColorFilter = hex
         activeColorTolerance = tolerance ?? 'normal'
-        btn.style.color = hex   // tints the painting icon via currentColor mask
+        btn.style.setProperty('--swatch-color', hex)   // .has-color shows a solid swatch of this
         btn.classList.add('has-color')
         store.emit(events.SEARCH_COLOR_CHANGED, { hex, tolerance: activeColorTolerance })
       },
       onClear: () => {
         activeColorFilter = null
         activeColorTolerance = 'normal'
-        btn.style.color = ''
+        btn.style.removeProperty('--swatch-color')
         btn.classList.remove('has-color')
         store.emit(events.SEARCH_COLOR_CHANGED, { hex: null })
       },
@@ -445,7 +453,12 @@ async function boot() {
     initDownloadTracker()
     initDownloadIndicator()
 
-    // Init all modules
+    // Init all modules.
+    // Settings MUST init before the grid: it hydrates the getSetting() cache
+    // (plan, etc.) that the grid reads on its very first reload(). Otherwise the
+    // grid renders with an empty plan and shows the free teaser/200-cap to a Pro
+    // user until a later validation happens to reload it.
+    initSettings(document.getElementById('view-settings'), settings)
     initExtension()
     initLicensing()
     initCardDetail()
@@ -453,7 +466,6 @@ async function boot() {
     initCollections(document.getElementById('view-collections'), settings)
     initTags()
     initSearch(document.getElementById('view-search'), settings)
-    initSettings(document.getElementById('view-settings'), settings)
     initNotifications(document.getElementById('view-notifications'))
     initMilestones(document.getElementById('view-milestones'))
     initActivityView(document.getElementById('view-activity'))

@@ -364,7 +364,11 @@ pub fn import_files(
             if colors.is_empty() { None } else { serde_json::to_string(&colors).ok() }
         } else { None };
         let (duration, video_ratio) = if is_video { video_meta(&dest_path, &app) } else { (None, None) };
-        let aspect_ratio = video_ratio.unwrap_or(validated.default_ratio);
+        // Videos → probed ratio; images → real ratio from the file header; else the
+        // format's default. Real ratios drive the native-ratio masonry layout.
+        let aspect_ratio = video_ratio
+            .or_else(|| if is_video { None } else { image_aspect_ratio(&stored_path) })
+            .unwrap_or(validated.default_ratio);
 
         {
             let db = state.db.lock().unwrap();
@@ -1897,7 +1901,9 @@ pub fn import_qooti_pack(
         // Derive video metadata (duration + aspect ratio)
         let is_video = file_type == "video";
         let (duration, video_ratio) = if is_video { video_meta(&dest_path, &app) } else { (None, None) };
-        let aspect_ratio = video_ratio.unwrap_or(validated.default_ratio);
+        let aspect_ratio = video_ratio
+            .or_else(|| if is_video { None } else { image_aspect_ratio(&stored_path) })
+            .unwrap_or(validated.default_ratio);
         let ocr_status   = if is_video { Some("skipped") } else { None };
         let palette_json = if !is_video {
             let p = stored_path.clone();
@@ -2090,6 +2096,72 @@ pub fn untag_inspiration(inspiration_id: String, tag_id: String, state: State<Ap
 
 // ─── Palette extraction (Rust-side, no canvas/CORS issues) ───────
 
+/// Real aspect ratio (width/height) of an image, read from the header only
+/// (no full decode — cheap). None on failure or a zero dimension. Used so the
+/// masonry grid can lay images out at their native ratio before they load.
+fn image_aspect_ratio(path: &str) -> Option<f64> {
+    match image::image_dimensions(path) {
+        Ok((w, h)) if w > 0 && h > 0 => Some(w as f64 / h as f64),
+        _ => None,
+    }
+}
+
+/// One-time backfill: images imported before native-ratio support were all
+/// stored with `aspect_ratio = 1.0`. Read each image's real dimensions and
+/// update. Runs once (guarded by a preference flag), on a background thread so
+/// it never blocks startup, and reads file headers OUTSIDE the DB lock so the UI
+/// keeps responding. Emits `grid:reload-ratios` when it changes anything so the
+/// masonry re-lays-out with the corrected ratios.
+pub fn backfill_image_ratios_once(app: &AppHandle) {
+    use tauri::Manager;
+    let state = app.state::<AppState>();
+
+    // 1. Check the flag + collect (id, path) under a short lock.
+    let rows: Vec<(String, String)> = {
+        let db = match state.db.lock() { Ok(d) => d, Err(_) => return };
+        let done = db.query_row(
+            "SELECT COUNT(*) FROM preferences WHERE key = 'image_ratios_backfilled'",
+            [], |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if done { return; }
+        let mut stmt = match db.prepare("SELECT id, stored_path FROM inspirations WHERE type = 'image'") {
+            Ok(s) => s, Err(_) => return,
+        };
+        let mapped = match stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+            Ok(m) => m, Err(_) => return,
+        };
+        mapped.filter_map(|r| r.ok()).collect()
+    };
+
+    // 2. Read dimensions (file I/O) WITHOUT the lock; write each change under a brief lock.
+    let mut updated = 0i64;
+    for (id, path) in rows {
+        if let Some(ratio) = image_aspect_ratio(&path) {
+            if let Ok(db) = state.db.lock() {
+                if db.execute(
+                    "UPDATE inspirations SET aspect_ratio = ?1 WHERE id = ?2 AND ABS(aspect_ratio - ?1) > 0.001",
+                    params![ratio, id],
+                ).unwrap_or(0) > 0 {
+                    updated += 1;
+                }
+            }
+        }
+    }
+
+    // 3. Mark done + notify the grid if anything changed.
+    if let Ok(db) = state.db.lock() {
+        let _ = db.execute(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES ('image_ratios_backfilled', 'true')",
+            [],
+        );
+    }
+    log::info!(target: "Boot", "image_ratios_backfilled updated={}", updated);
+    if updated > 0 {
+        use tauri::Emitter;
+        let _ = app.emit("grid:reload-ratios", ());
+    }
+}
+
 fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
     let img = match image::open(path) {
         Ok(i) => i,
@@ -2102,17 +2174,40 @@ fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
         .collect();
     if pixels.is_empty() { return vec![]; }
 
-    let depth = (num_colors as f64).log2().ceil() as usize;
-    let mut clusters = palette_median_cut(pixels, depth);
-    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+    // Over-generate candidate colours (many more buckets than we return) so that
+    // genuinely distinct minority colours get their own bucket instead of being
+    // drowned out by a dominant region that median-cut splits into many
+    // near-identical shades. 2^5 = 32 candidates.
+    let mut buckets = palette_median_cut(pixels, 5);
+    buckets.retain(|b| !b.is_empty());
 
-    clusters.into_iter().take(num_colors).map(|bucket| {
+    // Average each bucket → (rgb, weight), most-frequent first.
+    let mut candidates: Vec<([i32; 3], usize)> = buckets.iter().map(|bucket| {
         let n = bucket.len() as u32;
         let (sr, sg, sb) = bucket.iter().fold((0u32, 0u32, 0u32), |acc, &[r, g, b]| {
             (acc.0 + r as u32, acc.1 + g as u32, acc.2 + b as u32)
         });
-        format!("#{:02x}{:02x}{:02x}", (sr/n) as u8, (sg/n) as u8, (sb/n) as u8)
-    }).collect()
+        ([(sr/n) as i32, (sg/n) as i32, (sb/n) as i32], bucket.len())
+    }).collect();
+    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // Greedily pick dominant-first colours that are each far enough apart to be
+    // visibly distinct, dropping near-duplicates. If the image is genuinely
+    // near-monochrome we return fewer colours rather than padding with clones.
+    const MIN_DIST_SQ: i32 = 40 * 40;   // ~perceptibly different per channel
+    let mut chosen: Vec<[i32; 3]> = Vec::with_capacity(num_colors);
+    for (c, _) in &candidates {
+        if chosen.len() >= num_colors { break; }
+        let distinct = chosen.iter().all(|s| {
+            let dr = s[0]-c[0]; let dg = s[1]-c[1]; let db = s[2]-c[2];
+            dr*dr + dg*dg + db*db >= MIN_DIST_SQ
+        });
+        if distinct { chosen.push(*c); }
+    }
+
+    chosen.into_iter()
+        .map(|c| format!("#{:02x}{:02x}{:02x}", c[0] as u8, c[1] as u8, c[2] as u8))
+        .collect()
 }
 
 fn palette_median_cut(mut pixels: Vec<[u8; 3]>, depth: usize) -> Vec<Vec<[u8; 3]>> {
@@ -2439,6 +2534,19 @@ pub fn update_license_plan(plan_type: String, state: State<AppState>) -> Result<
            plan_type         = excluded.plan_type,
            last_validated_at = excluded.last_validated_at",
         rusqlite::params![plan_type, now],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Refresh ONLY the license cache's last_validated_at (no plan change). Used on a
+/// successful re-validation where the server plan already matched the cache — it
+/// keeps the 7-day offline grace window alive without rewriting the plan value.
+#[tauri::command]
+pub fn touch_license_validated(state: State<AppState>) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE license_cache SET last_validated_at = ?1 WHERE id = 1",
+        rusqlite::params![now_ms()],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -3080,7 +3188,7 @@ fn run_ytdlp(
     // tv: exposes full format list once authenticated via cookies.
     let yt_clients_arg = if is_youtube {
         format!("youtube:player_client={}",
-            if effective_cookie_path.is_some() { "tv,android_vr" } else { "android_vr,web_embedded" })
+            if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "android_vr,web_embedded,ios" })
     } else {
         String::new()
     };

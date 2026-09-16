@@ -116,14 +116,19 @@ pub fn run() {
                 }
             }
 
-            // Log yt-dlp version so we can confirm which binary is active.
+            // Log yt-dlp version so we can confirm which binary is active. Runs on a
+            // background thread: the macOS standalone yt-dlp is a PyInstaller binary
+            // that cold-starts slowly (~2-3s), and this must NOT block window.show().
             {
-                let binary = commands::ytdlp_binary_path(app.handle());
-                if let Ok(out) = commands::hidden_command(&binary).arg("--version").output() {
-                    log::info!(target: "Boot", "ytdlp_version={}", String::from_utf8_lossy(&out.stdout).trim());
-                } else {
-                    log::warn!(target: "Boot", "ytdlp_missing path={:?}", binary);
-                }
+                let ver_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let binary = commands::ytdlp_binary_path(&ver_handle);
+                    if let Ok(out) = commands::hidden_command(&binary).arg("--version").output() {
+                        log::info!(target: "Boot", "ytdlp_version={}", String::from_utf8_lossy(&out.stdout).trim());
+                    } else {
+                        log::warn!(target: "Boot", "ytdlp_missing path={:?}", binary);
+                    }
+                });
             }
 
             let handle = app.handle().clone();
@@ -142,6 +147,14 @@ pub fn run() {
 
             let stats_handle = app.handle().clone();
             std::thread::spawn(move || local_stats_server::start(stats_handle));
+
+            // One-time backfill of real image aspect ratios for the masonry grid
+            // (images imported before native-ratio support were all stored as 1.0).
+            // Background so it never blocks startup; guarded to run once.
+            {
+                let ar_handle = app.handle().clone();
+                std::thread::spawn(move || commands::backfill_image_ratios_once(&ar_handle));
+            }
 
             updater::spawn_update_check(app.handle().clone());
 
@@ -283,6 +296,7 @@ pub fn run() {
             commands::get_license_cache,
             commands::clear_license_cache,
             commands::update_license_plan,
+            commands::touch_license_validated,
             commands::list_milestones,
             commands::get_notifications,
             commands::mark_notification_read,

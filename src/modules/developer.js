@@ -111,19 +111,17 @@ function swapSwatchIcon(devMode) {
   if (!iconEl) return
 
   if (devMode) {
-    iconEl.dataset.savedMask       = iconEl.style.maskImage
-    iconEl.dataset.savedWebkitMask = iconEl.style.webkitMaskImage
-    btn.dataset.savedColor         = btn.style.color
+    // Hide the colour wheel; show a green terminal (mask) as the dev indicator.
+    iconEl.style.backgroundImage = 'none'
+    iconEl.style.backgroundColor = '#4ADE80'
     iconEl.style.maskImage       = "url('/icons/terminal.svg')"
     iconEl.style.webkitMaskImage = "url('/icons/terminal.svg')"
-    btn.style.color = '#4ADE80'
   } else {
-    iconEl.style.maskImage       = iconEl.dataset.savedMask       || "url('/icons/painting.svg')"
-    iconEl.style.webkitMaskImage = iconEl.dataset.savedWebkitMask || "url('/icons/painting.svg')"
-    btn.style.color = btn.dataset.savedColor || ''
-    delete iconEl.dataset.savedMask
-    delete iconEl.dataset.savedWebkitMask
-    delete btn.dataset.savedColor
+    // Restore the CSS-driven colour wheel.
+    iconEl.style.backgroundImage = ''
+    iconEl.style.backgroundColor = ''
+    iconEl.style.maskImage       = ''
+    iconEl.style.webkitMaskImage = ''
   }
 }
 
@@ -475,102 +473,107 @@ export function initDeveloper() {
     })
   })
 
-  // Secret triggers: type command in the search bar and press Enter
+  // Secret blt_ commands are dispatched by main.js's top-bar-search handler,
+  // which calls runDevCommand() below — that way the command runs on both Enter
+  // and the search-button click, and never triggers a normal search.
+}
+
+/**
+ * Handle a secret `blt_` command typed into the search bar.
+ * Returns true if `cmd` was a recognized command (so the caller skips search).
+ */
+export async function runDevCommand(cmd) {
   const searchInput = document.getElementById('top-bar-search')
-  searchInput.addEventListener('keydown', async e => {
-    if (e.key !== 'Enter') return
-    const cmd = searchInput.value.trim()
+  const clear = () => { if (searchInput) searchInput.value = '' }
 
-    if (cmd === 'blt_developer') {
-      e.preventDefault()
-      searchInput.value = ''
-      openDevPage()
-      return
+  if (cmd === 'blt_developer') {
+    clear()
+    openDevPage()
+    return true
+  }
+
+  // Dev preview: fake an available update so the update bar (grid.js →
+  // renderUpdateBar) renders under the tag pills, without a real release.
+  if (cmd === 'blt_update') {
+    clear()
+    store.emit(events.NAVIGATE, { view: 'grid' })   // bar lives in the home grid
+    store.emit(events.UPDATE_AVAILABLE, {
+      version: '1.0.1',
+      notes:   'Preview — mock update to test the update bar.',
+    })
+    return true
+  }
+
+  if (cmd === 'blt_logout') {
+    clear()
+    try {
+      await api.setSetting('onboarding_state', 'pending_login')
+      await api.clearLicenseCache()
+    } catch (err) {
+      console.error('[blt_logout] failed:', err)
     }
+    window.location.reload()
+    return true
+  }
 
-    // Dev preview: fake an available update so the update bar (grid.js →
-    // renderUpdateBar) renders under the tag pills, without a real release.
-    if (cmd === 'blt_update') {
-      e.preventDefault()
-      searchInput.value = ''
-      store.emit(events.NAVIGATE, { view: 'grid' })   // bar lives in the home grid
-      store.emit(events.UPDATE_AVAILABLE, {
-        version: '1.0.1',
-        notes:   'Preview — mock update to test the update bar.',
-      })
-      return
-    }
-
-    if (cmd === 'blt_logout') {
-      e.preventDefault()
-      searchInput.value = ''
-      try {
-        await api.setSetting('onboarding_state', 'pending_login')
-        await api.clearLicenseCache()
-      } catch (err) {
-        console.error('[blt_logout] failed:', err)
-      }
+  if (cmd === 'blt_reset') {
+    clear()
+    const ok1 = await showConfirm({
+      title: 'Reset entire library?',
+      message: 'This will permanently delete ALL items, collections, tags, and media files. This cannot be undone.',
+      danger: true,
+      confirmLabel: 'Continue',
+      icon: 'warning',
+    })
+    if (!ok1) return true
+    const ok2 = await showConfirm({
+      title: 'Are you absolutely sure?',
+      message: 'Every file and database record will be erased. The app will restart clean.',
+      danger: true,
+      confirmLabel: 'Delete everything',
+      icon: 'trash',
+    })
+    if (!ok2) return true
+    try {
+      searchInput.placeholder = 'Resetting…'
+      await api.resetApp()
       window.location.reload()
+    } catch (err) {
+      console.error('[blt_reset] failed:', err)
+      searchInput.placeholder = 'Reset failed'
+      setTimeout(() => { searchInput.placeholder = 'Search...' }, 3000)
     }
+    return true
+  }
 
-    if (cmd === 'blt_reset') {
-      e.preventDefault()
-      searchInput.value = ''
-      const ok1 = await showConfirm({
-        title: 'Reset entire library?',
-        message: 'This will permanently delete ALL items, collections, tags, and media files. This cannot be undone.',
-        danger: true,
-        confirmLabel: 'Continue',
-        icon: 'warning',
+  if (cmd === 'blt_exportall') {
+    clear()
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const today = new Date().toISOString().slice(0, 10)
+      const savePath = await save({
+        title: 'Export entire library',
+        defaultPath: `qooti-library-${today}.qooti`,
+        filters: [{ name: 'qooti pack', extensions: ['qooti'] }],
       })
-      if (!ok1) return
-      const ok2 = await showConfirm({
-        title: 'Are you absolutely sure?',
-        message: 'Every file and database record will be erased. The app will restart clean.',
-        danger: true,
-        confirmLabel: 'Delete everything',
-        icon: 'trash',
-      })
-      if (!ok2) return
-      try {
-        searchInput.placeholder = 'Resetting…'
-        await api.resetApp()
-        window.location.reload()
-      } catch (err) {
-        console.error('[blt_reset] failed:', err)
-        searchInput.placeholder = 'Reset failed'
-        setTimeout(() => { searchInput.placeholder = 'Search...' }, 3000)
-      }
-      return
+      if (!savePath) return true
+      searchInput.placeholder = 'Exporting library…'
+      const count = await api.exportAllItems(savePath)
+      searchInput.placeholder = `Exported ${count} item${count !== 1 ? 's' : ''} ✓`
+      setTimeout(() => { searchInput.placeholder = 'Search...' }, 4000)
+    } catch (err) {
+      console.error('[blt_exportall] failed:', err)
+      searchInput.placeholder = 'Export failed'
+      setTimeout(() => { searchInput.placeholder = 'Search...' }, 3000)
     }
+    return true
+  }
 
-    if (cmd === 'blt_exportall') {
-      e.preventDefault()
-      searchInput.value = ''
-      try {
-        const { save } = await import('@tauri-apps/plugin-dialog')
-        const today = new Date().toISOString().slice(0, 10)
-        const savePath = await save({
-          title: 'Export entire library',
-          defaultPath: `qooti-library-${today}.qooti`,
-          filters: [{ name: 'qooti pack', extensions: ['qooti'] }],
-        })
-        if (!savePath) return
-        searchInput.placeholder = 'Exporting library…'
-        const count = await api.exportAllItems(savePath)
-        searchInput.placeholder = `Exported ${count} item${count !== 1 ? 's' : ''} ✓`
-        setTimeout(() => { searchInput.placeholder = 'Search...' }, 4000)
-      } catch (err) {
-        console.error('[blt_exportall] failed:', err)
-        searchInput.placeholder = 'Export failed'
-        setTimeout(() => { searchInput.placeholder = 'Search...' }, 3000)
-      }
-    }
+  if (cmd === 'blt_tour') {
+    clear()
+    startWalkthrough()
+    return true
+  }
 
-    if (cmd === 'blt_tour') {
-      e.preventDefault()
-      searchInput.value = ''
-      startWalkthrough()
-    }
-  })
+  return false
 }

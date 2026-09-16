@@ -102,8 +102,22 @@ async function backgroundValidate() {
     }
 
     if (result.plan) {
-      await api.updateLicensePlan(result.plan)
-      await setSetting('plan', result.plan)   // keeps settings UI in sync
+      // License cache: only rewrite the plan value when the server actually
+      // differs from what's cached; otherwise just refresh last_validated_at so
+      // the 7-day offline grace window stays alive without a redundant write.
+      // Wrapped so a cache-write hiccup never aborts the plan sync + notify below.
+      try {
+        if (result.plan !== cache?.plan_type) await api.updateLicensePlan(result.plan)
+        else                                  await api.touchLicenseValidated()
+      } catch (err) {
+        console.warn('[licensing] license cache write failed:', err)
+      }
+      // Preferences (drives the UI): update only when it differs — avoids a
+      // redundant DB write + SETTINGS_CHANGED event (and grid re-check) on
+      // launches where nothing changed.
+      if (result.plan !== getSetting('plan')) {
+        await setSetting('plan', result.plan)
+      }
     }
 
     const updated = await api.getLicenseCache()
