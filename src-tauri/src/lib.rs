@@ -116,13 +116,17 @@ pub fn run() {
                 }
             }
 
-            // Log yt-dlp version so we can confirm which binary is active. Runs on a
-            // background thread: the macOS standalone yt-dlp is a PyInstaller binary
-            // that cold-starts slowly (~2-3s), and this must NOT block window.show().
+            // yt-dlp maintenance: self-update a writable copy in app-data (throttled
+            // to ~once/day) so YouTube fixes land without a new app build, then log the
+            // effective version. Runs on a background thread — the macOS standalone
+            // yt-dlp is a PyInstaller binary that cold-starts slowly (~2-3s) and this
+            // must NOT block window.show(). Sequential (update → version) so the update
+            // and the version probe never race on the same file.
             {
-                let ver_handle = app.handle().clone();
+                let yt_handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    let binary = commands::ytdlp_binary_path(&ver_handle);
+                    commands::update_ytdlp_once(&yt_handle);
+                    let binary = commands::ytdlp_binary_path(&yt_handle);
                     if let Ok(out) = commands::hidden_command(&binary).arg("--version").output() {
                         log::info!(target: "Boot", "ytdlp_version={}", String::from_utf8_lossy(&out.stdout).trim());
                     } else {
@@ -341,6 +345,7 @@ pub fn run() {
             commands::get_free_plan_info,
             commands::take_launch_file,
             updater::apply_update,
+            updater::check_for_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

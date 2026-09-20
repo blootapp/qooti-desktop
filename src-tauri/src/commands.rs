@@ -690,6 +690,17 @@ pub fn list_inspirations(
         }
     }
 
+    // Media-type filter (Images = image+gif, Videos = video). Sent by the media
+    // filter button next to the colour picker. Args pushed here so their order
+    // stays collection → tag → media → query, matching the WHERE join order.
+    if let Some(types) = &opts.media_types {
+        if !types.is_empty() {
+            let placeholders = types.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            wheres.push(format!("type IN ({})", placeholders));
+            for ty in types { args.push(ty.clone()); }
+        }
+    }
+
     // Text search: title + OCR (via FTS5) + accepted tags + auto-tag confidence.
     // title/ocr_text go through the inspirations_fts index instead of two
     // leading-wildcard LIKE '%q%' full scans; tag names and vocab labels stay on
@@ -2747,7 +2758,31 @@ pub fn ytdlp_binary_path(app: &AppHandle) -> std::path::PathBuf {
     ytdlp_binary(app)
 }
 
+/// Writable, self-updated copy of yt-dlp under the app-data dir. Once seeded and
+/// refreshed by `update_ytdlp_once`, this is preferred over the frozen bundled
+/// binary so YouTube fixes land without shipping a new app build. `None` if the
+/// app-data dir can't be resolved.
+fn ytdlp_managed_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    #[cfg(windows)]      let name = "yt-dlp.exe";
+    #[cfg(not(windows))] let name = "yt-dlp";
+    app.path().app_data_dir().ok().map(|d| d.join("bin").join(name))
+}
+
 fn ytdlp_binary(app: &AppHandle) -> std::path::PathBuf {
+    // Prefer the self-updated copy in app-data when present (see update_ytdlp_once).
+    if let Some(mp) = ytdlp_managed_path(app) {
+        if mp.exists() {
+            log::debug!(target: "Boot", "ytdlp=managed path={:?}", mp);
+            return mp;
+        }
+    }
+    ytdlp_bundled_binary(app)
+}
+
+/// Resolve the yt-dlp that ships inside the app bundle (resource dir / next to the
+/// exe / dev `binaries/`). This is the seed for the managed copy and the offline
+/// fallback when no update has run yet.
+fn ytdlp_bundled_binary(app: &AppHandle) -> std::path::PathBuf {
     // Plain name used in resource dir (Tauri strips the triple suffix at install time)
     #[cfg(windows)]     let name         = "yt-dlp.exe";
     #[cfg(not(windows))]let name         = "yt-dlp";
@@ -2799,6 +2834,84 @@ fn ytdlp_binary(app: &AppHandle) -> std::path::PathBuf {
     let fallback = std::path::PathBuf::from(name);
     log::warn!(target: "Boot", "ytdlp=PATH_fallback path={:?}", fallback);
     fallback
+}
+
+/// Keep yt-dlp current by self-updating a writable copy in app-data, at most once
+/// per 24 h. YouTube breaks a frozen yt-dlp every few weeks (HTTP 403 on the media
+/// fetch), so the bundled binary is only a seed. Runs on a background thread at
+/// boot — never blocks startup. Offline-safe: seeding + the bundled fallback keep
+/// downloads working even when the update check can't reach GitHub.
+pub fn update_ytdlp_once(app: &AppHandle) {
+    let managed = match ytdlp_managed_path(app) { Some(p) => p, None => return };
+
+    const DAY: i64 = 24 * 60 * 60;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    // Throttle: check at most once per day (independent of outcome). Skip only when
+    // we already have a managed copy — the first run must always seed it.
+    {
+        let state = app.state::<AppState>();
+        let lock  = state.db.lock();
+        if let Ok(db) = lock {
+            let last: i64 = db.query_row(
+                "SELECT value FROM preferences WHERE key = 'ytdlp_update_checked_at'",
+                [], |r| r.get::<_, String>(0),
+            ).ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+            if managed.exists() && now.saturating_sub(last) < DAY {
+                return;
+            }
+        }
+    }
+
+    if let Some(dir) = managed.parent() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            log::warn!(target: "Boot", "ytdlp_bin_dir_failed dir={:?} err={}", dir, e);
+            return;
+        }
+    }
+
+    // Seed the managed copy from the bundled binary the first time so `--update`
+    // has a real release binary to refresh in place.
+    if !managed.exists() {
+        let src = ytdlp_bundled_binary(app);
+        if let Err(e) = std::fs::copy(&src, &managed) {
+            log::warn!(target: "Boot", "ytdlp_seed_failed src={:?} err={}", src, e);
+            return;
+        }
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&managed, std::fs::Permissions::from_mode(0o755));
+        }
+        log::info!(target: "Boot", "ytdlp_seeded path={:?}", managed);
+    }
+
+    // Record the attempt up front so a hung/failed check doesn't retry every boot.
+    {
+        let state = app.state::<AppState>();
+        let lock  = state.db.lock();
+        if let Ok(db) = lock {
+            let _ = db.execute(
+                "INSERT OR REPLACE INTO preferences (key, value) VALUES ('ytdlp_update_checked_at', ?1)",
+                params![now.to_string()],
+            );
+        }
+    }
+
+    // Self-update to the latest stable release (a fast no-op when already current).
+    // yt-dlp verifies the download and atomically replaces its own file.
+    match hidden_command(&managed).arg("--update").output() {
+        Ok(out) => {
+            let msg = format!("{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr));
+            log::info!(target: "Boot", "ytdlp_update ok={} msg={}",
+                out.status.success(), msg.replace('\n', " ").trim());
+        }
+        Err(e) => log::warn!(target: "Boot", "ytdlp_update_failed err={}", e),
+    }
 }
 
 fn ffmpeg_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
@@ -3183,12 +3296,15 @@ fn run_ytdlp(
 
     // Build the YouTube player-client extractor arg here so the String lives long
     // enough for base_args (&str borrows from it until Command::spawn() below).
+    // tv: full format list whose media URLs need NO PO token — the most reliable
+    //   client for cookieless downloads, so it leads both chains. YouTube has been
+    //   locking android_vr/web_embedded/ios behind GVS PO tokens (→ HTTP 403 on the
+    //   media fetch), which is why those-only chains fail intermittently by IP/session.
     // android_vr: split streams without PO tokens, accepts account cookies.
     // web_embedded: fallback for publicly embeddable videos (no token needed).
-    // tv: exposes full format list once authenticated via cookies.
     let yt_clients_arg = if is_youtube {
         format!("youtube:player_client={}",
-            if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "android_vr,web_embedded,ios" })
+            if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "tv,android_vr,web_embedded,ios" })
     } else {
         String::new()
     };

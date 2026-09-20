@@ -12,6 +12,26 @@ const strings = {
     'nav.activity':      'History',
     'nav.milestones':    'Milestones',
     'nav.notifications': 'Notifications',
+
+    // Feedback
+    'feedback.menu':          'Send feedback',
+    'feedback.title':         'Send feedback',
+    'feedback.sub':           'Found a bug or have an idea? Tell us — we read every message.',
+    'feedback.placeholder':   'Write your message…',
+    'feedback.note':          'Your app version, item count, connected devices and a short activity log are attached to help us debug.',
+    'feedback.send':          'Send',
+    'feedback.sending':       'Sending…',
+    'feedback.cancel':        'Cancel',
+    'feedback.error':         'Could not send. Check your connection and try again.',
+    'feedback.thanks_title':  'Thank you!',
+    'feedback.thanks_sub':    'Your feedback has been sent.',
+    'feedback.done':          'Done',
+
+    // Media-type filter
+    'media.filter':  'Filter by type',
+    'media.all':     'All media',
+    'media.images':  'Images only',
+    'media.videos':  'Videos only',
     'nav.settings':      'Settings',
 
     'action.add':        'Add',
@@ -76,7 +96,7 @@ const strings = {
     // Settings — Appearance — Theme
     'settings.section.theme':    'Theme',
     'settings.theme.label':      'Color scheme',
-    'settings.theme.sub':        'Dark mode active · Light & System coming soon',
+    'settings.theme.sub':        'Dark, Light, or match your system',
     'settings.theme.dark':       'Dark',
     'settings.theme.light':      'Light',
     'settings.theme.system':     'System',
@@ -136,6 +156,12 @@ const strings = {
     'settings.taglens.failed':       'Failed — check connection',
     'settings.section.about':        'About',
     'settings.version':              'Version',
+    'settings.update.check':         'Check for updates',
+    'settings.update.checking':      'Checking…',
+    'settings.update.uptodate':      'Up to date ✓',
+    'settings.update.available':     'v{version} available',
+    'settings.update.install':       'Install v{version}',
+    'settings.update.failed':        'Check failed',
 
     // Plan badges & actions
     'plan.free':        'Free',
@@ -233,6 +259,7 @@ const strings = {
     // Home grid
     'filter.recent':        'Recent',
     'grid.drop':            'Drop to import',
+    'grid.scroll_top':      'Back to top',
 
     // App update
     'update.ready':         'A new version of qooti is ready to install',
@@ -267,6 +294,26 @@ const strings = {
     'nav.activity':      'Tarix',
     'nav.milestones':    'Yutuqlar',
     'nav.notifications': 'Bildirishnomalar',
+
+    // Feedback
+    'feedback.menu':          'Fikr bildirish',
+    'feedback.title':         'Fikr bildirish',
+    'feedback.sub':           "Xatolik topdingizmi yoki g'oyangiz bormi? Yozing — har bir xabarni o'qiymiz.",
+    'feedback.placeholder':   'Xabaringizni yozing…',
+    'feedback.note':          "Nosozlikni topishga yordam berish uchun ilova versiyasi, elementlar soni, ulangan qurilmalar va qisqa faoliyat jurnali biriktiriladi.",
+    'feedback.send':          'Yuborish',
+    'feedback.sending':       'Yuborilmoqda…',
+    'feedback.cancel':        'Bekor qilish',
+    'feedback.error':         "Yuborib bo'lmadi. Internetni tekshiring va qayta urining.",
+    'feedback.thanks_title':  'Rahmat!',
+    'feedback.thanks_sub':    'Fikringiz yuborildi.',
+    'feedback.done':          'Tayyor',
+
+    // Media-type filter
+    'media.filter':  "Turi bo'yicha filtr",
+    'media.all':     'Barcha media',
+    'media.images':  'Faqat rasmlar',
+    'media.videos':  'Faqat videolar',
     'nav.settings':      'Sozlamalar',
 
     'action.add':        "Qo'shish",
@@ -331,7 +378,7 @@ const strings = {
     // Settings — Appearance — Theme
     'settings.section.theme':    'Mavzu',
     'settings.theme.label':      'Rang sxemasi',
-    'settings.theme.sub':        "Qo'ng'ir rejim faol · Yorug' va Tizim tez orada",
+    'settings.theme.sub':        "Qo'ng'ir, Yorug' yoki tizimga moslang",
     'settings.theme.dark':       "Qo'ng'ir",
     'settings.theme.light':      "Yorug'",
     'settings.theme.system':     'Tizim',
@@ -391,6 +438,12 @@ const strings = {
     'settings.taglens.failed':       'Xato — internet aloqasini tekshiring',
     'settings.section.about':        'Dastur haqida',
     'settings.version':              'Versiya',
+    'settings.update.check':         'Yangilanishlarni tekshirish',
+    'settings.update.checking':      'Tekshirilmoqda…',
+    'settings.update.uptodate':      "Eng so'nggi versiya ✓",
+    'settings.update.available':     'v{version} mavjud',
+    'settings.update.install':       "v{version} o'rnatish",
+    'settings.update.failed':        "Tekshirib bo'lmadi",
 
     // Plan badges & actions
     'plan.free':        'Bepul',
@@ -488,6 +541,7 @@ const strings = {
     // Home grid
     'filter.recent':        "So'nggi",
     'grid.drop':            'Import uchun tashlang',
+    'grid.scroll_top':      'Yuqoriga qaytish',
 
     // App update
     'update.ready':         "qootining yangi versiyasi o'rnatishga tayyor",

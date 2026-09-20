@@ -26,6 +26,27 @@ async fn check_and_notify(app: &AppHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub notes:   String,
+}
+
+/// Tauri command: check-only. Returns Some(UpdateInfo) when a newer version is
+/// available, None when already up to date. Backs the Settings "Check for
+/// updates" button (apply_update handles the actual download/install).
+#[tauri::command]
+pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        Some(update) => Ok(Some(UpdateInfo {
+            version: update.version,
+            notes:   update.body.unwrap_or_default(),
+        })),
+        None => Ok(None),
+    }
+}
+
 /// Tauri command: re-checks for update, downloads, installs, then restarts.
 /// Called from JS when the user confirms the update prompt.
 #[tauri::command]

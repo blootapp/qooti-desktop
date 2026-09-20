@@ -195,6 +195,7 @@ const tauriApi = {
   checkUrlExists: url => _invoke('check_url_exists', { url }),
   saveThumbnail:  (id, bytes) => _invoke('save_thumbnail', { id, bytes }),
   applyUpdate:    ()         => _invoke('apply_update'),
+  checkForUpdate: ()         => _invoke('check_for_update'),
   getFreePlanInfo: ()        => _invoke('get_free_plan_info'),
   takeLaunchFile:  ()        => _invoke('take_launch_file'),
   getDeviceId:     ()        => _invoke('get_device_id'),

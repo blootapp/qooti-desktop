@@ -105,6 +105,7 @@ const filter = {
   query:          null,
   color:          null,
   colorTolerance: 'normal',
+  mediaTypes:     null,   // null = all; ['image','gif'] = images; ['video'] = videos
   sort:           null,
   page:  0,
   limit: 100,
@@ -136,6 +137,11 @@ export function init(el, _settings) {
     // Tolerance now travels with the color from the picker (see color-picker.js).
     if (tolerance) filter.colorTolerance = tolerance
     filter.page  = 0
+    reload()
+  })
+  store.on(events.SEARCH_MEDIA_CHANGED, ({ types }) => {
+    filter.mediaTypes = (types && types.length) ? types : null
+    filter.page = 0
     reload()
   })
   store.on(events.COLLECTION_SELECTED, ({ id, name }) => {
@@ -270,7 +276,7 @@ function renderShell() {
     </div>
 
     <div class="update-bar" id="update-bar" hidden>
-      ${I('download-simple', 16)}
+      <span class="update-bar-badge">${I('download-simple', 16)}</span>
       <span class="update-bar-text" id="update-bar-text"></span>
       <button class="update-bar-btn" id="update-bar-btn"></button>
       <button class="update-bar-dismiss" id="update-bar-dismiss" aria-label="">${I('x', 12)}</button>
@@ -284,6 +290,10 @@ function renderShell() {
         <span class="drop-overlay-label" data-i18n="grid.drop">${t('grid.drop')}</span>
       </div>
     </div>
+
+    <button class="scroll-top-btn" id="scroll-top-btn" title="${t('grid.scroll_top')}" aria-label="${t('grid.scroll_top')}">
+      ${I('caret-up', 20)}
+    </button>
   `
 
   gridEl  = null
@@ -293,6 +303,17 @@ function renderShell() {
   const scrollEl = container.querySelector('#grid-scroll')
   _resizeObserver = new ResizeObserver(onGridResize)
   _resizeObserver.observe(scrollEl)
+
+  // Scroll-to-top button: appears once scrolled past ~1.5 screens, returns to row 1.
+  const scrollTopBtn = container.querySelector('#scroll-top-btn')
+  if (scrollTopBtn) {
+    let shown = false
+    scrollEl.addEventListener('scroll', () => {
+      const should = scrollEl.scrollTop > scrollEl.clientHeight * 1.5
+      if (should !== shown) { shown = should; scrollTopBtn.classList.toggle('visible', should) }
+    }, { passive: true })
+    scrollTopBtn.addEventListener('click', () => scrollEl.scrollTo({ top: 0, behavior: 'smooth' }))
+  }
 
   // Drag-to-scroll for filter chips bar
   const bar = container.querySelector('#filter-chips-bar')
@@ -355,15 +376,21 @@ function renderUpdateBar() {
 
   // .onclick (not addEventListener) so re-renders never stack duplicate handlers.
   btn.onclick = async () => {
-    btn.textContent = t('update.installing')
-    btn.disabled    = true
+    // Indeterminate spinner + "Installing…" — the download/install can take a
+    // while and then the app restarts, so make it clearly in-progress (not frozen).
+    btn.innerHTML = `<span class="spinner-ring" aria-hidden="true"></span><span>${t('update.installing')}</span>`
+    btn.classList.add('is-loading')
+    btn.disabled     = true
+    dismiss.disabled = true
     log.info('update_install_started', { version })
     try {
       await api.applyUpdate()   // backend downloads, installs, then restarts the app
     } catch (err) {
       log.warn('update_install_failed', { error: String(err) })
-      btn.textContent = t('update.failed')
-      btn.disabled    = false
+      btn.classList.remove('is-loading')
+      btn.textContent  = t('update.failed')
+      btn.disabled     = false
+      dismiss.disabled = false
       store.emit(events.SYSTEM_TOAST, {
         type: 'error',
         message: t('update.toast_fail', { error: String(err) }),
@@ -533,6 +560,7 @@ async function reload() {
         query:   filter.query ?? undefined,
         color_filter:     filter.color ?? undefined,
         color_tolerance:  filter.color ? filter.colorTolerance : undefined,
+        media_types:      filter.mediaTypes ?? undefined,
         // Free plan always fetches by recency so the visible pool is always the
         // 200 most recently imported items. Qootify shuffle happens client-side.
         sort:    isFree ? 'recent' : (filter.sort ?? undefined),
@@ -553,7 +581,7 @@ async function reload() {
     // items to fill at least one full row. Filtered views (tag/collection/search/
     // color) and small libraries must show everything, otherwise a handful of
     // items snaps to zero and the empty state wrongly appears.
-    const isFilteredView = !!(filter.collectionId || filter.query || filter.color || filter.tagIds.length)
+    const isFilteredView = !!(filter.collectionId || filter.query || filter.color || filter.tagIds.length || filter.mediaTypes)
     const regularInResponse = items.filter(i => !isShortForm(i)).length
     const applyFreeSnap = isFree && !isFilteredView && regularInResponse >= colCount
 
@@ -588,7 +616,7 @@ async function reload() {
     // nothing gets appended after it, preventing the banner from disappearing
     // when a stale reco resolve races against a fresh render.
     let recoExtra = []
-    if (!filter.collectionId && !filter.query && !filter.color && !filter.tagIds.length) {
+    if (!filter.collectionId && !filter.query && !filter.color && !filter.tagIds.length && !filter.mediaTypes) {
       recoExtra = await loadRecommendations(visibleItems, gen) ?? []
     } else {
       container?.querySelector('#grid-scroll')?.querySelectorAll('.reco-grid').forEach(s => s.remove())
@@ -936,6 +964,17 @@ function makeShelfCard(item, idx) {
   return card
 }
 
+// A title worth showing on a card. Auto-generated import filenames
+// ("image_7776bcc1-…", "IMG_1234", "video-2024") are just noise, so treat
+// them as untitled and show nothing rather than a UUID.
+function displayTitle(item) {
+  const raw = (item.title ?? '').trim()
+  if (!raw) return ''
+  if (/^(image|img|photo|video|vid|screenshot|download|file)[_-][0-9a-f]{4,}[0-9a-f-]*$/i.test(raw)) return ''
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return ''
+  return raw
+}
+
 function makeCard(item, idx) {
   const card = document.createElement('div')
   card.className = 'card'
@@ -1032,17 +1071,24 @@ function makeCard(item, idx) {
     handleCopy(item, e.currentTarget)
   })
 
-  const suggestionsEl = makeSuggestions(item)
-  if (suggestionsEl) media.appendChild(suggestionsEl)
-
   media.appendChild(overlay)
 
-  // ── Title revealed below the image on hover ──
-  const titleEl = document.createElement('div')
-  titleEl.className = 'card-title'
-  titleEl.textContent = item.title ?? ''
+  // ── Unified bottom caption: title + platform/collection pills + auto-tag
+  //    prompt, stacked in one gradient scrim so nothing overlaps. Title + pills
+  //    are hover-only; a pending suggestion keeps the caption visible (compact)
+  //    and the rest expands on hover. Absolutely positioned → adds no masonry
+  //    height, so every card stays exactly its media's native ratio. ──
+  const caption = document.createElement('div')
+  caption.className = 'card-caption'
 
-  // ── Pill labels (platform + collection) ──
+  const titleText = displayTitle(item)
+  if (titleText) {
+    const titleEl = document.createElement('div')
+    titleEl.className = 'card-title'
+    titleEl.textContent = titleText
+    caption.appendChild(titleEl)
+  }
+
   const meta = document.createElement('div')
   meta.className = 'card-meta'
 
@@ -1066,6 +1112,13 @@ function makeCard(item, idx) {
     <span class="card-label card-label--platform">${iconHtml}${platformText}</span>
     ${colLabel ? `<span class="card-label card-label--collection">${colFolderHtml}${escHtml(colLabel)}</span>` : ''}
   `
+  caption.appendChild(meta)
+
+  const suggestionsEl = makeSuggestions(item)
+  if (suggestionsEl) {
+    card.classList.add('has-suggestion')
+    caption.appendChild(suggestionsEl)
+  }
 
   // Open detail modal on click (not on action buttons or suggestion rows)
   card.addEventListener('click', e => {
@@ -1079,8 +1132,7 @@ function makeCard(item, idx) {
   })
 
   card.appendChild(media)
-  card.appendChild(titleEl)
-  card.appendChild(meta)
+  card.appendChild(caption)
   return card
 }
 
@@ -1161,10 +1213,14 @@ function removeSuggestionRow(item, tagId, row) {
   } catch { /* ignore */ }
 
   row.classList.add('suggestion-leaving')
+  const card = row.closest('.card')
   setTimeout(() => {
     const wrap = row.parentElement
     row.remove()
-    if (wrap && !wrap.querySelector('.suggestion-item')) wrap.remove()
+    if (wrap && !wrap.querySelector('.suggestion-item')) {
+      wrap.remove()
+      card?.classList.remove('has-suggestion')  // caption reverts to hover-only
+    }
   }, 180)
 }
 
@@ -1706,11 +1762,14 @@ async function refreshCardPills(ids) {
     card.querySelector('.card-suggestions')?.remove()
 
     const suggestionsEl = makeSuggestions(item)
-    if (!suggestionsEl) return
+    if (!suggestionsEl) {
+      card.classList.remove('has-suggestion')   // caption reverts to hover-only
+      return
+    }
 
-    const media = card.querySelector('.card-media')
-    const hoverOverlay = card.querySelector('.card-hover-overlay')
-    media.insertBefore(suggestionsEl, hoverOverlay)
+    // Suggestions live at the bottom of the unified caption (after title + pills).
+    card.querySelector('.card-caption')?.appendChild(suggestionsEl)
+    card.classList.add('has-suggestion')
   })
 }
 
@@ -1727,8 +1786,18 @@ function updateCardTitle(inspiration) {
 
   const card = queryCard(inspiration.id)
   if (card) {
-    const t = card.querySelector('.card-title')
-    if (t) t.textContent = inspiration.title ?? ''
+    const newTitle = displayTitle(inspiration)
+    let t = card.querySelector('.card-title')
+    if (newTitle && !t) {
+      // Card had no title (e.g. was a UUID filename) — create one at the top of the caption.
+      t = document.createElement('div')
+      t.className = 'card-title'
+      card.querySelector('.card-caption')?.prepend(t)
+    }
+    if (t) {
+      if (newTitle) t.textContent = newTitle
+      else t.remove()   // edited back to a junk/empty title → hide it
+    }
   }
 
   const shelfCard = container?.querySelector(`#grid-scroll .short-form-shelf [data-id="${inspiration.id}"]`)

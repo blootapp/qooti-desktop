@@ -26,6 +26,7 @@ export const TAG_FILTER_CHANGED = 'tag:filter-changed' // { tagIds: string[] }
 // ─── Search ──────────────────────────────────────────────────────
 export const SEARCH_QUERY_CHANGED = 'search:query-changed' // { query: string }
 export const SEARCH_COLOR_CHANGED = 'search:color-changed' // { hex: string | null, tolerance?: 'strict'|'normal'|'broad' }
+export const SEARCH_MEDIA_CHANGED = 'search:media-changed' // { types: string[] | null } — null = all media
 
 // ─── OCR ─────────────────────────────────────────────────────────
 export const OCR_BATCH_DONE   = 'ocr:batch-done'   // { processed: number }

@@ -22,6 +22,9 @@ extension.zip
 # Vite
 *.local
 
+# Wrangler local cache
+.wrangler/
+
 # Editor
 .vscode/settings.json
 .idea/

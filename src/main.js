@@ -29,6 +29,8 @@ import { init as initDownloadTracker } from './modules/download-tracker.js'
 import { init as initDownloadIndicator } from './modules/download-indicator.js'
 import { init as initActivityView } from './modules/activity-view.js'
 import { startWalkthrough } from './modules/walkthrough.js'
+import { initDiagnostics } from './modules/diagnostics.js'
+import { openFeedbackModal } from './modules/feedback.js'
 
 // Expose progress API globally so download handlers can reach it
 window.__progressRing = { startTask }
@@ -96,6 +98,9 @@ function setupTopBar(settings) {
 
   // Color picker swatch
   setupColorSwatch()
+
+  // Media-type filter (all / images / videos)
+  setupMediaFilter()
 
   // Search input — fires only on Enter or icon click, clears immediately when emptied
   const searchInput     = document.getElementById('top-bar-search')
@@ -222,6 +227,8 @@ function buildProfileDropdown(_displayName, _initial, _avatarBg) {
     { i18nKey: 'settings.tab.downloads',  icon: 'download-simple', view: 'settings',    tab: 'downloads'  },
     null,
     { i18nKey: 'nav.milestones',          icon: 'trophy',           view: 'milestones',  tab: null },
+    null,
+    { i18nKey: 'feedback.menu',           icon: 'note',             action: 'feedback' },
   ]
 
   for (const item of menuItems) {
@@ -240,6 +247,7 @@ function buildProfileDropdown(_displayName, _initial, _avatarBg) {
     btn.appendChild(labelSpan)
     btn.addEventListener('click', () => {
       el.classList.add('hidden')
+      if (item.action === 'feedback') { openFeedbackModal(); return }
       if (item.tab) showTab(item.tab)  // set active tab before navigate triggers render
       navigate(item.view)
     })
@@ -289,6 +297,68 @@ function setupColorSwatch() {
       },
     })
   })
+}
+
+// ─── Media-type filter (all / images / videos) ───────────────────
+let activeMediaFilter = null   // null | 'image' | 'video'
+
+function setupMediaFilter() {
+  const btn  = document.getElementById('media-filter-btn')
+  const icon = document.getElementById('media-filter-icon')
+  if (!btn || !icon) return
+
+  const OPTIONS = [
+    { key: 'all',   i18n: 'media.all',    icon: 'squares-four' },
+    { key: 'image', i18n: 'media.images', icon: 'image'        },
+    { key: 'video', i18n: 'media.videos', icon: 'video-camera' },
+  ]
+  const TYPES = { image: ['image', 'gif'], video: ['video'] }
+
+  const menu = document.createElement('div')
+  menu.className = 'media-filter-menu hidden'
+  document.getElementById('overlays').appendChild(menu)
+
+  let open = false
+
+  const setIcon = name => {
+    icon.style.maskImage = `url('/icons/${name}.svg')`
+    icon.style.webkitMaskImage = `url('/icons/${name}.svg')`
+  }
+
+  function render() {
+    const active = activeMediaFilter ?? 'all'
+    menu.innerHTML = OPTIONS.map(o => `
+      <button class="mf-item${o.key === active ? ' active' : ''}" data-key="${o.key}">
+        <span class="icon icon-16" style="mask-image:url('/icons/${o.icon}.svg');-webkit-mask-image:url('/icons/${o.icon}.svg')" aria-hidden="true"></span>
+        <span class="mf-label">${t(o.i18n)}</span>
+        ${o.key === active ? `<span class="mf-check icon icon-14" style="mask-image:url('/icons/check.svg');-webkit-mask-image:url('/icons/check.svg')" aria-hidden="true"></span>` : ''}
+      </button>`).join('')
+    menu.querySelectorAll('.mf-item').forEach(el =>
+      el.addEventListener('click', () => { select(el.dataset.key); close() }))
+  }
+
+  function position() {
+    const r = btn.getBoundingClientRect()
+    menu.style.top  = `${r.bottom + 6}px`
+    menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`
+  }
+
+  function openMenu() { render(); menu.classList.remove('hidden'); position(); open = true; btn.classList.add('menu-open') }
+  function close()    { menu.classList.add('hidden'); open = false; btn.classList.remove('menu-open') }
+
+  function select(key) {
+    activeMediaFilter = key === 'all' ? null : key
+    setIcon(key === 'all' ? 'funnel' : OPTIONS.find(o => o.key === key).icon)
+    btn.classList.toggle('has-filter', !!activeMediaFilter)
+    btn.title = t(activeMediaFilter ? OPTIONS.find(o => o.key === key).i18n : 'media.filter')
+    store.emit(events.SEARCH_MEDIA_CHANGED, { types: activeMediaFilter ? TYPES[activeMediaFilter] : null })
+  }
+
+  btn.addEventListener('click', e => { e.stopPropagation(); open ? close() : openMenu() })
+  document.addEventListener('click', () => { if (open) close() })
+  menu.addEventListener('click', e => e.stopPropagation())
+  window.addEventListener('resize', () => { if (open) position() })
+  document.addEventListener('i18n:changed', () => { if (open) render() })
 }
 
 // ─── Drawer nav ──────────────────────────────────────────────────
@@ -411,6 +481,7 @@ function bindStoreListeners() {
 // ─── Boot ────────────────────────────────────────────────────────
 async function boot() {
   const t0 = performance.now()
+  initDiagnostics()   // start the activity trail + error capture for feedback reports
   log.info('start', {})
   try {
     const appInfo = await initTauriApi()

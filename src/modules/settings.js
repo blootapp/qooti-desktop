@@ -39,15 +39,33 @@ export function showTab(tab) {
   if (container && !container.hidden) render()
 }
 
+function systemPrefersLight() {
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false
+}
+
+// Re-apply the theme when the OS light/dark preference flips, but only while the
+// user's choice is 'system'. Bound once, lazily, from applyVisualSettings.
+let _systemThemeBound = false
+function bindSystemThemeWatch() {
+  if (_systemThemeBound) return
+  _systemThemeBound = true
+  window.matchMedia?.('(prefers-color-scheme: light)')
+    ?.addEventListener?.('change', () => {
+      if ((settings.theme ?? 'dark') === 'system') applyVisualSettings(settings)
+    })
+}
+
 // Apply theme / density / accent to <html> immediately — call on boot and on change
 export function applyVisualSettings(s) {
   const html = document.documentElement
 
-  // Theme
+  // Theme — 'system' resolves to light/dark via the OS media query; the watcher
+  // above re-applies on OS change. 'dark' is the default (no class).
   html.classList.remove('theme-light', 'theme-dark')
   const theme = s.theme ?? 'dark'
-  if (theme === 'light') html.classList.add('theme-light')
-  // 'dark' and 'system' need no class (default dark; system deferred to OS media query)
+  const effective = theme === 'system' ? (systemPrefersLight() ? 'light' : 'dark') : theme
+  if (effective === 'light') html.classList.add('theme-light')
+  bindSystemThemeWatch()
 
   // Density
   html.classList.remove('density-compact', 'density-comfortable')
@@ -218,9 +236,9 @@ async function render() {
             </div>
             <div class="settings-row-control">
               <div class="settings-toggle-group" id="s-theme-toggle">
-                <button class="stg-btn ${(settings.theme ?? 'dark') === 'dark' ? 'active' : ''}" data-theme="dark">${tr('settings.theme.dark')}</button>
-                <button class="stg-btn stg-btn--locked" data-theme="light" disabled title="Coming soon">${tr('settings.theme.light')}</button>
-                <button class="stg-btn stg-btn--locked" data-theme="system" disabled title="Coming soon">${tr('settings.theme.system')}</button>
+                <button class="stg-btn ${(settings.theme ?? 'dark') === 'dark'   ? 'active' : ''}" data-theme="dark">${tr('settings.theme.dark')}</button>
+                <button class="stg-btn ${(settings.theme ?? 'dark') === 'light'  ? 'active' : ''}" data-theme="light">${tr('settings.theme.light')}</button>
+                <button class="stg-btn ${(settings.theme ?? 'dark') === 'system' ? 'active' : ''}" data-theme="system">${tr('settings.theme.system')}</button>
               </div>
             </div>
           </div>
@@ -416,8 +434,12 @@ async function render() {
           <div class="settings-row">
             <div class="settings-row-label">
               <span class="settings-row-name">${tr('settings.version')}</span>
+              <span class="settings-row-sub" id="s-update-status"></span>
             </div>
-            <span class="settings-row-value">${appInfo?.version ?? '—'}</span>
+            <div class="settings-row-control">
+              <span class="settings-row-value">${appInfo?.version ?? '—'}</span>
+              <button class="settings-save-btn" id="s-check-update">${tr('settings.update.check')}</button>
+            </div>
           </div>
         </section>
       </div>
@@ -656,6 +678,57 @@ async function render() {
         setTimeout(() => {
           tagLensBtn.textContent = tr('settings.taglens.check')
           tagLensBtn.disabled = false
+        }, 3000)
+      }
+    })
+  }
+
+  // ── Check for app updates ──────────────────────────────────────
+  const checkUpdateBtn = container.querySelector('#s-check-update')
+  const updateStatus   = container.querySelector('#s-update-status')
+  if (checkUpdateBtn) {
+    checkUpdateBtn.addEventListener('click', async () => {
+      // Second phase: an update was found → this button now installs it.
+      if (checkUpdateBtn.dataset.mode === 'install') {
+        checkUpdateBtn.disabled  = true
+        checkUpdateBtn.innerHTML = `<span class="spinner-ring" aria-hidden="true"></span><span>${tr('update.installing')}</span>`
+        try {
+          await api.applyUpdate()   // downloads, installs, then restarts the app
+        } catch (err) {
+          console.error('[settings] update install failed:', err)
+          checkUpdateBtn.disabled  = false
+          checkUpdateBtn.textContent = tr('update.failed')
+        }
+        return
+      }
+
+      checkUpdateBtn.disabled  = true
+      checkUpdateBtn.textContent = tr('settings.update.checking')
+      if (updateStatus) updateStatus.textContent = ''
+      try {
+        const info = await api.checkForUpdate()
+        if (info?.version) {
+          if (updateStatus) updateStatus.textContent = tr('settings.update.available', { version: info.version })
+          checkUpdateBtn.dataset.mode = 'install'
+          checkUpdateBtn.classList.add('s-update-available')
+          checkUpdateBtn.disabled  = false
+          checkUpdateBtn.textContent = tr('settings.update.install', { version: info.version })
+          store.emit(events.UPDATE_AVAILABLE, info)   // also surface the home banner
+        } else {
+          checkUpdateBtn.textContent = tr('settings.update.uptodate')
+          checkUpdateBtn.classList.add('saved')
+          setTimeout(() => {
+            checkUpdateBtn.textContent = tr('settings.update.check')
+            checkUpdateBtn.classList.remove('saved')
+            checkUpdateBtn.disabled = false
+          }, 2500)
+        }
+      } catch (err) {
+        console.error('[settings] check for update failed:', err)
+        checkUpdateBtn.textContent = tr('settings.update.failed')
+        setTimeout(() => {
+          checkUpdateBtn.textContent = tr('settings.update.check')
+          checkUpdateBtn.disabled = false
         }, 3000)
       }
     })
