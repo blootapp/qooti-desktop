@@ -54,6 +54,37 @@ jobs:
         working-directory: bgutil/server
         run: deno compile -A --node-modules-dir=auto --output qooti-pot src/main.ts
 
+      # Verify the WHOLE mac chain on a real Mac (the runner): the compiled binary
+      # runs, the server answers, yt-dlp loads the plugin from ~/.config, and a real
+      # PO token is fetched. This is how we know the macOS path actually works.
+      - name: Verify mac chain (run provider + yt-dlp → PO token)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        working-directory: bgutil/server
+        run: |
+          echo "== codesign info =="; codesign -dv qooti-pot 2>&1 | head -3 || true
+          echo "== can the compiled binary even start? =="
+          ./qooti-pot & SRV=$!
+          sleep 10
+          echo "server ping:"; curl -s -m 3 -o /dev/null -w "  http=%{http_code}\n" http://127.0.0.1:4416/ping || echo "  server NOT reachable"
+          echo "== install plugin into yt-dlp config dir (~/.config/yt-dlp/plugins) =="
+          PLUG="$HOME/.config/yt-dlp/plugins/qooti-bgutil/yt_dlp_plugins/extractor"; mkdir -p "$PLUG"
+          cp ../plugin/yt_dlp_plugins/extractor/getpot_bgutil.py ../plugin/yt_dlp_plugins/extractor/getpot_bgutil_http.py "$PLUG/"
+          echo "== fetch yt-dlp_macos + force web client (requires a PO token) =="
+          curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos -o ytdlp && chmod +x ytdlp
+          ./ytdlp -v --simulate --extractor-args "youtube:player_client=web" "https://youtu.be/dQw4w9WgXcQ" 2>&1 \
+            | grep -iE "PO Token Providers|Plugin directories|Retrieved a .*PO Token|Generating a .*PO Token|bgutil|Failed to|Error" | head -20 || true
+          kill $SRV 2>/dev/null || true
+          echo "== verify done =="
+
+      - name: Ad-hoc code-sign (macOS — re-sign cleanly for distribution)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        working-directory: bgutil/server
+        run: |
+          codesign --force --sign - --timestamp=none qooti-pot
+          codesign -dv qooti-pot || true
+
       - name: gzip
         shell: bash
         working-directory: bgutil/server
