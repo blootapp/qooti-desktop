@@ -70,10 +70,14 @@ jobs:
           echo "== install plugin into yt-dlp config dir (~/.config/yt-dlp/plugins) =="
           PLUG="$HOME/.config/yt-dlp/plugins/qooti-bgutil/yt_dlp_plugins/extractor"; mkdir -p "$PLUG"
           cp ../plugin/yt_dlp_plugins/extractor/getpot_bgutil.py ../plugin/yt_dlp_plugins/extractor/getpot_bgutil_http.py "$PLUG/"
-          echo "== fetch yt-dlp_macos + force web client (requires a PO token) =="
+          echo "== fetch yt-dlp_macos =="
           curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos -o ytdlp && chmod +x ytdlp
-          ./ytdlp -v --simulate --extractor-args "youtube:player_client=web" "https://youtu.be/dQw4w9WgXcQ" 2>&1 \
-            | grep -iE "PO Token Providers|Plugin directories|Retrieved a .*PO Token|Generating a .*PO Token|bgutil|Failed to|Error" | head -20 || true
+          echo "== [A] token minting with the app's exact client chain (web,web_embedded) =="
+          ./ytdlp -v --simulate --extractor-args "youtube:player_client=web,web_embedded" "https://youtu.be/dQw4w9WgXcQ" 2>&1 \
+            | grep -iE "Retrieved a .*PO Token|Generating a .*PO Token|Fetching .*PO Token|bgutil|Failed to|ERROR" | head -20 || true
+          echo "== [B] is the token ATTACHED to the media URL? (grep resolved URL for pot=) =="
+          ./ytdlp -g -f "18/best" --extractor-args "youtube:player_client=web,web_embedded" "https://youtu.be/dQw4w9WgXcQ" 2>/dev/null \
+            | head -1 | grep -oE 'pot=[^&]{0,24}' && echo "  → PO token present in media URL ✓" || echo "  → no pot= in media URL ✗"
           kill $SRV 2>/dev/null || true
           echo "== verify done =="
 
