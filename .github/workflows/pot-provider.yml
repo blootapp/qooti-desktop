@@ -1,0 +1,71 @@
+# Builds the bgutil PO-token provider as a self-contained (deno-compiled) binary
+# for each platform and uploads it as a workflow artifact. The binaries are then
+# gzip-hosted on R2 (qooti-releases) and downloaded on demand by the desktop app
+# (see src-tauri/src/pot_provider.rs) the first time YouTube needs a PO token.
+#
+# macOS's binary MUST be built on macOS (native `canvas` addon can't cross-compile
+# from Windows), which is why this runs in CI. Trigger manually:
+#   gh workflow run pot-provider.yml
+# then download the artifacts and push them to R2 as:
+#   qooti-pot-aarch64-apple-darwin.gz   (macOS, Apple Silicon)
+#   qooti-pot-x86_64-pc-windows-msvc.gz (Windows)
+#
+# Pinned to bgutil 2.0.0 so the compiled server matches the bundled plugin version
+# (src-tauri/pot-plugin, which reports bgutil:http-2.0.0).
+
+name: PO-token provider
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Clone bgutil provider (pinned)
+        shell: bash
+        run: git clone --depth 1 --branch 2.0.0 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git bgutil
+
+      - name: Install server deps (production only)
+        shell: bash
+        working-directory: bgutil/server
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: Compile self-contained provider binary
+        shell: bash
+        working-directory: bgutil/server
+        run: deno compile -A --node-modules-dir=auto --output qooti-pot src/main.ts
+
+      - name: gzip
+        shell: bash
+        working-directory: bgutil/server
+        run: |
+          BIN=qooti-pot
+          [ -f qooti-pot.exe ] && BIN=qooti-pot.exe
+          gzip -c "$BIN" > "qooti-pot-${{ matrix.target }}.gz"
+          ls -la "qooti-pot-${{ matrix.target }}.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qooti-pot-${{ matrix.target }}
+          path: bgutil/server/qooti-pot-${{ matrix.target }}.gz
+          retention-days: 7

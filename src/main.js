@@ -28,6 +28,7 @@ import { init as initImporter } from './modules/importer.js'
 import { init as initDownloadTracker } from './modules/download-tracker.js'
 import { init as initDownloadIndicator } from './modules/download-indicator.js'
 import { init as initActivityView } from './modules/activity-view.js'
+import { init as initDuplicates } from './modules/duplicates.js'
 import { startWalkthrough } from './modules/walkthrough.js'
 import { initDiagnostics } from './modules/diagnostics.js'
 import { openFeedbackModal } from './modules/feedback.js'
@@ -43,6 +44,7 @@ const PRIMARY_NAV = [
 
 const SECONDARY_NAV = [
   { view: 'activity',      icon: 'clock-counter-clockwise', labelKey: 'nav.activity'   },
+  { view: 'duplicates',    icon: 'copy',              labelKey: 'nav.duplicates' },
   { view: 'milestones',    icon: 'trophy',            labelKey: 'nav.milestones' },
   { view: 'settings',      icon: 'gear',              labelKey: 'nav.settings'   },
 ]
@@ -540,6 +542,7 @@ async function boot() {
     initNotifications(document.getElementById('view-notifications'))
     initMilestones(document.getElementById('view-milestones'))
     initActivityView(document.getElementById('view-activity'))
+    initDuplicates(document.getElementById('view-duplicates'))
 
     // First launch (and any non-complete state) goes straight to the bloot ID
     // sign-in — no name/photo prompt, no full-screen guide. Onboarding is a

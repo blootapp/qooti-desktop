@@ -1,6 +1,6 @@
 [package]
 name = "qooti"
-version = "1.0.2"
+version = "1.0.3"
 description = "qooti — visual inspiration library"
 authors = ["Bloot"]
 edition = "2021"
@@ -38,6 +38,7 @@ once_cell  = "1"
 tiny_http  = "0.12"
 base64     = "0.22"
 ureq       = "2"
+flate2     = "1"
 arboard    = { version = "3", features = ["image-data"] }
 log        = "0.4"
 env_logger = "0.11"

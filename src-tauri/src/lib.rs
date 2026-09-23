@@ -3,6 +3,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 pub mod commands;
+pub mod pot_provider;
 pub mod db;
 pub mod logger;
 pub mod media_guard;
@@ -33,6 +34,9 @@ pub struct AppState {
     /// URL queued by the app for the extension to pick up and download using browser cookies.
     /// Only one pending at a time; extension polls GET /extension/pending-download to claim it.
     pub pending_ext_download: std::sync::Mutex<Option<String>>,
+    /// The running on-demand YouTube PO-token provider server (bgutil), if started.
+    /// Killed on app exit. See pot_provider.rs.
+    pub pot_child: std::sync::Mutex<Option<std::process::Child>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -101,6 +105,7 @@ pub fn run() {
                 ext_progress:          std::sync::Mutex::new(std::collections::HashMap::new()),
                 cookie_files:          std::sync::Mutex::new(std::collections::HashMap::new()),
                 pending_ext_download:  std::sync::Mutex::new(None),
+                pot_child:             std::sync::Mutex::new(None),
             });
 
             // Clean up any partial/stale files left in downloads_tmp from a previous crash or
@@ -158,6 +163,13 @@ pub fn run() {
             {
                 let ar_handle = app.handle().clone();
                 std::thread::spawn(move || commands::backfill_image_ratios_once(&ar_handle));
+            }
+
+            // Compute perceptual hashes for the duplicate finder in the background,
+            // so opening the Duplicates view is instant. Only touches rows missing one.
+            {
+                let ph_handle = app.handle().clone();
+                std::thread::spawn(move || commands::ensure_phashes(&ph_handle));
             }
 
             updater::spawn_update_check(app.handle().clone());
@@ -344,12 +356,19 @@ pub fn run() {
             commands::reset_app,
             commands::get_free_plan_info,
             commands::take_launch_file,
+            commands::find_duplicates,
             updater::apply_update,
             updater::check_for_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {
+            // Kill the PO-token provider server (if running) when the app exits, so
+            // it doesn't linger as an orphan process holding port 4416.
+            if let tauri::RunEvent::Exit = _event {
+                pot_provider::shutdown(_app);
+            }
+
             // On macOS a .qooti file opened while the app runs arrives as an Opened
             // event (there is no argv second-launch like on Windows).
             #[cfg(target_os = "macos")]

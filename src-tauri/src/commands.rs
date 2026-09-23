@@ -2173,6 +2173,259 @@ pub fn backfill_image_ratios_once(app: &AppHandle) {
     }
 }
 
+// ─── Duplicate detection ─────────────────────────────────────────
+// A fingerprint = a 64-bit dHash (cheap first-pass prune) + a 16×16 grayscale
+// signature (256 samples) for a precise mean-absolute-difference check. dHash
+// alone over-groups flat/light design thumbnails (their coarse gradients look
+// alike), so the grayscale signature is what actually tells images apart.
+// Stored as "<dhash:16hex>:<256-byte sig hex>". phash_source "v2" marks this format.
+fn phash_from_path(path: &str) -> Option<String> {
+    let img = image::open(path).ok()?;
+
+    // dHash — 9×8 luma, compare each pixel to its right neighbour → 64 bits.
+    let d = img.resize_exact(9, 8, image::imageops::FilterType::Triangle).to_luma8();
+    let mut dhash: u64 = 0;
+    let mut i = 0u32;
+    for y in 0..8u32 {
+        for x in 0..8u32 {
+            if d.get_pixel(x, y)[0] > d.get_pixel(x + 1, y)[0] { dhash |= 1u64 << i; }
+            i += 1;
+        }
+    }
+
+    // Grayscale signature — 16×16 luma samples as raw bytes (hex).
+    let g = img.resize_exact(16, 16, image::imageops::FilterType::Triangle).to_luma8();
+    let mut sig = String::with_capacity(512);
+    for p in g.pixels() { sig.push_str(&format!("{:02x}", p[0])); }
+
+    Some(format!("{dhash:016x}:{sig}"))
+}
+
+struct Fp { dhash: u64, sig: Vec<u8> }
+
+fn parse_fp(s: &str) -> Option<Fp> {
+    let (dh, gs) = s.split_once(':')?;
+    let dhash = u64::from_str_radix(dh, 16).ok()?;
+    if gs.len() != 512 { return None; }   // 256 bytes
+    let b = gs.as_bytes();
+    let mut sig = Vec::with_capacity(256);
+    for k in 0..256 {
+        let hi = (b[k * 2] as char).to_digit(16)?;
+        let lo = (b[k * 2 + 1] as char).to_digit(16)?;
+        sig.push((hi * 16 + lo) as u8);
+    }
+    Some(Fp { dhash, sig })
+}
+
+/// Are two fingerprints near-duplicates? Aspect gate (reject very different
+/// shapes) → dHash prune (cheap) → 16×16 grayscale mean-absolute-difference
+/// (precise). Returns the MAD (0 = identical pixels) when they match.
+fn fp_similar(a: &Fp, b: &Fp, ar_a: f64, ar_b: f64, mad_threshold: u32) -> Option<u32> {
+    let (hi, lo) = if ar_a >= ar_b { (ar_a, ar_b) } else { (ar_b, ar_a) };
+    if lo > 0.0 && hi / lo > 1.35 { return None; }              // shapes too different
+    if (a.dhash ^ b.dhash).count_ones() > 22 { return None; }   // clearly unrelated
+    let mad: u32 = a.sig.iter().zip(b.sig.iter())
+        .map(|(x, y)| (*x as i32 - *y as i32).unsigned_abs())
+        .sum::<u32>() / 256;
+    if mad <= mad_threshold { Some(mad) } else { None }
+}
+
+/// Fill in perceptual hashes for any items missing one — new imports, videos whose
+/// thumbnail arrived after import, and the pre-existing library. Cheap when nothing
+/// is missing (only touches rows where phash IS NULL). File I/O runs off the lock.
+pub fn ensure_phashes(app: &AppHandle) {
+    use tauri::Manager;
+    let state = app.state::<AppState>();
+
+    let rows: Vec<(String, String, Option<String>, String)> = {
+        let db = match state.db.lock() { Ok(d) => d, Err(_) => return };
+        let mut stmt = match db.prepare(
+            "SELECT id, type, thumbnail_path, stored_path FROM inspirations \
+             WHERE phash IS NULL OR phash_source IS NOT 'v2'"
+        ) { Ok(s) => s, Err(_) => return };
+        let mapped = match stmt.query_map([], |r| Ok((
+            r.get::<_, String>(0)?, r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?, r.get::<_, String>(3)?,
+        ))) { Ok(m) => m, Err(_) => return };
+        mapped.filter_map(|r| r.ok()).collect()
+    };
+    if rows.is_empty() { return; }
+
+    // Decoding images is the expensive part — fan it out across cores. Each thread
+    // hashes its own chunk (no shared state, no lock), then we write all results
+    // once under a single lock. Keeps the DB lock held for milliseconds, not the
+    // whole decode pass.
+    let n_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 8);
+    let chunk_size = ((rows.len() + n_threads - 1) / n_threads).max(1);
+    let mut handles = Vec::new();
+    for chunk in rows.chunks(chunk_size) {
+        let chunk = chunk.to_vec();
+        handles.push(std::thread::spawn(move || {
+            let mut out: Vec<(String, String)> = Vec::new();
+            for (id, kind, thumb, stored) in chunk {
+                // Videos have no still to hash — use the generated thumbnail once it exists.
+                let src = if kind == "video" { thumb } else { Some(stored) };
+                if let Some(src) = src {
+                    if let Some(ph) = phash_from_path(&src) { out.push((id, ph)); }
+                }
+            }
+            out
+        }));
+    }
+    let results: Vec<(String, String)> =
+        handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect();
+
+    if !results.is_empty() {
+        if let Ok(db) = state.db.lock() {
+            for (id, ph) in &results {
+                let _ = db.execute(
+                    "UPDATE inspirations SET phash = ?1, phash_source = 'v2' WHERE id = ?2",
+                    params![ph, id],
+                );
+            }
+        }
+        log::info!(target: "Dupes", "phash_backfill computed={}", results.len());
+    }
+}
+
+#[derive(Serialize)]
+pub struct DupItem {
+    pub id:          String,
+    pub kind:        String,               // image | video | gif
+    pub title:       Option<String>,
+    pub thumb:       String,               // path to hash-worthy still (thumbnail or file)
+    pub created_at:  i64,
+    pub collections: Option<String>,       // json array of collection names
+}
+
+#[derive(Serialize)]
+pub struct DupGroup {
+    pub reason:   String,   // "exact" | "identical" | "similar"
+    pub distance: u32,      // smallest pairwise Hamming distance in the group
+    pub items:    Vec<DupItem>,
+}
+
+/// Group duplicate / near-duplicate items. Exact = identical file bytes (same
+/// file_hash). Near = perceptual-hash Hamming distance ≤ THRESHOLD — catches the
+/// same image re-encoded, resized, or lightly edited even when title/tags differ.
+///
+/// Runs on the blocking thread pool (NOT the main thread) so decoding images +
+/// the O(n²) compare never freeze the UI.
+#[tauri::command]
+pub async fn find_duplicates(app: AppHandle) -> Result<Vec<DupGroup>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_duplicates_impl(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
+    use tauri::Manager;
+    ensure_phashes(app);   // make sure hashes are current before comparing
+
+    let state = app.state::<AppState>();
+
+    struct Row {
+        id: String, kind: String, title: Option<String>, stored: String,
+        thumb: Option<String>, created_at: i64, file_hash: Option<String>,
+        fp: Option<Fp>, aspect: f64, collections: Option<String>,
+    }
+
+    let rows: Vec<Row> = {
+        let db = state.db.lock().map_err(|_| "db lock".to_string())?;
+        let mut stmt = db.prepare(
+            "SELECT id, type, title, stored_path, thumbnail_path, created_at, file_hash, phash, aspect_ratio,
+                    (SELECT json_group_array(c.name)
+                     FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
+                     WHERE ci.inspiration_id = inspirations.id) AS collection_names
+             FROM inspirations"
+        ).map_err(|e| e.to_string())?;
+        let mapped = stmt.query_map([], |r| {
+            let ph: Option<String> = r.get(7)?;
+            Ok(Row {
+                id: r.get(0)?, kind: r.get(1)?, title: r.get(2)?, stored: r.get(3)?,
+                thumb: r.get(4)?, created_at: r.get(5)?, file_hash: r.get(6)?,
+                fp: ph.as_deref().and_then(parse_fp),
+                aspect: r.get::<_, Option<f64>>(8)?.unwrap_or(1.0),
+                collections: r.get(9)?,
+            })
+        }).map_err(|e| e.to_string())?;
+        mapped.filter_map(|r| r.ok()).collect()
+    };
+
+    let n = rows.len();
+    if n < 2 { return Ok(vec![]); }
+
+    let mut used = vec![false; n];
+    let mut clusters: Vec<(&'static str, Vec<usize>)> = Vec::new();
+
+    // 1. Exact — identical file bytes (same hash). Always safe to group.
+    {
+        let mut by_hash: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (i, row) in rows.iter().enumerate() {
+            if let Some(h) = row.file_hash.as_deref() {
+                by_hash.entry(h).or_default().push(i);
+            }
+        }
+        for members in by_hash.into_values() {
+            if members.len() >= 2 {
+                for &m in &members { used[m] = true; }
+                clusters.push(("exact", members));
+            }
+        }
+    }
+
+    // 2. Near — greedy STAR clustering: every candidate must match the SEED itself,
+    //    so unrelated images can never chain into one giant false group (the old
+    //    union-find bug). dHash prunes cheaply; the 16×16 grayscale MAD verifies.
+    //    Only HIGH-CONFIDENCE near-identical (MAD ≤ 6) are reported — the fuzzy
+    //    "similar" tier was dropped to avoid grouping merely-alike flat designs.
+    //    Capped so a very large library can't hang.
+    const MAD_THRESHOLD: u32 = 6;
+    const CAP: usize = 20_000;
+    if n <= CAP {
+        for i in 0..n {
+            if used[i] { continue; }
+            let Some(fa) = rows[i].fp.as_ref() else { continue };
+            let mut members = vec![i];
+            for j in (i + 1)..n {
+                if used[j] { continue; }
+                let Some(fb) = rows[j].fp.as_ref() else { continue };
+                if fp_similar(fa, fb, rows[i].aspect, rows[j].aspect, MAD_THRESHOLD).is_some() {
+                    members.push(j);
+                    used[j] = true;
+                }
+            }
+            if members.len() >= 2 {
+                used[i] = true;
+                clusters.push(("potential", members));   // non-committal: perceptual, not certain
+            }
+        }
+    }
+
+    // 3. Build output groups (oldest copy first = the one to keep).
+    let mut groups: Vec<DupGroup> = Vec::new();
+    for (reason, mut members) in clusters {
+        members.sort_by_key(|&m| rows[m].created_at);
+        let items = members.iter().map(|&m| {
+            let r = &rows[m];
+            DupItem {
+                id: r.id.clone(), kind: r.kind.clone(), title: r.title.clone(),
+                thumb: r.thumb.clone().unwrap_or_else(|| r.stored.clone()),
+                created_at: r.created_at, collections: r.collections.clone(),
+            }
+        }).collect();
+        groups.push(DupGroup { reason: reason.to_string(), distance: 0, items });
+    }
+
+    // Exact copies first, then potential matches; larger groups higher.
+    groups.sort_by(|a, b| {
+        let rank = |r: &str| if r == "exact" { 0 } else { 1 };
+        rank(&a.reason).cmp(&rank(&b.reason)).then(b.items.len().cmp(&a.items.len()))
+    });
+
+    Ok(groups)
+}
+
 fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
     let img = match image::open(path) {
         Ok(i) => i,
@@ -3309,6 +3562,14 @@ fn run_ytdlp(
         String::new()
     };
 
+    // On-demand PO-token provider: once a prior YouTube 403 has pulled the provider
+    // into app-data, install the bgutil plugin + start its server so every subsequent
+    // YouTube download auto-carries a GVS PO token. (yt-dlp loads the plugin from its
+    // config dir; the initial provider download happens lazily in the 403 fallback.)
+    let pot_ready = is_youtube
+        && crate::pot_provider::is_downloaded(&app)
+        && crate::pot_provider::ensure_running(&app);
+
     if is_youtube {
         if quality == "medium" {
             // Same client chain as best — height cap is the only difference.
@@ -3694,6 +3955,73 @@ fn run_ytdlp(
                     }));
                     if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
                     return;
+                }
+            }
+
+            // YouTube PO-token / SABR 403 fallback: some sessions are gated behind a
+            // GVS PO token (HTTP 403 on the media stream). Download + start the bgutil
+            // provider on demand (once) and retry with --plugin-dirs so yt-dlp gets a
+            // token. Only triggers when we didn't already use the provider this run.
+            let looks_pot = is_youtube && !pot_ready && {
+                let s = stderr_text.to_lowercase();
+                s.contains("http error 403") || s.contains("po token") || s.contains("sabr")
+            };
+            if looks_pot {
+                log::warn!(target: "Download", "youtube_pot_403 download_id={download_id} — fetching PO-token provider");
+                let _ = app.emit("download:progress", serde_json::json!({
+                    "download_id": download_id, "pct": 0.3_f64, "speed": "setting up YouTube…",
+                }));
+                if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.3, "setting up YouTube…", "downloading", ""); }
+
+                // Downloads the provider (once), installs the bgutil plugin into yt-dlp's
+                // config dir, and starts the local server. Then a plain re-run auto-uses
+                // a PO token — no extra flags (the frozen yt-dlp can't take --plugin-dirs).
+                if crate::pot_provider::ensure_running(&app) {
+                    if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            if !pre_files.contains(&p) { let _ = std::fs::remove_file(&p); }
+                        }
+                    }
+                    let pre_pot: std::collections::HashSet<std::path::PathBuf> =
+                        std::fs::read_dir(&tmp_dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+
+                    let _ = app.emit("download:progress", serde_json::json!({
+                        "download_id": download_id, "pct": 0.5_f64, "speed": "retrying with PO token…",
+                    }));
+
+                    let pot_out = hidden_command(&binary)
+                        .args(&base_args)
+                        .env("PYTHONUNBUFFERED", "1")
+                        .env("PYTHONIOENCODING", "utf-8")
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::piped())
+                        .output();
+                    if let Ok(ref o) = pot_out {
+                        let se = String::from_utf8_lossy(&o.stderr);
+                        if !se.trim().is_empty() { log::debug!(target: "Download", "pot_retry_stderr={:?}", &*se); }
+                    }
+
+                    let pot_paths: Vec<String> = std::fs::read_dir(&tmp_dir)
+                        .into_iter().flatten().flatten()
+                        .filter_map(|e| {
+                            let path = e.path();
+                            if pre_pot.contains(&path) { return None; }
+                            let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                            if SKIP_EXTS.contains(&ext.as_str()) { return None; }
+                            path.to_str().map(|s| s.to_string())
+                        })
+                        .collect();
+
+                    if !pot_paths.is_empty() {
+                        log::info!(target: "Download", "pot_retry_ok paths={}", pot_paths.len());
+                        let _ = app.emit("download:complete", serde_json::json!({
+                            "download_id": download_id, "paths": pot_paths, "url": url,
+                        }));
+                        if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
+                        return;
+                    }
+                    log::warn!(target: "Download", "pot_retry_failed download_id={download_id}");
                 }
             }
 

@@ -410,6 +410,102 @@ a:hover { text-decoration: underline; }
 }
 @keyframes spinner-rotate { to { transform: rotate(360deg); } }
 
+/* ─── Duplicates view ────────────────────────────────────────── */
+/* Full width (fills the window, not a left column) and media-forward: groups are
+   a slim header + a full-width media grid separated by dividers, so the thumbnails
+   themselves are the main element rather than boxed list items. */
+.dup-view { padding: 26px 40px 72px; }
+.dup-head { margin-bottom: 22px; }
+.dup-title { font-size: 22px; font-weight: 650; color: var(--text-primary); letter-spacing: -0.01em; }
+.dup-sub { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+
+.dup-loading {
+  display: flex; align-items: center; gap: 10px;
+  padding: 40px 4px; color: var(--text-secondary); font-size: 13px;
+}
+.dup-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 90px 20px; color: var(--text-secondary); text-align: center;
+}
+.dup-empty .icon { color: var(--success); }
+.dup-empty p { font-size: 14px; }
+
+.dup-group { padding-top: 26px; margin-top: 26px; border-top: 1px solid var(--border-subtle); }
+.dup-group:first-of-type { padding-top: 0; margin-top: 0; border-top: none; }
+
+.dup-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dup-badge {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 3px 10px; border-radius: 999px; flex-shrink: 0;
+}
+.dup-badge--exact     { background: rgba(239,68,68,0.14); color: var(--error); }
+.dup-badge--potential { background: rgba(234,179,8,0.16); color: var(--warning); }
+.dup-badge--identical { background: rgba(234,179,8,0.16); color: var(--warning); }
+.dup-badge--similar   { background: var(--accent-tint);   color: var(--accent-link); }
+.dup-group-count { font-size: 12.5px; color: var(--text-secondary); }
+.dup-keep-btn {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 13px; border-radius: 8px;
+  background: rgba(var(--fg-rgb),0.06); border: 1px solid var(--border-default);
+  color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.dup-keep-btn:hover { background: var(--error-bg); color: var(--error); border-color: transparent; }
+
+.dup-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+}
+.dup-item { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dup-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.14);
+  transition: transform var(--dur-fast), box-shadow var(--dur-fast);
+}
+.dup-thumb:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.24); }
+.dup-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block; }
+.dup-play {
+  position: absolute; top: 8px; left: 8px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); color: #fff;
+  display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.dup-original {
+  position: absolute; bottom: 8px; left: 8px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 3px 8px; border-radius: 999px;
+  background: rgba(16,185,129,0.92); color: #fff;
+}
+.dup-del {
+  position: absolute; top: 8px; right: 8px;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: rgba(0,0,0,0.6); color: #fff; border: none;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; cursor: pointer;
+  transition: opacity var(--dur-fast), background var(--dur-fast);
+}
+.dup-thumb:hover .dup-del { opacity: 1; }
+.dup-del:hover { background: var(--error); }
+.dup-item-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 0 2px; }
+.dup-item-title {
+  font-size: 12px; color: var(--text-primary); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dup-item-date {
+  font-size: 11px; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dup-item-col { display: inline-flex; align-items: center; gap: 3px; overflow: hidden; }
+.dup-item-col .icon { opacity: 0.6; flex-shrink: 0; }
+
 /* Notifications — relative so badge can be absolute inside */
 .top-bar-notif { position: relative; }
 
