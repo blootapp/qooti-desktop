@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use tauri::{AppHandle, Manager};
 
-const SCHEMA_VERSION: i64 = 30;
+const SCHEMA_VERSION: i64 = 31;
 
 pub fn init(app: &AppHandle) -> Result<Connection> {
     let data_dir = app.path().app_data_dir()?;
