@@ -242,12 +242,16 @@ async function loop() {
 export function initAutoTag() {
   if (!('__TAURI_INTERNALS__' in window)) return  // no-op in browser mock
 
+  // Always load the vocab so getTagLabel() can localize *stored* suggestions even when
+  // the recommendation loop is off/idle — otherwise labels fall back to the raw tag ID.
+  reloadVocab().then(() => store.emit(events.GRID_RELOAD))
+
   _enabled = getSetting('tag_recommendations_enabled', 'false') !== 'false'
   if (_enabled) loop()
 
   // Wake the loop immediately when new work arrives (import, re-tag all, etc.)
   store.on(events.GRID_RELOAD,       () => { if (_enabled) loop() })
-  store.on(events.TAG_VOCAB_CHANGED, () => { if (_enabled) reloadVocab() })
+  store.on(events.TAG_VOCAB_CHANGED, () => reloadVocab())
 
   // React to the toggle in settings — start or stop the loop dynamically
   store.on(events.SETTINGS_CHANGED, ({ key, value }) => {

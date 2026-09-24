@@ -88,9 +88,18 @@ function renderGroup(group) {
   head.innerHTML = `
     <span class="dup-badge dup-badge--${group.reason}">${esc(reasonLabel(group.reason))}</span>
     <span class="dup-group-count">${t('duplicates.copies', { n: group.items.length })}</span>
+    ${group.reason !== 'exact' ? `<button class="dup-notsame-btn" title="${esc(t('duplicates.not_same'))}">${I('x', 14)}${esc(t('duplicates.not_same'))}</button>` : ''}
     <button class="dup-keep-btn">${I('trash', 14)}${esc(t('duplicates.keep_oldest', { n: group.items.length - 1 }))}</button>
   `
   el.appendChild(head)
+
+  // "Not duplicates" — tell the app these aren't the same so it never regroups them.
+  head.querySelector('.dup-notsame-btn')?.addEventListener('click', async () => {
+    try { await api.markNotDuplicates(group.items.map(i => i.id)) } catch (err) { console.warn('mark_not_duplicates failed:', String(err)) }
+    el.style.transition = 'opacity 0.2s ease'
+    el.style.opacity = '0'
+    setTimeout(() => el.remove(), 200)
+  })
 
   const grid = document.createElement('div')
   grid.className = 'dup-items'

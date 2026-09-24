@@ -184,6 +184,26 @@ pub async fn enhance_image(app: AppHandle, id: String) -> Result<String, String>
         .map_err(|e| e.to_string())?
 }
 
+/// Delete an item's enhanced variant: removes the file and clears `enhanced_path`.
+/// The original (stored_path) is untouched.
+#[tauri::command]
+pub fn delete_enhanced(id: String, state: tauri::State<AppState>) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let path: Option<String> = db
+        .query_row("SELECT enhanced_path FROM inspirations WHERE id = ?1", [&id],
+            |r| r.get::<_, Option<String>>(0))
+        .map_err(|e| e.to_string())?;
+    if let Some(p) = path.filter(|s| !s.is_empty()) {
+        let _ = std::fs::remove_file(&p);
+    }
+    let now = chrono::Utc::now().timestamp_millis();
+    db.execute(
+        "UPDATE inspirations SET enhanced_path = NULL, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![id, now],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

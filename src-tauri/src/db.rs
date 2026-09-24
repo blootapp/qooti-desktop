@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use tauri::{AppHandle, Manager};
 
-const SCHEMA_VERSION: i64 = 31;
+const SCHEMA_VERSION: i64 = 32;
 
 pub fn init(app: &AppHandle) -> Result<Connection> {
     let data_dir = app.path().app_data_dir()?;
@@ -67,6 +67,14 @@ fn run_additive_migrations(conn: &Connection) -> Result<()> {
     let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN batch_id TEXT");
     // AI upscaler/enhancer: path to the enhanced variant (original kept in stored_path).
     let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN enhanced_path TEXT");
+    // Pairs the user marked "not duplicates" so the finder never regroups them (a < b).
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS ignored_dupes (
+            a TEXT NOT NULL,
+            b TEXT NOT NULL,
+            PRIMARY KEY (a, b)
+        );"
+    );
 
     // Free-plan feature tables (v28)
     let _ = conn.execute_batch(

@@ -324,6 +324,8 @@ pub fn run() {
             commands::extract_palette,
             commands::download_url,
             enhancer::enhance_image,
+            enhancer::delete_enhanced,
+            commands::mark_not_duplicates,
             commands::finalize_download,
             commands::cancel_download,
             commands::list_tag_vocab,

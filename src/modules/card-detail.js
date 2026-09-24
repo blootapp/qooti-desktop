@@ -573,13 +573,8 @@ async function saveTitle(value) {
 // upscale runs on a background thread in Rust, so the UI stays responsive.
 function setupEnhanceUI(item, img, mediaWrap, origSrc) {
   const toSrc = p => (IS_TAURI ? convertFileSrc(p) : p)
+  const LOW_RES_MAX = 1200   // longest side (px); above this an image isn't "low-res" so we don't offer Enhance
   let showingEnhanced = !!item.enhanced_path   // default to the enhanced view once it exists
-
-  const badge = document.createElement('div')
-  badge.className = 'enh-badge'
-  badge.hidden = true
-  badge.innerHTML = `<span class="icon icon-12" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>Enhanced`
-  mediaWrap.appendChild(badge)
 
   const ctrl = document.createElement('div')
   ctrl.className = 'enh-ctrl'
@@ -587,8 +582,7 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
 
   function applyView() {
     const es = item.enhanced_path ? toSrc(item.enhanced_path) : null
-    if (showingEnhanced && es) { img.src = es; badge.hidden = false }
-    else                       { img.src = origSrc; badge.hidden = true }
+    img.src = (showingEnhanced && es) ? es : origSrc
     const t = ctrl.querySelector('.enh-toggle')
     if (t) {
       t.querySelector('[data-v="orig"]').classList.toggle('is-active', !showingEnhanced)
@@ -621,24 +615,55 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
     }
   }
 
+  async function onDeleteEnhanced() {
+    const del = ctrl.querySelector('.enh-del')
+    if (del) del.disabled = true
+    try {
+      await api.deleteEnhanced(item.id)
+      item.enhanced_path = null
+      showingEnhanced = false
+      renderControl()
+      applyView()
+      store.emit(events.GRID_RELOAD)   // drop the grid-card badge too
+    } catch (err) {
+      log.warn('delete enhanced failed:', String(err))
+      if (del) del.disabled = false
+    }
+  }
+
+  function showEnhanceButton() {
+    ctrl.innerHTML = `
+      <button class="enh-btn" title="Enhance — AI upscale & sharpen">
+        <span class="enh-btn-shine" aria-hidden="true"></span>
+        <span class="icon icon-14" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>
+        <span class="enh-btn-label">Enhance</span>
+      </button>`
+    ctrl.querySelector('.enh-btn').addEventListener('click', onEnhance)
+  }
+
   function renderControl() {
     if (item.enhanced_path) {
       ctrl.innerHTML = `
         <div class="enh-toggle" role="group" aria-label="Compare original and enhanced">
           <button class="enh-toggle-opt" data-v="orig">Original</button>
           <button class="enh-toggle-opt" data-v="enh">Enhanced</button>
-        </div>`
+        </div>
+        <button class="enh-del" title="Remove enhanced">
+          <span class="icon icon-14" style="mask-image:url('/icons/trash.svg');-webkit-mask-image:url('/icons/trash.svg')" aria-hidden="true"></span>
+        </button>`
       ctrl.querySelector('[data-v="orig"]').addEventListener('click', () => { showingEnhanced = false; applyView() })
       ctrl.querySelector('[data-v="enh"]').addEventListener('click',  () => { showingEnhanced = true;  applyView() })
-    } else {
-      ctrl.innerHTML = `
-        <button class="enh-btn" title="Enhance — AI upscale & sharpen">
-          <span class="enh-btn-shine" aria-hidden="true"></span>
-          <span class="icon icon-14" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>
-          <span class="enh-btn-label">Enhance</span>
-        </button>`
-      ctrl.querySelector('.enh-btn').addEventListener('click', onEnhance)
+      ctrl.querySelector('.enh-del').addEventListener('click', onDeleteEnhanced)
+      return
     }
+    // Not enhanced → only offer Enhance for low-res images (nothing to gain on big ones).
+    ctrl.innerHTML = ''
+    const decide = () => {
+      const long = Math.max(img.naturalWidth || 0, img.naturalHeight || 0)
+      if (long > 0 && long <= LOW_RES_MAX) showEnhanceButton()
+    }
+    if (img.complete && img.naturalWidth) decide()
+    else img.addEventListener('load', decide, { once: true })
   }
 
   renderControl()

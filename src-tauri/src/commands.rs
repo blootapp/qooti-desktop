@@ -2359,6 +2359,22 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
     let n = rows.len();
     if n < 2 { return Ok(vec![]); }
 
+    // Pairs the user explicitly marked "not duplicates" — never regroup these.
+    let ignored: std::collections::HashSet<(String, String)> = {
+        let db = state.db.lock().map_err(|_| "db lock".to_string())?;
+        let mut set = std::collections::HashSet::new();
+        if let Ok(mut stmt) = db.prepare("SELECT a, b FROM ignored_dupes") {
+            if let Ok(it) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+                for pair in it.flatten() { set.insert(pair); }
+            }
+        }
+        set
+    };
+    let ignored_pair = |a: &str, b: &str| {
+        let key = if a < b { (a.to_string(), b.to_string()) } else { (b.to_string(), a.to_string()) };
+        ignored.contains(&key)
+    };
+
     let mut used = vec![false; n];
     let mut clusters: Vec<(&'static str, Vec<usize>)> = Vec::new();
 
@@ -2394,7 +2410,9 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
             for j in (i + 1)..n {
                 if used[j] { continue; }
                 let Some(fb) = rows[j].fp.as_ref() else { continue };
-                if fp_similar(fa, fb, rows[i].aspect, rows[j].aspect, MAD_THRESHOLD).is_some() {
+                if fp_similar(fa, fb, rows[i].aspect, rows[j].aspect, MAD_THRESHOLD).is_some()
+                    && !ignored_pair(&rows[i].id, &rows[j].id)
+                {
                     members.push(j);
                     used[j] = true;
                 }
@@ -2428,6 +2446,21 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
     });
 
     Ok(groups)
+}
+
+/// Record that the given items are NOT duplicates of each other, so `find_duplicates`
+/// never groups them again. Stores every pairwise combination (canonical a < b).
+#[tauri::command]
+pub fn mark_not_duplicates(ids: Vec<String>, state: State<AppState>) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            let (a, b) = if ids[i] < ids[j] { (&ids[i], &ids[j]) } else { (&ids[j], &ids[i]) };
+            db.execute("INSERT OR IGNORE INTO ignored_dupes (a, b) VALUES (?1, ?2)", params![a, b])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
