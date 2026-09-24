@@ -192,6 +192,8 @@ pub struct Inspiration {
     pub duration_secs: Option<f64>,
     #[serde(default)]
     pub collection_names: Option<String>,
+    #[serde(default)]
+    pub enhanced_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -406,6 +408,7 @@ pub fn import_files(
             auto_tag_model: None,
             duration_secs: duration,
             collection_names: None,
+            enhanced_path: None,
         });
     }
 
@@ -831,7 +834,7 @@ pub fn list_inspirations(
                 duration_secs,
                 (SELECT json_group_array(c.name)
                  FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
          FROM inspirations
          {}
          ORDER BY {}
@@ -860,7 +863,7 @@ pub fn get_inspiration(id: String, state: State<AppState>) -> Result<Inspiration
                 duration_secs,
                 (SELECT json_group_array(c.name)
                  FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
          FROM inspirations WHERE id = ?1",
         params![id],
         row_to_inspiration,
@@ -987,6 +990,7 @@ fn row_to_inspiration(row: &rusqlite::Row) -> rusqlite::Result<Inspiration> {
         auto_tag_model:       row.get(21)?,
         duration_secs:        row.get(22).ok(),
         collection_names:     row.get(23).ok(),
+        enhanced_path:        row.get("enhanced_path").ok(),
     })
 }
 
@@ -2336,7 +2340,7 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
             "SELECT id, type, title, stored_path, thumbnail_path, created_at, file_hash, phash, aspect_ratio,
                     (SELECT json_group_array(c.name)
                      FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
-                     WHERE ci.inspiration_id = inspirations.id) AS collection_names
+                     WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
              FROM inspirations"
         ).map_err(|e| e.to_string())?;
         let mapped = stmt.query_map([], |r| {
@@ -3351,6 +3355,52 @@ pub fn cancel_download_for_ext_id(ext_id: &str, app: &AppHandle) {
 }
 
 
+/// Replace the value of a query-string key (naive, first occurrence). Used to bump
+/// image-CDN size params (e.g. Twitter `name=small`) to their largest variant.
+fn replace_query_value(url: &str, key: &str, val: &str) -> String {
+    let needle = format!("{key}=");
+    if let Some(pos) = url.find(&needle) {
+        let start = pos + needle.len();
+        let end = url[start..].find('&').map(|i| start + i).unwrap_or(url.len());
+        format!("{}{}{}", &url[..start], val, &url[end..])
+    } else {
+        url.to_string()
+    }
+}
+
+/// Rewrite a known image-CDN URL to its highest-resolution variant. Returns `Some`
+/// only when a rule matches. Callers MUST try this first and fall back to the
+/// original URL — the hi-res variant can 404 for some images.
+fn hi_res_image_url(url: &str) -> Option<String> {
+    // Pinterest: https://i.pinimg.com/{size}/aa/bb/cc/hash.jpg → /originals/…
+    // The size bucket is the first path segment (236x, 474x, 564x, 736x, 60x60…).
+    if let Some(idx) = url.find("pinimg.com/") {
+        let base_len = idx + "pinimg.com/".len();
+        let after = &url[base_len..];
+        if let Some(slash) = after.find('/') {
+            let seg = &after[..slash];
+            let is_size = seg != "originals"
+                && !seg.is_empty()
+                && seg.chars().all(|c| c.is_ascii_digit() || c == 'x')
+                && seg.contains(|c: char| c.is_ascii_digit());
+            if is_size {
+                return Some(format!("{}originals/{}", &url[..base_len], &after[slash + 1..]));
+            }
+        }
+        return None;
+    }
+    // Twitter / X: pbs.twimg.com/media/ID?format=jpg&name=small → name=orig
+    if url.contains("pbs.twimg.com/media/") {
+        return Some(if url.contains("name=") {
+            replace_query_value(url, "name", "orig")
+        } else {
+            let sep = if url.contains('?') { '&' } else { '?' };
+            format!("{url}{sep}name=orig")
+        });
+    }
+    None
+}
+
 fn run_ytdlp(
     app: AppHandle,
     download_id: String,
@@ -3384,19 +3434,38 @@ fn run_ytdlp(
         if let Some(ref eid) = ext_id {
             set_ext_progress(&app, eid, 0.1, "", "downloading", "");
         }
-        let bytes_result = ureq::get(&url)
-            .set("User-Agent", ua)
-            .call()
-            .map_err(|e| e.to_string())
-            .and_then(|r| {
-                let mut bytes = Vec::new();
-                r.into_reader().read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-                Ok(bytes)
-            });
-        match bytes_result {
-            Ok(bytes) => {
-                let ext      = url_path.rsplit('.').next().unwrap_or("jpg");
-                let out_path = tmp_dir.join(format!("image_{download_id}.{ext}"));
+        // Try the highest-res variant of known CDNs (Pinterest/Twitter) first, then
+        // the original URL. The hi-res guess can 404, so the original is always kept
+        // as a fallback and we never regress below what the browser showed.
+        let mut candidates: Vec<String> = Vec::new();
+        if let Some(hi) = hi_res_image_url(&url) { candidates.push(hi); }
+        candidates.push(url.clone());
+
+        let mut fetched: Option<(Vec<u8>, String)> = None;
+        for cand in &candidates {
+            let r = ureq::get(cand).set("User-Agent", ua).call()
+                .map_err(|e| e.to_string())
+                .and_then(|r| {
+                    let mut bytes = Vec::new();
+                    r.into_reader().read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+                    Ok(bytes)
+                });
+            match r {
+                Ok(bytes) if !bytes.is_empty() => {
+                    if cand != &url { log::info!(target: "Download", "hi_res_image used={cand:?}"); }
+                    fetched = Some((bytes, cand.clone()));
+                    break;
+                }
+                Ok(_)  => continue,
+                Err(e) => { log::debug!(target: "Download", "image_candidate_failed url={cand:?} err={e}"); continue; }
+            }
+        }
+
+        match fetched {
+            Some((bytes, used_url)) => {
+                let used_path = used_url.split('?').next().unwrap_or(&used_url);
+                let ext       = used_path.rsplit('.').next().filter(|e| e.len() <= 5).unwrap_or("jpg");
+                let out_path  = tmp_dir.join(format!("image_{download_id}.{ext}"));
                 if let Err(e) = std::fs::write(&out_path, &bytes) {
                     log::warn!(target: "Download", "direct_image_write_err error={e}");
                     let _ = app.emit("download:error", serde_json::json!({
@@ -3414,13 +3483,13 @@ fn run_ytdlp(
                 }));
                 if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
             }
-            Err(e) => {
-                log::warn!(target: "Download", "direct_image_fetch_err error={e}");
+            None => {
+                log::warn!(target: "Download", "direct_image_fetch_err all candidates failed");
                 let _ = app.emit("download:error", serde_json::json!({
                     "download_id": download_id,
-                    "message": format!("Failed to download image: {e}"),
+                    "message": "Failed to download image",
                 }));
-                if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.0, "", "error", &e); }
+                if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.0, "", "error", "Download failed"); }
             }
         }
         return;
@@ -3561,6 +3630,13 @@ fn run_ytdlp(
     } else {
         String::new()
     };
+    // When the PO-token provider is running, switch to web-based clients, which are the
+    // ones that actually CONSUME the GVS PO token (verified end-to-end: web + provider
+    // mints a token on macOS + Windows CI). The default tv/android_vr/ios formats ignore
+    // the token, so if yt-dlp picks one of their (higher-res) formats its media URL keeps
+    // 403-ing under SABR gating even while the provider is up — that's the macOS failure.
+    // Restricting to web clients guarantees every offered format carries a working token.
+    let yt_pot_clients_arg = "youtube:player_client=web,web_embedded".to_string();
 
     // On-demand PO-token provider: once a prior YouTube 403 has pulled the provider
     // into app-data, install the bgutil plugin + start its server so every subsequent
@@ -3589,7 +3665,8 @@ fn run_ytdlp(
             ]);
         }
         base_args.extend_from_slice(&["--print", "before_dl:%(format_id)s %(height)s %(vcodec)s"]);
-        base_args.extend_from_slice(&["--extractor-args", yt_clients_arg.as_str()]);
+        base_args.extend_from_slice(&["--extractor-args",
+            if pot_ready { yt_pot_clients_arg.as_str() } else { yt_clients_arg.as_str() }]);
     } else if quality == "medium" {
         base_args.extend_from_slice(&[
             "--format",
@@ -3990,8 +4067,16 @@ fn run_ytdlp(
                         "download_id": download_id, "pct": 0.5_f64, "speed": "retrying with PO token…",
                     }));
 
+                    // Retry with web-based clients so the freshly-started provider's PO
+                    // token is actually applied to the media URLs. Re-using the default
+                    // chain here is pointless — its tv/android_vr formats ignore the token
+                    // and 403 again (this was the bug that left macOS failing on retry).
+                    let pot_args: Vec<&str> = base_args.iter()
+                        .map(|&a| if a == yt_clients_arg.as_str() { yt_pot_clients_arg.as_str() } else { a })
+                        .collect();
+
                     let pot_out = hidden_command(&binary)
-                        .args(&base_args)
+                        .args(&pot_args)
                         .env("PYTHONUNBUFFERED", "1")
                         .env("PYTHONIOENCODING", "utf-8")
                         .stdout(std::process::Stdio::null())
@@ -4104,19 +4189,32 @@ fn pinterest_image_fallback(
     };
     log::debug!(target: "Download", "pinterest_og_image url={:?}", image_url);
 
-    // Step 3: download the image bytes directly
-    let response = match ureq::get(&image_url).set("User-Agent", ua).call() {
-        Ok(r)  => r,
-        Err(e) => { log::warn!(target: "Download", "pinterest_img_download_err error={e}"); return vec![]; }
-    };
+    // Step 3: download the image bytes — prefer the highest-res variant (originals/),
+    // fall back to the og:image URL as-is if that 404s.
+    let mut img_candidates: Vec<String> = Vec::new();
+    if let Some(hi) = hi_res_image_url(&image_url) { img_candidates.push(hi); }
+    img_candidates.push(image_url.clone());
+
     let mut bytes: Vec<u8> = Vec::new();
-    if let Err(e) = response.into_reader().read_to_end(&mut bytes) {
-        log::warn!(target: "Download", "pinterest_img_read_err error={e}");
+    let mut used_img = image_url.clone();
+    for cand in &img_candidates {
+        match ureq::get(cand).set("User-Agent", ua).call() {
+            Ok(r) => {
+                let mut b = Vec::new();
+                if r.into_reader().read_to_end(&mut b).is_ok() && !b.is_empty() {
+                    bytes = b; used_img = cand.clone(); break;
+                }
+            }
+            Err(e) => { log::debug!(target: "Download", "pin_img_candidate_failed url={cand:?} err={e}"); }
+        }
+    }
+    if bytes.is_empty() {
+        log::warn!(target: "Download", "pinterest_img_download_err all candidates failed");
         return vec![];
     }
 
     // Step 4: save with correct extension and return path
-    let ext = image_url.split('?').next()
+    let ext = used_img.split('?').next()
         .and_then(|u| u.rsplit('.').next())
         .filter(|e| e.len() <= 5)
         .unwrap_or("jpg");
@@ -4329,6 +4427,7 @@ pub fn finalize_download(
         auto_tag_model: None,
         duration_secs: duration,
         collection_names: None,
+        enhanced_path: None,
     })
 }
 
@@ -4794,7 +4893,7 @@ pub fn check_url_exists(url: String, state: State<AppState>) -> Result<Option<In
                 auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
                 (SELECT json_group_array(c.name) FROM collection_items ci
                  JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
          FROM inspirations WHERE source_url = ?1 LIMIT 1",
         params![url],
         row_to_inspiration,
@@ -4909,7 +5008,7 @@ const INSP_SELECT: &str =
             auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
             (SELECT json_group_array(c.name) FROM collection_items ci
              JOIN collections c ON c.id = ci.collection_id
-             WHERE ci.inspiration_id = inspirations.id) AS collection_names
+             WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
      FROM inspirations";
 
 // Items saved 60–180 days ago, least recently viewed first.
@@ -4983,7 +5082,7 @@ pub fn list_because_you_viewed(limit: i64, state: State<AppState>) -> Result<Vec
                 auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
                 (SELECT json_group_array(c.name) FROM collection_items ci
                  JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
          FROM inspirations
          WHERE inspirations.id != ?1
            AND inspirations.id IN (

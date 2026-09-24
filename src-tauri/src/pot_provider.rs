@@ -4,18 +4,18 @@
 // some sessions/IPs (see arch §51.4). A GVS PO token clears it. The provider is a
 // self-contained (deno-compiled) local HTTP server that mints *anonymous* BotGuard
 // tokens — no login, no cookies, no account risk. It's large (~250 MB), so it is
-// NOT bundled: it's downloaded (gzip, ~100 MB) into app-data the first time YouTube
-// needs it, then spawned on 127.0.0.1:4416, where yt-dlp's bundled bgutil plugin
-// (see pot-plugin/, passed via --plugin-dirs) queries it automatically.
+// NOT bundled: it's downloaded (gzip) into app-data the first time YouTube needs it,
+// then spawned on 127.0.0.1:4416, where yt-dlp's bgutil plugin (installed into
+// yt-dlp's config dir — the frozen binary ignores --plugin-dirs) queries it.
 //
-// Everything here is best-effort: if the download or spawn fails, callers just run
-// yt-dlp without a PO token (unchanged behaviour), so YouTube never *breaks* —
-// it only gains reliability when the provider is available.
+// Best-effort: if anything fails, callers run yt-dlp without a PO token (unchanged
+// behaviour). Every step emits a `pot:diag` event so it shows up in feedback reports
+// (diagnostics.js) — the only way to debug the macOS path remotely.
 
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use crate::AppState;
 
 const PORT: u16 = 4416;
@@ -26,6 +26,13 @@ const PORT: u16 = 4416;
 
 #[cfg(windows)]      const BIN_NAME: &str = "qooti-pot.exe";
 #[cfg(not(windows))] const BIN_NAME: &str = "qooti-pot";
+
+/// Emit a diagnostic breadcrumb (→ feedback activity trail) + log it.
+fn diag(app: &AppHandle, msg: impl AsRef<str>) {
+    let m = msg.as_ref();
+    log::info!(target: "Pot", "{m}");
+    let _ = app.emit("pot:diag", m.to_string());
+}
 
 /// The managed provider binary in app-data.
 fn binary_path(app: &AppHandle) -> Option<PathBuf> {
@@ -38,7 +45,6 @@ fn plugin_source(app: &AppHandle) -> Option<PathBuf> {
         let p = res.join("pot-plugin");
         if p.join("yt_dlp_plugins").exists() { return Some(p); }
     }
-    // Dev (cargo run / tauri dev): exe at src-tauri/target/<profile>/ → src-tauri/pot-plugin
     if let Ok(exe) = std::env::current_exe() {
         if let Some(p) = exe.parent().and_then(|d| d.parent()).and_then(|d| d.parent())
             .map(|d| d.join("pot-plugin"))
@@ -49,40 +55,52 @@ fn plugin_source(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
-/// yt-dlp's default config plugin directory for this OS. IMPORTANT: the frozen
-/// (PyInstaller) yt-dlp only auto-loads plugins from here — `--plugin-dirs` and a
-/// `yt-dlp-plugins/` folder next to the binary are both ignored by the standalone
-/// build (verified). So we copy the plugin here instead.
-fn ytdlp_plugin_dir() -> Option<PathBuf> {
+/// yt-dlp's default config plugin directories for this OS. The frozen (PyInstaller)
+/// yt-dlp only auto-loads plugins from these — `--plugin-dirs` and next-to-binary
+/// are ignored (verified on Windows). We install into every candidate to cover the
+/// macOS uncertainty (`~/.config` vs `~/Library/Application Support`).
+fn ytdlp_plugin_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
     #[cfg(windows)]
-    { std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("yt-dlp").join("plugins")) }
+    { if let Some(a) = std::env::var_os("APPDATA") { dirs.push(PathBuf::from(a).join("yt-dlp").join("plugins")); } }
     #[cfg(not(windows))]
     {
-        let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-        Some(base.join("yt-dlp").join("plugins"))
+        if let Some(x) = std::env::var_os("XDG_CONFIG_HOME") {
+            dirs.push(PathBuf::from(x).join("yt-dlp").join("plugins"));
+        }
+        if let Some(h) = std::env::var_os("HOME") {
+            let home = PathBuf::from(h);
+            dirs.push(home.join(".config").join("yt-dlp").join("plugins"));
+            #[cfg(target_os = "macos")]
+            dirs.push(home.join("Library").join("Application Support").join("yt-dlp").join("plugins"));
+        }
     }
+    dirs
 }
 
-/// Copy the bundled bgutil plugin into yt-dlp's config plugin dir so the standalone
-/// yt-dlp auto-loads it (queries the local server on :4416). Idempotent.
+/// Copy the bundled bgutil plugin into yt-dlp's config plugin dir(s). Idempotent.
 pub fn install_plugin(app: &AppHandle) -> bool {
-    let (Some(src), Some(dir)) = (plugin_source(app), ytdlp_plugin_dir()) else { return false };
+    let Some(src) = plugin_source(app) else { diag(app, "plugin source missing"); return false };
     let src_ext = src.join("yt_dlp_plugins").join("extractor");
-    let dst_ext = dir.join("qooti-bgutil").join("yt_dlp_plugins").join("extractor");
-    if std::fs::create_dir_all(&dst_ext).is_err() { return false; }
-    let mut ok = false;
-    if let Ok(entries) = std::fs::read_dir(&src_ext) {
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) == Some("py") {
-                if let Some(name) = p.file_name() {
-                    if std::fs::copy(&p, dst_ext.join(name)).is_ok() { ok = true; }
+    let mut installed = 0;
+    for dir in ytdlp_plugin_dirs() {
+        let dst_ext = dir.join("qooti-bgutil").join("yt_dlp_plugins").join("extractor");
+        if std::fs::create_dir_all(&dst_ext).is_err() { continue; }
+        let mut copied = false;
+        if let Ok(entries) = std::fs::read_dir(&src_ext) {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|x| x.to_str()) == Some("py") {
+                    if let Some(name) = p.file_name() {
+                        if std::fs::copy(&p, dst_ext.join(name)).is_ok() { copied = true; }
+                    }
                 }
             }
         }
+        if copied { installed += 1; }
     }
-    ok
+    diag(app, format!("plugin installed into {installed} dir(s)"));
+    installed > 0
 }
 
 /// True once the provider binary has been downloaded.
@@ -90,8 +108,8 @@ pub fn is_downloaded(app: &AppHandle) -> bool {
     binary_path(app).is_some_and(|p| p.exists())
 }
 
-/// Download + gunzip the provider binary from R2 into app-data. Blocking; call off
-/// the main thread. No-op if already present.
+/// Download + gunzip the provider binary from R2 into app-data. Blocking. No-op if
+/// already present.
 pub fn ensure_downloaded(app: &AppHandle) -> Result<PathBuf, String> {
     let path = binary_path(app).ok_or("no app_data_dir")?;
     if path.exists() { return Ok(path); }
@@ -100,24 +118,29 @@ pub fn ensure_downloaded(app: &AppHandle) -> Result<PathBuf, String> {
     }
 
     let url = format!("https://api.bloot.app/download/qooti-pot-{TARGET}.gz");
-    log::info!(target: "Pot", "downloading provider {url}");
+    diag(app, format!("downloading provider ({TARGET})…"));
     let resp = ureq::get(&url).call().map_err(|e| format!("download failed: {e}"))?;
     let mut gz = Vec::new();
     resp.into_reader().read_to_end(&mut gz).map_err(|e| e.to_string())?;
+    diag(app, format!("downloaded {} MB (gz), decompressing…", gz.len() / 1_048_576));
 
     let mut dec = flate2::read::GzDecoder::new(&gz[..]);
     let mut bin = Vec::new();
     dec.read_to_end(&mut bin).map_err(|e| format!("decompress failed: {e}"))?;
 
-    // Write to a temp file then rename, so a half-download never looks "ready".
     let tmp = path.with_extension("part");
     std::fs::write(&tmp, &bin).map_err(|e| e.to_string())?;
     #[cfg(unix)] {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
     }
+    // macOS: our own download shouldn't quarantine, but strip it defensively so
+    // Gatekeeper can't block the helper.
+    #[cfg(target_os = "macos")]
+    { let _ = std::process::Command::new("xattr").args(["-dr", "com.apple.quarantine"]).arg(&tmp).status(); }
+
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
-    log::info!(target: "Pot", "provider ready ({} MB)", bin.len() / 1_048_576);
+    diag(app, format!("provider ready ({} MB)", bin.len() / 1_048_576));
     Ok(path)
 }
 
@@ -136,35 +159,68 @@ fn wait_up() -> bool {
     false
 }
 
+/// Delete the managed binary so a (re-hosted) fixed build is re-downloaded next time.
+fn discard_binary(app: &AppHandle) {
+    if let Some(p) = binary_path(app) { let _ = std::fs::remove_file(p); }
+}
+
 /// Ensure the provider server is running (downloading the binary first if needed).
-/// Returns true once it's answering on 127.0.0.1:4416. Best-effort — a `false`
-/// simply means the caller runs yt-dlp without a PO token.
+/// Returns true once it answers on 127.0.0.1:4416. Best-effort.
 pub fn ensure_running(app: &AppHandle) -> bool {
-    install_plugin(app);   // yt-dlp auto-loads the plugin from its config dir
-    if is_up() { return true; }
+    install_plugin(app);
+    if is_up() { diag(app, "server already up"); return true; }
 
     let path = match ensure_downloaded(app) {
         Ok(p) => p,
-        Err(e) => { log::warn!(target: "Pot", "download failed: {e}"); return false; }
+        Err(e) => { diag(app, format!("download failed: {e}")); return false; }
     };
 
     let state = app.state::<AppState>();
     {
         let mut guard = state.pot_child.lock().unwrap();
-        // Reuse a still-alive child.
         if let Some(child) = guard.as_mut() {
-            if matches!(child.try_wait(), Ok(None)) {
-                drop(guard);
-                return wait_up();
-            }
+            if matches!(child.try_wait(), Ok(None)) { drop(guard); return wait_up(); }
         }
-        match crate::commands::hidden_command(&path).spawn() {
-            Ok(c)  => { *guard = Some(c); }
-            Err(e) => { log::warn!(target: "Pot", "spawn failed: {e}"); return false; }
+
+        diag(app, "starting provider server…");
+        let spawned = crate::commands::hidden_command(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+        let mut child = match spawned {
+            Ok(c)  => c,
+            Err(e) => { diag(app, format!("spawn failed: {e}")); discard_binary(app); return false; }
+        };
+
+        // Did it die immediately? (e.g. Apple-Silicon killing an unsigned binary →
+        // signal 9, or a runtime error). Capture stderr to say WHY, then self-heal.
+        std::thread::sleep(Duration::from_millis(900));
+        if let Ok(Some(status)) = child.try_wait() {
+            let mut err = String::new();
+            if let Some(mut se) = child.stderr.take() { let _ = se.read_to_string(&mut err); }
+            #[cfg(unix)]
+            let how = {
+                use std::os::unix::process::ExitStatusExt;
+                status.signal().map(|s| format!("signal {s}"))
+                    .or_else(|| status.code().map(|c| format!("code {c}")))
+                    .unwrap_or_else(|| "?".into())
+            };
+            #[cfg(not(unix))]
+            let how = status.code().map(|c| format!("code {c}")).unwrap_or_else(|| "?".into());
+            diag(app, format!("provider exited immediately ({how}) {}", err.trim().chars().take(160).collect::<String>()));
+            discard_binary(app);
+            return false;
         }
+
+        // Alive — drain stderr in the background so the pipe never blocks the server.
+        if let Some(mut se) = child.stderr.take() {
+            std::thread::spawn(move || { let mut buf = [0u8; 4096]; while matches!(se.read(&mut buf), Ok(n) if n > 0) {} });
+        }
+        *guard = Some(child);
     }
+
     let ok = wait_up();
-    if !ok { log::warn!(target: "Pot", "provider did not come up on :{PORT}"); }
+    diag(app, if ok { "server up ✓" } else { "server did not respond on :4416" });
     ok
 }
 

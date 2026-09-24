@@ -538,13 +538,36 @@
   }
 
   // ─── Save flow ───────────────────────────────────────────────────
+  // Pick the largest candidate the browser knows about for an <img>. `currentSrc`
+  // is only the one chosen for the current viewport/DPR — often not the biggest in
+  // the `srcset`. The app then applies CDN-specific hi-res rewriting (Pinterest →
+  // /originals/, X → name=orig, …) with a safe fallback on top of this URL.
+  function largestImageSrc(el) {
+    const abs = (u) => { try { return new URL(u, location.href).href } catch { return u } }
+    let best = el.currentSrc || el.src || ''
+    let bestW = 0
+    const ss = el.getAttribute && el.getAttribute('srcset')
+    if (ss) {
+      for (const part of ss.split(',')) {
+        const sp = part.trim().split(/\s+/)
+        const u = sp[0], d = sp[1]
+        if (!u || u.startsWith('data:')) continue
+        const w = d && d.endsWith('w') ? parseInt(d, 10)
+                : d && d.endsWith('x') ? Math.round(parseFloat(d) * 1000)
+                : 1
+        if (w >= bestW) { bestW = w; best = abs(u) }
+      }
+    }
+    return (best && !best.startsWith('data:')) ? best : (el.src || '')
+  }
+
   function getMediaPayload(el) {
     const pageUrl  = location.href
     const platform = detectPlatform(pageUrl)
     const isVideo  = el.tagName === 'VIDEO'
     const url = isVideo
       ? (el.src && !el.src.startsWith('blob:') ? el.src : pageUrl)
-      : (el.currentSrc || el.src || pageUrl)
+      : (() => { const b = largestImageSrc(el); return (b && !b.startsWith('blob:')) ? b : pageUrl })()
     return {
       url, page_url: pageUrl, title: document.title,
       type: isVideo ? 'video' : 'image',

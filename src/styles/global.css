@@ -2175,6 +2175,24 @@ a:hover { text-decoration: underline; }
   font-variant-numeric: tabular-nums;
 }
 
+/* "Enhanced" badge on AI-upscaled image cards (top-left) */
+.card-enh-badge {
+  position: absolute;
+  top: 6px; left: 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(28,147,227,0.94), rgba(55,174,226,0.94));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.5;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.28);
+  pointer-events: none;
+  z-index: 2;
+}
+.card-enh-badge .icon { background-color: #fff; }
+
 /* Top-right actions row — pushes everything below to the bottom */
 .card-overlay-top {
   display: flex;
@@ -3694,6 +3712,7 @@ button:active:not(:disabled),
 }
 
 .detail-media-wrap {
+  position: relative;
   width: fit-content;
   max-width: 100%;
   max-height: 60vh;
@@ -3715,6 +3734,95 @@ button:active:not(:disabled),
   border-radius: 10px;
   opacity: 0;
   transition: opacity 0.22s ease;
+}
+
+/* ─── AI enhance overlay (images only) ─────────────────────── */
+.enh-badge {
+  position: absolute;
+  top: 10px; left: 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px 4px 7px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(28,147,227,0.94), rgba(55,174,226,0.94));
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.28);
+  backdrop-filter: blur(6px);
+  z-index: 3;
+  pointer-events: none;
+}
+.enh-badge .icon { background-color: #fff; }
+
+.enh-ctrl { position: absolute; bottom: 10px; right: 10px; z-index: 3; }
+
+/* Enhance button — a subtle, always-on "magic" sheen that loops slowly; deliberately
+   low-contrast so it reads as alive without stealing attention. */
+.enh-btn {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  font-size: 12px; font-weight: 600;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 9px;
+  background: rgba(20,22,28,0.55);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.28);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.enh-btn:hover  { background: rgba(28,147,227,0.55); border-color: rgba(255,255,255,0.28); }
+.enh-btn:active { transform: scale(0.97); }
+.enh-btn .icon  { background-color: #cfe8fb; }
+.enh-btn-label  { line-height: 1; }
+
+.enh-btn-shine {
+  position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.20) 48%, rgba(160,210,255,0.26) 52%, transparent 70%);
+  transform: translateX(-120%);
+  animation: enhShine 4.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes enhShine {
+  0%   { transform: translateX(-120%); }
+  55%, 100% { transform: translateX(120%); }
+}
+
+.enh-btn.is-working { cursor: default; pointer-events: none; }
+.enh-btn.is-working .enh-btn-shine { animation-duration: 1.1s; opacity: 0.95; }
+.enh-btn.is-working .icon { animation: enhSpin 1.1s linear infinite; }
+@keyframes enhSpin { to { transform: rotate(360deg); } }
+.enh-btn.is-error { background: rgba(198,64,64,0.62); border-color: rgba(255,160,160,0.4); }
+.enh-btn.is-error .enh-btn-shine { display: none; }
+
+.enh-toggle {
+  display: inline-flex;
+  padding: 3px;
+  background: rgba(20,22,28,0.6);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 9px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.28);
+}
+.enh-toggle-opt {
+  padding: 5px 11px;
+  font-size: 11.5px; font-weight: 600;
+  color: rgba(255,255,255,0.72);
+  background: transparent; border: 0; border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.enh-toggle-opt:hover { color: #fff; }
+.enh-toggle-opt.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, #1c93e3, #37aee2);
+  box-shadow: 0 1px 4px rgba(28,147,227,0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enh-btn-shine { animation: none; opacity: 0; }
+  .enh-btn.is-working .icon { animation: none; }
 }
 
 /* ─── Custom video player ────────────────────────────────── */

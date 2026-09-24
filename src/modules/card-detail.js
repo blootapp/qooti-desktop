@@ -243,6 +243,8 @@ function render() {
     img.onload = () => { img.style.opacity = '1' }
     if (img.complete) img.style.opacity = '1'
     mediaWrap.appendChild(img)
+    // AI enhance: button (with subtle magic shimmer) → badge + Original⇄Enhanced toggle.
+    setupEnhanceUI(item, img, mediaWrap, mediaSrc)
   }
 
   // Close
@@ -549,6 +551,84 @@ async function saveTitle(value) {
     currentItem.title = value || null
     store.emit(events.GRID_ITEM_UPDATED, { inspiration: { ...currentItem } })
   } catch (err) { log.error('title_edit_failed', { id: currentItem.id, error: err }) }
+}
+
+// ─── AI enhance (images only) ─────────────────────────────────────
+// Overlays the image with a subtle always-on "magic" Enhance button; once enhanced,
+// shows an "Enhanced" badge (top-left) and an Original⇄Enhanced toggle. The heavy
+// upscale runs on a background thread in Rust, so the UI stays responsive.
+function setupEnhanceUI(item, img, mediaWrap, origSrc) {
+  const toSrc = p => (IS_TAURI ? convertFileSrc(p) : p)
+  let showingEnhanced = !!item.enhanced_path   // default to the enhanced view once it exists
+
+  const badge = document.createElement('div')
+  badge.className = 'enh-badge'
+  badge.hidden = true
+  badge.innerHTML = `<span class="icon icon-12" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>Enhanced`
+  mediaWrap.appendChild(badge)
+
+  const ctrl = document.createElement('div')
+  ctrl.className = 'enh-ctrl'
+  mediaWrap.appendChild(ctrl)
+
+  function applyView() {
+    const es = item.enhanced_path ? toSrc(item.enhanced_path) : null
+    if (showingEnhanced && es) { img.src = es; badge.hidden = false }
+    else                       { img.src = origSrc; badge.hidden = true }
+    const t = ctrl.querySelector('.enh-toggle')
+    if (t) {
+      t.querySelector('[data-v="orig"]').classList.toggle('is-active', !showingEnhanced)
+      t.querySelector('[data-v="enh"]').classList.toggle('is-active',  showingEnhanced)
+    }
+  }
+
+  async function onEnhance() {
+    const btn = ctrl.querySelector('.enh-btn')
+    if (!btn || btn.classList.contains('is-working')) return
+    btn.classList.add('is-working')
+    btn.querySelector('.enh-btn-label').textContent = 'Enhancing…'
+    try {
+      const path = await api.enhanceImage(item.id)
+      item.enhanced_path = path
+      showingEnhanced = true
+      renderControl()
+      applyView()
+      sfx.success?.()
+      store.emit(events.GRID_RELOAD)   // surface the badge on the grid card too
+    } catch (err) {
+      log.warn('enhance failed:', String(err))
+      btn.classList.remove('is-working')
+      btn.classList.add('is-error')
+      btn.querySelector('.enh-btn-label').textContent = 'Couldn’t enhance'
+      setTimeout(() => {
+        btn.classList.remove('is-error')
+        btn.querySelector('.enh-btn-label').textContent = 'Enhance'
+      }, 2600)
+    }
+  }
+
+  function renderControl() {
+    if (item.enhanced_path) {
+      ctrl.innerHTML = `
+        <div class="enh-toggle" role="group" aria-label="Compare original and enhanced">
+          <button class="enh-toggle-opt" data-v="orig">Original</button>
+          <button class="enh-toggle-opt" data-v="enh">Enhanced</button>
+        </div>`
+      ctrl.querySelector('[data-v="orig"]').addEventListener('click', () => { showingEnhanced = false; applyView() })
+      ctrl.querySelector('[data-v="enh"]').addEventListener('click',  () => { showingEnhanced = true;  applyView() })
+    } else {
+      ctrl.innerHTML = `
+        <button class="enh-btn" title="Enhance — AI upscale & sharpen">
+          <span class="enh-btn-shine" aria-hidden="true"></span>
+          <span class="icon icon-14" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>
+          <span class="enh-btn-label">Enhance</span>
+        </button>`
+      ctrl.querySelector('.enh-btn').addEventListener('click', onEnhance)
+    }
+  }
+
+  renderControl()
+  applyView()
 }
 
 // ─── Custom video player ──────────────────────────────────────────

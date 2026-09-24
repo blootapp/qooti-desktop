@@ -1058,6 +1058,15 @@ function makeCard(item, idx) {
     media.appendChild(img)
   }
 
+  // ── "Enhanced" badge (top-left) for AI-upscaled images ──
+  if (item.type === 'image' && item.enhanced_path) {
+    const eb = document.createElement('span')
+    eb.className = 'card-enh-badge'
+    eb.title = 'Enhanced'
+    eb.innerHTML = `${I('sparkle', 11)}<span>Enhanced</span>`
+    media.appendChild(eb)
+  }
+
   // ── Hover overlay (delete + model pills only — no title) ──
   const overlay = document.createElement('div')
   overlay.className = 'card-hover-overlay'

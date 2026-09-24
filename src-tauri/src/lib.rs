@@ -4,6 +4,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 
 pub mod commands;
 pub mod pot_provider;
+pub mod enhancer;
 pub mod db;
 pub mod logger;
 pub mod media_guard;
@@ -322,6 +323,7 @@ pub fn run() {
             commands::reindex_library,
             commands::extract_palette,
             commands::download_url,
+            enhancer::enhance_image,
             commands::finalize_download,
             commands::cancel_download,
             commands::list_tag_vocab,

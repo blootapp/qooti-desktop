@@ -3,6 +3,7 @@
 // ACTIVITY TRAIL from the app's own event bus — searches, downloads, imports,
 // navigation, setting changes, etc. — plus a small errors/warnings buffer. The
 // trail is attached to feedback as a .txt file so the Telegram message stays clean.
+import { listen } from '@tauri-apps/api/event'
 import { api } from './tauri-api.js'
 import { getSetting } from './settings.js'
 import store from './store.js'
@@ -56,6 +57,10 @@ export function initDiagnostics() {
     errline('ERROR', `Uncaught ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`))
   window.addEventListener('unhandledrejection', e =>
     errline('ERROR', `Unhandled rejection: ${e.reason?.message ?? e.reason}`))
+
+  // PO-token provider steps (emitted from Rust) — so feedback reports reveal exactly
+  // where the YouTube provider setup fails on a user's machine.
+  listen('pot:diag', e => action(`POT: ${e.payload}`)).catch(() => {})
 
   bindActivityTrail()
 }

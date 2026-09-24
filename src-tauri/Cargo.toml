@@ -40,6 +40,10 @@ base64     = "0.22"
 ureq       = "2"
 flate2     = "1"
 arboard    = { version = "3", features = ["image-data"] }
+# AI image enhancer/upscaler. onnxruntime is statically linked (download-binaries),
+# so nothing extra ships as a loose file. GPU execution providers are added per-OS
+# below (CoreML / DirectML); both fall back to CPU automatically.
+ort        = { version = "=2.0.0-rc.10", features = ["download-binaries"] }
 log        = "0.4"
 env_logger = "0.11"
 zip        = "0.6"
@@ -50,9 +54,11 @@ urlencoding  = "2"
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg     = "0.52"
 windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+ort        = { version = "=2.0.0-rc.10", features = ["directml"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+ort  = { version = "=2.0.0-rc.10", features = ["coreml"] }
 
 [features]
 default = ["custom-protocol"]

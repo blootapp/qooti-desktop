@@ -114,6 +114,7 @@ const tauriApi = {
   getInspiration:     id          => _invoke('get_inspiration', { id }),
   updateInspiration:  (id, fields) => _invoke('update_inspiration', { id, ...fields }),
   deleteInspiration:  id          => _invoke('delete_inspiration', { id }),
+  enhanceImage:       id          => _invoke('enhance_image', { id }),
   findDuplicates:     ()          => _invoke('find_duplicates'),
   readImageAsBase64: path        => _invoke('read_image_as_base64', { path }),
   importFiles:       (paths, importSource = null) => _invoke('import_files', { paths, importSource }),

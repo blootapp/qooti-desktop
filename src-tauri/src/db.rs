@@ -65,6 +65,8 @@ fn run_additive_migrations(conn: &Connection) -> Result<()> {
     let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN last_viewed_at INTEGER");
     let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN import_source TEXT");
     let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN batch_id TEXT");
+    // AI upscaler/enhancer: path to the enhanced variant (original kept in stored_path).
+    let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN enhanced_path TEXT");
 
     // Free-plan feature tables (v28)
     let _ = conn.execute_batch(
