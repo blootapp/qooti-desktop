@@ -3745,28 +3745,6 @@ button:active:not(:disabled),
   object-fit: contain;
 }
 
-/* Aspect-ratio switcher in the player header */
-.detail-ratio-switch {
-  margin-right: auto;      /* sit on the left; the close button stays right */
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--bg-raised);
-  border-radius: var(--radius-sm);
-}
-.detail-ratio-opt {
-  padding: 3px 9px;
-  font-size: 11px; font-weight: 600;
-  color: var(--text-muted);
-  background: transparent; border: 0;
-  border-radius: calc(var(--radius-sm) - 2px);
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.detail-ratio-opt:hover { color: var(--text); }
-.detail-ratio-opt.is-active { color: var(--text); background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
-
 .detail-media-el {
   max-width: 100%;
   max-height: 60vh;

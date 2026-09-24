@@ -1,11 +1,11 @@
-// AI image enhancer / upscaler (2×).
+// AI image enhancer / upscaler (4×).
 //
-// Uses swin2SR-lightweight — a PSNR-oriented (non-GAN) super-resolution model, so it
-// reconstructs detail *faithfully*: no hallucinated features, text and edges stay
-// intact. The ~7.7 MB ONNX model is compiled into the binary; onnxruntime itself is
-// statically linked (see Cargo.toml `ort`), so nothing ships as a loose file. A GPU
-// execution provider (CoreML on macOS, DirectML on Windows) is used when available and
-// falls back to CPU automatically.
+// Uses Real-ESRGAN general x4v3 — a perceptual (GAN) super-resolution model that visibly
+// sharpens, denoises and reconstructs detail. (A swin2SR PSNR model was tried first but
+// its output was near-indistinguishable from plain upscaling — not noticeable.) The
+// ~4.7 MB ONNX model is compiled into the binary; onnxruntime itself is statically linked
+// (see Cargo.toml `ort`), so nothing ships as a loose file. A GPU execution provider
+// (CoreML on macOS, DirectML on Windows) is used when available and falls back to CPU.
 //
 // All inference runs OFF the UI thread: the `enhance_image` command dispatches the work
 // to `spawn_blocking`, and a process-wide Mutex serialises runs (one image at a time).
@@ -17,13 +17,14 @@ use image::RgbImage;
 use tauri::{AppHandle, Manager};
 use crate::AppState;
 
-static MODEL: &[u8] = include_bytes!("../models/swin2sr_x2.onnx");
+static MODEL: &[u8] = include_bytes!("../models/realesr_x4.onnx");
 
-const SCALE: u32    = 2;     // model output scale
-const TILE: u32     = 256;   // core tile edge (source px) — bounds peak memory
-const OVERLAP: u32  = 16;    // halo added around each tile so seams are invisible
-const PAD: u32      = 8;     // swin2SR requires H and W to be multiples of this
-const MAX_EDGE: u32 = 4000;  // refuse absurdly large sources (output would be 2×)
+const SCALE: u32    = 4;     // Real-ESRGAN general x4v3 output scale
+const TILE_IN: u32  = 128;   // the model's FIXED input size (H = W = 128)
+const HALO: u32     = 16;    // context margin around each core tile so seams vanish
+const CORE: u32     = TILE_IN - 2 * HALO;  // 96 — real content advanced per tile
+const MAX_EDGE: u32 = 1500;  // refuse large sources — enhancement is for low-res items;
+                             // ×4 of anything bigger is huge/slow and pointless
 
 static SESSION: OnceCell<Mutex<ort::session::Session>> = OnceCell::new();
 
@@ -49,45 +50,41 @@ fn get_session() -> Result<&'static Mutex<ort::session::Session>, String> {
     })
 }
 
-/// Run the model on one tile. Returns the 2× RGB output for the tile's real region.
-fn run_tile(session: &mut ort::session::Session, tile: &RgbImage) -> Result<RgbImage, String> {
+/// Run the model on one fixed 128×128 window whose top-left is (wx, wy) in image space
+/// (edge-replicated outside the image). Returns the model's 512×512 (= 128·SCALE) output.
+fn run_tile(session: &mut ort::session::Session, img: &RgbImage, wx: i64, wy: i64) -> Result<RgbImage, String> {
     use ort::value::Tensor;
-    let (w, h) = (tile.width(), tile.height());
-    let pw = ((w + PAD - 1) / PAD) * PAD;
-    let ph = ((h + PAD - 1) / PAD) * PAD;
-
-    // NCHW, RGB, 0-1; edge-replicate the right/bottom padding.
-    let plane = (pw * ph) as usize;
+    let (iw, ih) = (img.width() as i64, img.height() as i64);
+    let n = TILE_IN as usize;
+    let plane = n * n;
     let mut data = vec![0f32; 3 * plane];
-    for y in 0..ph {
-        let sy = y.min(h - 1);
-        for x in 0..pw {
-            let sx = x.min(w - 1);
-            let p = tile.get_pixel(sx, sy);
-            let idx = (y * pw + x) as usize;
+    for by in 0..TILE_IN {
+        let sy = (wy + by as i64).clamp(0, ih - 1) as u32;
+        for bx in 0..TILE_IN {
+            let sx = (wx + bx as i64).clamp(0, iw - 1) as u32;
+            let p = img.get_pixel(sx, sy);
+            let idx = (by * TILE_IN + bx) as usize;
             data[idx]             = p[0] as f32 / 255.0;
             data[plane + idx]     = p[1] as f32 / 255.0;
             data[2 * plane + idx] = p[2] as f32 / 255.0;
         }
     }
 
-    let input = Tensor::from_array((vec![1_i64, 3, ph as i64, pw as i64], data))
+    let input = Tensor::from_array((vec![1_i64, 3, TILE_IN as i64, TILE_IN as i64], data))
         .map_err(|e| e.to_string())?;
     let outputs = session
-        .run(ort::inputs!["pixel_values" => input])
+        .run(ort::inputs!["image" => input])
         .map_err(|e| e.to_string())?;
-    let (_oshape, odata) = outputs["reconstruction"]
+    let (_oshape, odata) = outputs["upscaled_image"]
         .try_extract_tensor::<f32>()
         .map_err(|e| e.to_string())?;
 
-    // Output is [1, 3, ph*SCALE, pw*SCALE] — copy the real (unpadded) region.
-    let ow = (pw * SCALE) as usize;
-    let oplane = ow * (ph * SCALE) as usize;
-    let (rw, rh) = (w * SCALE, h * SCALE);
-    let mut out = RgbImage::new(rw, rh);
-    for y in 0..rh {
-        for x in 0..rw {
-            let i = (y as usize) * ow + (x as usize);
+    let on = (TILE_IN * SCALE) as usize;
+    let oplane = on * on;
+    let mut out = RgbImage::new(TILE_IN * SCALE, TILE_IN * SCALE);
+    for y in 0..(TILE_IN * SCALE) {
+        for x in 0..(TILE_IN * SCALE) {
+            let i = (y as usize) * on + (x as usize);
             out.put_pixel(x, y, image::Rgb([
                 (odata[i].clamp(0.0, 1.0) * 255.0).round() as u8,
                 (odata[oplane + i].clamp(0.0, 1.0) * 255.0).round() as u8,
@@ -98,7 +95,8 @@ fn run_tile(session: &mut ort::session::Session, tile: &RgbImage) -> Result<RgbI
     Ok(out)
 }
 
-/// Upscale a full image by tiling with a halo so tile seams are invisible.
+/// Upscale a full image by feeding fixed 128×128 windows (a 96-px core plus a 16-px halo
+/// of context) to the model and stitching the 4× core regions, so tile seams are hidden.
 fn enhance_rgb(img: &RgbImage) -> Result<RgbImage, String> {
     let session_m = get_session()?;
     let mut session = session_m.lock().map_err(|_| "enhancer busy".to_string())?;
@@ -106,33 +104,24 @@ fn enhance_rgb(img: &RgbImage) -> Result<RgbImage, String> {
     let (w, h) = (img.width(), img.height());
     let mut out = RgbImage::new(w * SCALE, h * SCALE);
 
-    let mut y0 = 0;
-    while y0 < h {
-        let y1 = (y0 + TILE).min(h);
-        let mut x0 = 0;
-        while x0 < w {
-            let x1 = (x0 + TILE).min(w);
-            // Input region = core tile + halo (clamped to the image).
-            let ix0 = x0.saturating_sub(OVERLAP);
-            let iy0 = y0.saturating_sub(OVERLAP);
-            let ix1 = (x1 + OVERLAP).min(w);
-            let iy1 = (y1 + OVERLAP).min(h);
-
-            let sub = image::imageops::crop_imm(img, ix0, iy0, ix1 - ix0, iy1 - iy0).to_image();
-            let sr  = run_tile(&mut session, &sub)?;
-
-            // Copy only the core [x0,x1)×[y0,y1) from this tile's SR output.
-            let off_x = (x0 - ix0) * SCALE;
-            let off_y = (y0 - iy0) * SCALE;
-            for yy in 0..((y1 - y0) * SCALE) {
-                for xx in 0..((x1 - x0) * SCALE) {
-                    let p = sr.get_pixel(off_x + xx, off_y + yy);
-                    out.put_pixel(x0 * SCALE + xx, y0 * SCALE + yy, *p);
+    let mut cy = 0;
+    while cy < h {
+        let core_h = CORE.min(h - cy);
+        let mut cx = 0;
+        while cx < w {
+            let core_w = CORE.min(w - cx);
+            // 128 window placed so this tile's core sits at (HALO, HALO) inside it.
+            let tile = run_tile(&mut session, img, cx as i64 - HALO as i64, cy as i64 - HALO as i64)?;
+            let (ox, oy) = (HALO * SCALE, HALO * SCALE);
+            for yy in 0..(core_h * SCALE) {
+                for xx in 0..(core_w * SCALE) {
+                    let p = tile.get_pixel(ox + xx, oy + yy);
+                    out.put_pixel(cx * SCALE + xx, cy * SCALE + yy, *p);
                 }
             }
-            x0 = x1;
+            cx += CORE;
         }
-        y0 = y1;
+        cy += CORE;
     }
     Ok(out)
 }
@@ -201,13 +190,15 @@ mod tests {
 
     // Exercises the full native pipeline: session build (GPU→CPU EP), NCHW tensor I/O,
     // ×8 padding, tiling, and 2× output. Non-multiple-of-8 dims verify pad + crop.
+    // Exercises the full native pipeline: session build (GPU→CPU EP), fixed 128 tiling,
+    // stitching, and 4× output. Non-multiple dims verify the edge tiling + crop.
     #[test]
-    fn upscales_2x() {
+    fn upscales_4x() {
         let mut img = RgbImage::new(37, 22);
         for (x, y, p) in img.enumerate_pixels_mut() {
             *p = image::Rgb([(x.wrapping_mul(6)) as u8, (y.wrapping_mul(10)) as u8, 128]);
         }
         let out = enhance_rgb(&img).expect("enhance failed");
-        assert_eq!(out.dimensions(), (74, 44), "output must be exactly 2× the input");
+        assert_eq!(out.dimensions(), (148, 88), "output must be exactly 4× the input");
     }
 }
