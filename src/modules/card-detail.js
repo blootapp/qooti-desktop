@@ -3,7 +3,7 @@ import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
-import { getSetting } from './settings.js'
+import { getSetting, setSetting } from './settings.js'
 import { makeLogger } from './logger.js'
 
 const log = makeLogger('Detail')
@@ -152,12 +152,22 @@ function render() {
     ? convertFileSrc(item.stored_path)
     : item.stored_path
 
+  // Player uses a fixed-ratio box (images): the box stays the same size for every item
+  // and the image is contained inside it. The chosen ratio is a persisted global pref.
+  const RATIOS = { '16:9': 1.7778, '4:5': 0.8, '1:1': 1, '9:16': 0.5625 }
+  let ratioKey = getSetting('player_ratio', '4:5')
+  if (!RATIOS[ratioKey]) ratioKey = '4:5'
+
   const dateStr = new Date(item.created_at).toLocaleDateString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
   })
 
   modalEl.innerHTML = `
     <div class="detail-modal-header">
+      ${item.type === 'image' ? `
+        <div class="detail-ratio-switch" id="dp-ratio" role="group" aria-label="Player aspect ratio">
+          ${Object.keys(RATIOS).map(k => `<button class="detail-ratio-opt${k === ratioKey ? ' is-active' : ''}" data-r="${k}">${k}</button>`).join('')}
+        </div>` : ''}
       <button class="detail-close" id="dp-close" aria-label="Close">
         <span class="icon icon-18" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span>
       </button>
@@ -229,6 +239,9 @@ function render() {
     </div>
   `
 
+  // Apply the persisted player ratio (drives the fixed-ratio image box).
+  modalEl.style.setProperty('--player-ratio', String(RATIOS[ratioKey]))
+
   // Media element
   const mediaWrap = modalEl.querySelector('#dp-media')
   if (item.type === 'video') {
@@ -243,12 +256,25 @@ function render() {
     img.onload = () => { img.style.opacity = '1' }
     if (img.complete) img.style.opacity = '1'
     mediaWrap.appendChild(img)
+    mediaWrap.classList.add('detail-media-wrap--fixed')   // fixed-ratio box; image contained
     // AI enhance: button (with subtle magic shimmer) → badge + Original⇄Enhanced toggle.
     setupEnhanceUI(item, img, mediaWrap, mediaSrc)
   }
 
   // Close
   modalEl.querySelector('#dp-close').addEventListener('click', close)
+
+  // Ratio switcher (images) — applies live to the box + persists as a global preference.
+  const ratioSwitch = modalEl.querySelector('#dp-ratio')
+  if (ratioSwitch) {
+    ratioSwitch.addEventListener('click', e => {
+      const btn = e.target.closest('.detail-ratio-opt')
+      if (!btn || !RATIOS[btn.dataset.r]) return
+      modalEl.style.setProperty('--player-ratio', String(RATIOS[btn.dataset.r]))
+      ratioSwitch.querySelectorAll('.detail-ratio-opt').forEach(b => b.classList.toggle('is-active', b === btn))
+      setSetting('player_ratio', btn.dataset.r)
+    })
+  }
 
   // Edit toggle + save/cancel
   const editToggle = modalEl.querySelector('#dp-edit-toggle')
