@@ -3815,9 +3815,16 @@ button:active:not(:disabled),
   border: 1px solid rgba(255,255,255,0.06);
   box-shadow: 0 10px 34px rgba(0,0,0,0.5);
   cursor: pointer;
+  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22,1,0.36,1), box-shadow 0.15s ease;
 }
 .simcanvas-tile img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
 .simcanvas-tile:not(.is-focus):hover { box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 0 2px rgba(255,255,255,0.25); }
+/* Related matches (by tags / title / detected objects) are dimmed — only visually-similar
+   items are full-strength. Hovering a dimmed one brings it to full. */
+.simcanvas-tile.is-related { opacity: 0.32; }
+.simcanvas-tile.is-related:hover { opacity: 1; }
+/* Entrance state (removed on the next frame → eases to the resting opacity above). */
+.simcanvas-tile.entering { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
 .simcanvas-tile.is-focus {
   border: 2px solid var(--accent, #1c93e3);
   box-shadow: 0 16px 54px rgba(0,0,0,0.6), 0 0 0 5px rgba(28,147,227,0.22);

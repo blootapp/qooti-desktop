@@ -50,9 +50,10 @@ function tileDims(item, longSide) {
     : { w: Math.round(longSide * ar), h: longSide }
 }
 
-function makeTile(item, longSide, x, y, isFocus) {
+function makeTile(item, longSide, x, y, isFocus, tier = 0) {
   const tile = document.createElement('div')
-  tile.className = 'simcanvas-tile' + (isFocus ? ' is-focus' : '')
+  tile.className = 'simcanvas-tile'
+    + (isFocus ? ' is-focus' : (tier === 1 ? ' is-related' : ''))
   const { w, h } = tileDims(item, longSide)
   tile.style.width  = `${w}px`
   tile.style.height = `${h}px`
@@ -72,19 +73,19 @@ function makeTile(item, longSide, x, y, isFocus) {
 // Place similar tiles around the focus in a phyllotaxis spiral — index 0 (most similar)
 // lands nearest the centre. Each is added faded/shrunk then eased in (staggered).
 function addSimilars(sims) {
+  const tiles = []
   sims.slice(0, MAX_SIMILAR).forEach((it, i) => {
     const angle  = i * GOLDEN
     const radius = RING_START + RING_STEP * Math.sqrt(i)
-    const tile = makeTile(it, TILE_SIZE, Math.cos(angle) * radius, Math.sin(angle) * radius, false)
-    tile.style.opacity = '0'
-    tile.style.transform = 'translate(-50%, -50%) scale(0.6)'
+    const tile = makeTile(it, TILE_SIZE, Math.cos(angle) * radius, Math.sin(angle) * radius, false, it.tier ?? 0)
+    tile.classList.add('entering')
     _board.appendChild(tile)
-    requestAnimationFrame(() => {
-      tile.style.transition = `opacity 0.45s ease ${Math.min(i * 8, 260)}ms, transform 0.45s ${EASE} ${Math.min(i * 8, 260)}ms`
-      tile.style.opacity = '1'
-      tile.style.transform = 'translate(-50%, -50%) scale(1)'
-    })
+    tiles.push(tile)
   })
+  // Next frame: drop 'entering' so each tile eases to its resting opacity — full for
+  // visual matches (tier 0), dimmed for related ones (tier 1). CSS owns the resting
+  // opacity so :hover can still brighten the dimmed ones to full.
+  requestAnimationFrame(() => tiles.forEach(t => t.classList.remove('entering')))
 }
 
 async function loadFocus(item, { grow = false } = {}) {
