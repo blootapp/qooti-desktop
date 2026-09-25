@@ -130,11 +130,14 @@ async function recenter(tile) {
 }
 
 function wireInteractions() {
-  let dragging = false, moved = false, sx = 0, sy = 0, sp = null
+  let dragging = false, moved = false, sx = 0, sy = 0, sp = null, downTile = null
 
   const onDown = e => {
     if (e.button && e.button !== 0) return
     dragging = true; moved = false; sx = e.clientX; sy = e.clientY; sp = { ..._pan }
+    // Record the pressed tile NOW — setPointerCapture makes pointerup target the overlay,
+    // so e.target on release would no longer be the tile.
+    downTile = e.target.closest?.('.simcanvas-tile') || null
     animateBoard(false)
     try { _el.setPointerCapture(e.pointerId) } catch {}
   }
@@ -144,10 +147,11 @@ function wireInteractions() {
     if (Math.abs(dx) + Math.abs(dy) > 5) moved = true
     _pan = { x: sp.x + dx, y: sp.y + dy }; applyTransform()
   }
-  const onUp = e => {
+  const onUp = () => {
     if (!dragging) return
     dragging = false
-    if (!moved) { const tile = e.target.closest?.('.simcanvas-tile'); if (tile) handleTileClick(tile) }
+    if (!moved && downTile) handleTileClick(downTile)
+    downTile = null
   }
   const onWheel = e => {
     e.preventDefault()
