@@ -134,6 +134,9 @@ function wireInteractions() {
 
   const onDown = e => {
     if (e.button && e.button !== 0) return
+    // Don't hijack the close button — pointer capture below would steal its pointerup and
+    // kill the native click. Let it behave as a normal button.
+    if (e.target.closest?.('.simcanvas-close')) return
     dragging = true; moved = false; sx = e.clientX; sy = e.clientY; sp = { ..._pan }
     // Record the pressed tile NOW — setPointerCapture makes pointerup target the overlay,
     // so e.target on release would no longer be the tile.
