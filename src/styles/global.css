@@ -3790,6 +3790,54 @@ button:active:not(:disabled),
 .enh-del:disabled { opacity: 0.5; pointer-events: none; }
 .enh-del .icon { background-color: currentColor; }
 
+/* ─── Similarity canvas (fullscreen, pannable + zoomable board) ─── */
+.simcanvas {
+  position: fixed; inset: 0; z-index: 10000;
+  background: radial-gradient(circle at 50% 45%, rgba(20,22,28,0.92), rgba(8,9,12,0.98));
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  cursor: grab; user-select: none;
+}
+.simcanvas:active { cursor: grabbing; }
+.simcanvas-board {
+  position: absolute; left: 50%; top: 50%;
+  width: 0; height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.simcanvas-tile {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 12px; overflow: hidden;
+  background: var(--bg-raised);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 10px 34px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+.simcanvas-tile img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.simcanvas-tile:not(.is-focus):hover { box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 0 2px rgba(255,255,255,0.25); }
+.simcanvas-tile.is-focus {
+  border: 2px solid var(--accent, #1c93e3);
+  box-shadow: 0 16px 54px rgba(0,0,0,0.6), 0 0 0 5px rgba(28,147,227,0.22);
+  z-index: 5;
+}
+.simcanvas-close {
+  position: absolute; top: 16px; right: 16px; z-index: 20;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(30,32,38,0.72); border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(8px); color: #fff; cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.simcanvas-close:hover  { background: rgba(52,54,62,0.92); transform: scale(1.05); }
+.simcanvas-close:active { transform: scale(0.96); }
+.simcanvas-close .icon  { background-color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .simcanvas, .simcanvas-board, .simcanvas-tile { transition: none !important; }
+}
+
 /* Enhance button — a subtle, always-on "magic" sheen that loops slowly; deliberately
    low-contrast so it reads as alive without stealing attention. */
 .enh-btn {

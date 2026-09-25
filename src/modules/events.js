@@ -11,7 +11,6 @@ export const GRID_RELOAD      = 'grid:reload'      // { collectionId?, tagIds?, 
 export const GRID_ITEM_ADDED  = 'grid:item-added'  // { inspiration: Inspiration }
 export const GRID_ITEM_DELETED = 'grid:item-deleted' // { id: string }
 export const GRID_ITEM_UPDATED = 'grid:item-updated' // { inspiration: Inspiration }
-export const SHOW_SIMILAR      = 'grid:show-similar' // { item: Inspiration }
 
 // ─── Collections ─────────────────────────────────────────────────
 export const COLLECTION_CREATED = 'collection:created' // { collection }

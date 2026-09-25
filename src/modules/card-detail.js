@@ -4,6 +4,7 @@ import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
 import { getSetting } from './settings.js'
+import { openSimilarCanvas } from './similar-canvas.js'
 import { makeLogger } from './logger.js'
 
 const log = makeLogger('Detail')
@@ -187,7 +188,7 @@ function render() {
               <span class="icon icon-16" style="mask-image:url('/icons/arrow-square-out.svg');-webkit-mask-image:url('/icons/arrow-square-out.svg')" aria-hidden="true"></span>
             </button>` : ''}
             ${item.type === 'image' ? `<button class="detail-orig-btn" id="dp-similar-btn" title="Find similar">
-              <span class="icon icon-16" style="mask-image:url('/icons/squares-four.svg');-webkit-mask-image:url('/icons/squares-four.svg')" aria-hidden="true"></span>
+              <span class="icon icon-16" style="mask-image:url('/icons/magnifying-glass.svg');-webkit-mask-image:url('/icons/magnifying-glass.svg')" aria-hidden="true"></span>
             </button>` : ''}
             <button class="detail-coll-btn${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="Add to collection">
               <span class="icon icon-16" style="mask-image:url('/icons/folders.svg');-webkit-mask-image:url('/icons/folders.svg')" aria-hidden="true"></span>
@@ -306,9 +307,13 @@ function render() {
   const origBtn = modalEl.querySelector('#dp-orig-btn')
   if (origBtn) origBtn.addEventListener('click', () => api.openUrl(item.source_url))
 
-  // Find similar — close the player and show perceptually-similar items in the grid.
+  // Find similar — expand into the fullscreen similarity canvas (animates out from the
+  // media). Clicking the centred item there re-opens the normal player for it.
   const similarBtn = modalEl.querySelector('#dp-similar-btn')
-  if (similarBtn) similarBtn.addEventListener('click', () => { close(); store.emit(events.SHOW_SIMILAR, { item }) })
+  if (similarBtn) similarBtn.addEventListener('click', () => {
+    const mediaEl = modalEl.querySelector('.detail-media-el') || modalEl.querySelector('#dp-media')
+    openSimilarCanvas(item, mediaEl?.getBoundingClientRect(), { onOpen: it => open(it) })
+  })
 
   const sourceLink = modalEl.querySelector('.detail-source-link')
   if (sourceLink) sourceLink.addEventListener('click', e => {
