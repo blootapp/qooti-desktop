@@ -118,6 +118,7 @@ const tauriApi = {
   deleteEnhanced:     id          => _invoke('delete_enhanced', { id }),
   findDuplicates:     ()          => _invoke('find_duplicates'),
   markNotDuplicates:  ids         => _invoke('mark_not_duplicates', { ids }),
+  findSimilar:        (id, limit = 80) => _invoke('find_similar', { id, limit }),
   readImageAsBase64: path        => _invoke('read_image_as_base64', { path }),
   importFiles:       (paths, importSource = null) => _invoke('import_files', { paths, importSource }),
 

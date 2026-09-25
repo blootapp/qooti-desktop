@@ -186,6 +186,9 @@ function render() {
             ${item.source_url ? `<button class="detail-orig-btn" id="dp-orig-btn" title="Go to original">
               <span class="icon icon-16" style="mask-image:url('/icons/arrow-square-out.svg');-webkit-mask-image:url('/icons/arrow-square-out.svg')" aria-hidden="true"></span>
             </button>` : ''}
+            ${item.type === 'image' ? `<button class="detail-orig-btn" id="dp-similar-btn" title="Find similar">
+              <span class="icon icon-16" style="mask-image:url('/icons/squares-four.svg');-webkit-mask-image:url('/icons/squares-four.svg')" aria-hidden="true"></span>
+            </button>` : ''}
             <button class="detail-coll-btn${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="Add to collection">
               <span class="icon icon-16" style="mask-image:url('/icons/folders.svg');-webkit-mask-image:url('/icons/folders.svg')" aria-hidden="true"></span>
             </button>
@@ -302,6 +305,10 @@ function render() {
 
   const origBtn = modalEl.querySelector('#dp-orig-btn')
   if (origBtn) origBtn.addEventListener('click', () => api.openUrl(item.source_url))
+
+  // Find similar — close the player and show perceptually-similar items in the grid.
+  const similarBtn = modalEl.querySelector('#dp-similar-btn')
+  if (similarBtn) similarBtn.addEventListener('click', () => { close(); store.emit(events.SHOW_SIMILAR, { item }) })
 
   const sourceLink = modalEl.querySelector('.detail-source-link')
   if (sourceLink) sourceLink.addEventListener('click', e => {

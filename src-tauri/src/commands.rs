@@ -2463,6 +2463,78 @@ pub fn mark_not_duplicates(ids: Vec<String>, state: State<AppState>) -> Result<(
     Ok(())
 }
 
+/// Find items visually similar to `id` (images only for now), ranked by perceptual
+/// distance. Runs on the blocking pool so the O(n) hash compare never freezes the UI.
+#[tauri::command]
+pub async fn find_similar(app: AppHandle, id: String, limit: i64) -> Result<Vec<Inspiration>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_similar_impl(&app, &id, limit))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<Inspiration>, String> {
+    use tauri::Manager;
+    ensure_phashes(app);
+    let state = app.state::<AppState>();
+
+    struct Cand { id: String, fp: Fp, aspect: f64 }
+
+    // Load the target's fingerprint + every other image item's fingerprint.
+    let (target, cands): (Option<(Fp, f64)>, Vec<Cand>) = {
+        let db = state.db.lock().map_err(|_| "db lock".to_string())?;
+        let mut target = None;
+        let mut cands = Vec::new();
+        if let Ok(mut stmt) = db.prepare(
+            "SELECT id, phash, aspect_ratio FROM inspirations \
+             WHERE type IN ('image','gif') AND phash IS NOT NULL"
+        ) {
+            if let Ok(it) = stmt.query_map([], |r| Ok((
+                r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<f64>>(2)?,
+            ))) {
+                for (rid, ph, ar) in it.flatten() {
+                    let Some(fp) = ph.as_deref().and_then(parse_fp) else { continue };
+                    let aspect = ar.unwrap_or(1.0);
+                    if rid == id { target = Some((fp, aspect)); }
+                    else { cands.push(Cand { id: rid, fp, aspect }); }
+                }
+            }
+        }
+        (target, cands)
+    };
+    let Some((tfp, taspect)) = target else { return Ok(vec![]); };
+
+    // Rank by MAD, keeping only visually-similar candidates (looser than the dup finder).
+    const SIM_MAD: u32 = 40;
+    let mut scored: Vec<(u32, String)> = cands.iter()
+        .filter_map(|c| fp_similar(&tfp, &c.fp, taspect, c.aspect, SIM_MAD).map(|mad| (mad, c.id.clone())))
+        .collect();
+    scored.sort_by_key(|(mad, _)| *mad);
+    scored.truncate(limit.max(0) as usize);
+    if scored.is_empty() { return Ok(vec![]); }
+
+    // Fetch full rows for the winners, preserving similarity order.
+    let ids: Vec<String> = scored.into_iter().map(|(_, id)| id).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
+                aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
+                phash, phash_source, vault_id, mime_type, created_at, updated_at,
+                auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
+                (SELECT json_group_array(c.name) FROM collection_items ci
+                 JOIN collections c ON c.id = ci.collection_id
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+         FROM inspirations WHERE id IN ({placeholders})"
+    );
+    let db = state.db.lock().map_err(|_| "db lock".to_string())?;
+    let mut map: std::collections::HashMap<String, Inspiration> = std::collections::HashMap::new();
+    if let Ok(mut stmt) = db.prepare(&sql) {
+        if let Ok(it) = stmt.query_map(rusqlite::params_from_iter(ids.iter()), row_to_inspiration) {
+            for insp in it.flatten() { map.insert(insp.id.clone(), insp); }
+        }
+    }
+    Ok(ids.into_iter().filter_map(|id| map.remove(&id)).collect())
+}
+
 fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
     let img = match image::open(path) {
         Ok(i) => i,

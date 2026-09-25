@@ -147,12 +147,14 @@ export function init(el, _settings) {
   store.on(events.COLLECTION_SELECTED, ({ id, name }) => {
     enterCollectionMode(id, name ?? id)
   })
+  store.on(events.SHOW_SIMILAR, ({ item }) => { if (item) showSimilarItems(item) })
   store.on(events.COLLECTION_DELETED, () => {
     if (filter.collectionId) exitCollectionMode(false)
     else reload()
   })
   store.on(events.NAV_CHANGE, ({ view }) => {
     if (view !== 'grid' && filter.collectionId) exitCollectionMode(false)
+    if (view !== 'grid' && _similarTo) exitSimilarMode(false)
   })
   store.on(events.AUTO_TAG_BATCH_DONE, ({ ids }) => refreshCardPills(ids))
   store.on(events.UPDATE_AVAILABLE, (info) => {
@@ -265,6 +267,72 @@ function exitCollectionMode(navigateToCollections) {
   } else {
     reload()
   }
+}
+
+// ─── Similar mode ────────────────────────────────────────────────
+// Shows perceptually-similar items for one source item, reusing the collection
+// top-bar as the banner (export is hidden — it doesn't apply here).
+let _similarTo = null
+
+function showSimilarItems(item) {
+  if (!item) return
+  _similarTo = item.id
+  filter.collectionId = null; filter.tagIds = []; filter.query = null
+  filter.color = null; filter.mediaTypes = null; filter.page = 0
+
+  const topbar     = document.getElementById('collection-topbar')
+  const nameEl     = document.getElementById('collection-topbar-name')
+  const searchWrap = document.querySelector('.top-bar-search-wrap')
+  const chipsBar   = container?.querySelector('#filter-chips-bar')
+  const exportBtn  = document.getElementById('col-nav-export')
+
+  if (nameEl) nameEl.textContent = t('similar.title', { name: displayTitle(item) || t('duplicates.untitled') })
+  if (topbar) topbar.hidden = false
+  if (searchWrap) searchWrap.hidden = true
+  if (chipsBar) chipsBar.hidden = true
+  if (exportBtn) exportBtn.hidden = true
+  renderUpdateBar()
+
+  document.getElementById('top-bar-left').hidden = true
+  document.getElementById('col-left-nav').hidden = false
+  document.getElementById('top-bar-right').hidden = true
+  document.getElementById('col-right-nav').hidden = false
+
+  const rewire = (id, handler) => {
+    const el = document.getElementById(id)
+    if (!el) return
+    const fresh = el.cloneNode(true)
+    el.replaceWith(fresh)
+    fresh.addEventListener('click', handler)
+  }
+  rewire('col-nav-home',        () => exitSimilarMode(false))
+  rewire('col-nav-collections', () => exitSimilarMode(true))
+
+  reload()
+}
+
+function exitSimilarMode(navigateToCollections) {
+  _similarTo = null
+  filter.page = 0
+
+  const topbar     = document.getElementById('collection-topbar')
+  const searchWrap = document.querySelector('.top-bar-search-wrap')
+  const chipsBar   = container?.querySelector('#filter-chips-bar')
+  const exportBtn  = document.getElementById('col-nav-export')
+
+  if (topbar) topbar.hidden = true
+  if (searchWrap) searchWrap.hidden = false
+  if (chipsBar) chipsBar.hidden = false
+  if (exportBtn) exportBtn.hidden = false
+  renderUpdateBar()
+
+  document.getElementById('top-bar-left').hidden = false
+  document.getElementById('col-left-nav').hidden = true
+  document.getElementById('top-bar-right').hidden = false
+  document.getElementById('col-right-nav').hidden = true
+
+  if (navigateToCollections) store.emit(events.NAVIGATE, { view: 'collections' })
+  else reload()
 }
 
 // ─── Shell ───────────────────────────────────────────────────────
@@ -549,6 +617,15 @@ async function importPaths(paths) {
 async function reload() {
   const gen = ++_reloadGen
   try {
+    // Similar mode: a flat, ranked set for one source item — no teaser/shelves.
+    if (_similarTo) {
+      const items = await api.findSimilar(_similarTo, 80).catch(() => [])
+      if (gen !== _reloadGen) return
+      render(items, calcColCount(), false)
+      _lastView = { visibleItems: items, recoExtra: [], isFree: isFreePlan(), teaserItems: [], extraCount: 0, showTeaser: false }
+      return
+    }
+
     const isFree = isFreePlan()
     const colCount = calcColCount()
     const teaserSlots = colCount * 3
