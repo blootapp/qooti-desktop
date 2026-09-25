@@ -4815,6 +4815,12 @@ button:active:not(:disabled),
   from { opacity: 0; transform: translateY(-8px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
+/* Submenu fades + slides via margin (NOT transform) so it never clobbers the
+   translateX(-50%) centering — that clobber made it pop right, then snap left. */
+@keyframes ctx-submenu-in {
+  from { opacity: 0; margin-top: -4px; }
+  to   { opacity: 1; margin-top: 0; }
+}
 .ctx-item {
   display: flex;
   align-items: center;
@@ -4871,7 +4877,7 @@ button:active:not(:disabled),
   padding: 4px;
   flex-direction: column;
   z-index: 9001;
-  animation: ctx-appear 0.15s ease;
+  animation: ctx-submenu-in 0.15s ease;
   overflow: hidden;
 }
 /* Scrollable collection list — shows exactly 5 items then scrolls */
@@ -4889,7 +4895,7 @@ button:active:not(:disabled),
   margin-top: 2px;
   padding-top: 2px;
 }
-.ctx-submenu--left { left: auto; right: 0; }
+.ctx-submenu--left { left: auto; right: 0; transform: none; }
 
 /* Submenu items — override horizontal-bar defaults */
 .ctx-submenu .ctx-item {
