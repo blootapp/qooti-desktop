@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use tauri::{AppHandle, Manager};
 
-const SCHEMA_VERSION: i64 = 32;
+const SCHEMA_VERSION: i64 = 33;
 
 pub fn init(app: &AppHandle) -> Result<Connection> {
     let data_dir = app.path().app_data_dir()?;
@@ -74,6 +74,48 @@ fn run_additive_migrations(conn: &Connection) -> Result<()> {
             b TEXT NOT NULL,
             PRIMARY KEY (a, b)
         );"
+    );
+
+    // Object/content labels for keyword search (v33): detected once per image by CLIP and
+    // stored here; the FTS index is rebuilt below to include them, so searching "box"
+    // matches any image that contains a box — no per-search analysis.
+    let _ = conn.execute_batch("ALTER TABLE inspirations ADD COLUMN object_tags TEXT");
+    let object_col_new = conn
+        .execute_batch("ALTER TABLE inspirations ADD COLUMN object_status TEXT")
+        .is_ok();
+    if object_col_new {
+        // Existing items are (re)analysed only via the manual reindex; new imports run
+        // automatically. Marking them 'skipped' keeps the on-import pass from grinding
+        // through the whole existing library unprompted.
+        let _ = conn.execute_batch(
+            "UPDATE inspirations SET object_status = 'skipped' WHERE type IN ('image','gif')"
+        );
+    }
+    // Recreate the FTS index with the object_tags column + matching sync triggers. The
+    // bulk 'rebuild' at the end of this function repopulates it from the content table.
+    let _ = conn.execute_batch(
+        "DROP TRIGGER IF EXISTS inspirations_fts_ai;
+         DROP TRIGGER IF EXISTS inspirations_fts_ad;
+         DROP TRIGGER IF EXISTS inspirations_fts_au;
+         DROP TABLE IF EXISTS inspirations_fts;
+         CREATE VIRTUAL TABLE inspirations_fts USING fts5(
+             title, ocr_text, object_tags,
+             content='inspirations', content_rowid='rowid', tokenize='unicode61');
+         CREATE TRIGGER inspirations_fts_ai AFTER INSERT ON inspirations BEGIN
+             INSERT INTO inspirations_fts(rowid, title, ocr_text, object_tags)
+             VALUES (new.rowid, COALESCE(new.title,''), COALESCE(new.ocr_text,''), COALESCE(new.object_tags,''));
+         END;
+         CREATE TRIGGER inspirations_fts_ad AFTER DELETE ON inspirations BEGIN
+             INSERT INTO inspirations_fts(inspirations_fts, rowid, title, ocr_text, object_tags)
+             VALUES ('delete', old.rowid, COALESCE(old.title,''), COALESCE(old.ocr_text,''), COALESCE(old.object_tags,''));
+         END;
+         CREATE TRIGGER inspirations_fts_au AFTER UPDATE ON inspirations
+         WHEN new.title IS NOT old.title OR new.ocr_text IS NOT old.ocr_text OR new.object_tags IS NOT old.object_tags BEGIN
+             INSERT INTO inspirations_fts(inspirations_fts, rowid, title, ocr_text, object_tags)
+             VALUES ('delete', old.rowid, COALESCE(old.title,''), COALESCE(old.ocr_text,''), COALESCE(old.object_tags,''));
+             INSERT INTO inspirations_fts(rowid, title, ocr_text, object_tags)
+             VALUES (new.rowid, COALESCE(new.title,''), COALESCE(new.ocr_text,''), COALESCE(new.object_tags,''));
+         END;"
     );
 
     // Free-plan feature tables (v28)

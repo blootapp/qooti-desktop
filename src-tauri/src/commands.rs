@@ -1095,6 +1095,59 @@ pub fn finalize_ocr_index_result(result: OcrResult, state: State<AppState>) -> R
     Ok(())
 }
 
+// ─── Object/content detection (for keyword search) ──────────────────────────
+// Same claim/finalize shape as OCR: claim a batch of un-analysed images, mark them
+// 'processing', hand them to the CLIP worker (JS), then write back the detected labels.
+#[tauri::command]
+pub fn claim_object_candidates(batch_size: Option<i64>, state: State<AppState>) -> Result<Vec<Inspiration>, String> {
+    let db = state.db.lock().unwrap();
+    let size = batch_size.unwrap_or(4);
+
+    db.execute_batch("BEGIN;").map_err(|e| e.to_string())?;
+    let ids: Vec<String> = {
+        let mut stmt = db.prepare(
+            "SELECT id FROM inspirations
+             WHERE (object_status IS NULL OR object_status = 'processing') AND type IN ('image','gif')
+             LIMIT ?1",
+        ).map_err(|e| e.to_string())?;
+        let result: Vec<String> = stmt.query_map(params![size], |row| row.get(0))
+            .map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        result
+    };
+    if ids.is_empty() {
+        db.execute_batch("COMMIT;").map_err(|e| e.to_string())?;
+        return Ok(vec![]);
+    }
+    for id in &ids {
+        db.execute("UPDATE inspirations SET object_status = 'processing' WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+    }
+    db.execute_batch("COMMIT;").map_err(|e| e.to_string())?;
+
+    let placeholders: String = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
+                aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
+                phash, phash_source, vault_id, mime_type, created_at, updated_at,
+                auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs
+         FROM inspirations WHERE id IN ({})", placeholders);
+    let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows: Vec<Inspiration> = stmt
+        .query_map(rusqlite::params_from_iter(ids.iter().map(|s| s.as_str())), row_to_inspiration)
+        .map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn finalize_object_result(id: String, object_tags: String, status: String, state: State<AppState>) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE inspirations SET object_tags = ?1, object_status = ?2 WHERE id = ?3",
+        params![object_tags, status, id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn reset_ocr_status_for_inspiration(id: String, state: State<AppState>) -> Result<(), String> {
     let db = state.db.lock().unwrap();
@@ -2647,6 +2700,12 @@ pub fn reindex_library(state: State<AppState>) -> Result<ReindexResult, String> 
     // Reset OCR so every image/gif is re-analysed on next pass
     db.execute_batch(
         "UPDATE inspirations SET ocr_status = NULL, ocr_text = '' WHERE type IN ('image','gif')"
+    ).map_err(|e| e.to_string())?;
+
+    // Reset object detection too — the same "Reindex" button re-analyses content so
+    // keyword search (e.g. "box") picks up newly-detected objects across the library.
+    db.execute_batch(
+        "UPDATE inspirations SET object_status = NULL, object_tags = '' WHERE type IN ('image','gif')"
     ).map_err(|e| e.to_string())?;
 
     let media_requeued: i64 = db

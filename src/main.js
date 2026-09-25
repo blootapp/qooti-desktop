@@ -22,6 +22,7 @@ import { initDownloader, checkUrl, handleSwatchClick } from './modules/downloade
 import { init as initCardDetail } from './modules/card-detail.js'
 import { init as initOcr, startIndexing as startOcr } from './modules/ocr.js'
 import { initAutoTag } from './modules/auto-tag.js'
+import { initObjectTags } from './modules/object-tags.js'
 import { initDeveloper, runDevCommand } from './modules/developer.js'
 import { syncTagVocab } from './modules/tag-sync.js'
 import { init as initImporter } from './modules/importer.js'
@@ -514,6 +515,9 @@ async function boot() {
 
     // Start auto-tag pipeline — model downloads once and caches permanently
     initAutoTag()
+
+    // Detect objects in new imports so keyword search finds them (analyzed once each).
+    initObjectTags()
 
     // Developer overlay (secret trigger: type blt_developer in search bar + Enter)
     initDeveloper()

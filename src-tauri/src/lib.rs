@@ -291,6 +291,8 @@ pub fn run() {
             commands::read_image_as_base64,
             commands::claim_ocr_index_candidates,
             commands::finalize_ocr_index_result,
+            commands::claim_object_candidates,
+            commands::finalize_object_result,
             commands::reset_ocr_status_for_inspiration,
             commands::queue_full_ocr_reindex,
             commands::get_ocr_index_stats,

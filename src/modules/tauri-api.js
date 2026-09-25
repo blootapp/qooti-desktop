@@ -124,6 +124,8 @@ const tauriApi = {
 
   claimOcrCandidates:         (batchSize = 10) => _invoke('claim_ocr_index_candidates', { batchSize }),
   finalizeOcrResult:          result           => _invoke('finalize_ocr_index_result', { result }),
+  claimObjectCandidates:      (batchSize = 4)  => _invoke('claim_object_candidates', { batchSize }),
+  finalizeObjectResult:       (id, objectTags, status) => _invoke('finalize_object_result', { id, objectTags, status }),
   resetOcrStatus:             id               => _invoke('reset_ocr_status_for_inspiration', { id }),
   queueFullOcrReindex:        ()               => _invoke('queue_full_ocr_reindex'),
   getOcrStats:                ()               => _invoke('get_ocr_index_stats'),
