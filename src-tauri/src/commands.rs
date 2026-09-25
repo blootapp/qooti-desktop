@@ -2503,12 +2503,20 @@ fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<Inspir
     };
     let Some((tfp, taspect)) = target else { return Ok(vec![]); };
 
-    // Rank by MAD, keeping only visually-similar candidates (looser than the dup finder).
-    const SIM_MAD: u32 = 40;
-    let mut scored: Vec<(u32, String)> = cands.iter()
-        .filter_map(|c| fp_similar(&tfp, &c.fp, taspect, c.aspect, SIM_MAD).map(|mad| (mad, c.id.clone())))
-        .collect();
-    scored.sort_by_key(|(mad, _)| *mad);
+    // Rank ALL candidates by structural distance (dHash + 16×16 grayscale MAD) and keep
+    // the nearest N. Unlike the duplicate finder there is NO hard "near-identical" gate —
+    // "find similar" should always surface the closest matches, not just exact copies.
+    // A loose aspect gate only skips wildly different shapes.
+    const MAX_ASPECT: f64 = 2.2;
+    let mut scored: Vec<(u32, String)> = cands.iter().filter_map(|c| {
+        let (hi, lo) = if taspect >= c.aspect { (taspect, c.aspect) } else { (c.aspect, taspect) };
+        if lo > 0.0 && hi / lo > MAX_ASPECT { return None; }
+        let dh  = (tfp.dhash ^ c.fp.dhash).count_ones();
+        let mad = tfp.sig.iter().zip(c.fp.sig.iter())
+            .map(|(x, y)| (*x as i32 - *y as i32).unsigned_abs()).sum::<u32>() / 256;
+        Some((dh * 3 + mad, c.id.clone()))
+    }).collect();
+    scored.sort_by_key(|(d, _)| *d);
     scored.truncate(limit.max(0) as usize);
     if scored.is_empty() { return Ok(vec![]); }
 

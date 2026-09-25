@@ -41,10 +41,21 @@ function animateBoard(on) {
   if (_board) _board.style.transition = on ? `transform 0.5s ${EASE}` : 'none'
 }
 
-function makeTile(item, size, x, y, isFocus) {
+// Size a tile to the item's own aspect ratio (longest side = `longSide`) so images are
+// never cropped to a square.
+function tileDims(item, longSide) {
+  const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1  // width / height
+  return ar >= 1
+    ? { w: longSide, h: Math.round(longSide / ar) }
+    : { w: Math.round(longSide * ar), h: longSide }
+}
+
+function makeTile(item, longSide, x, y, isFocus) {
   const tile = document.createElement('div')
   tile.className = 'simcanvas-tile' + (isFocus ? ' is-focus' : '')
-  tile.style.width = tile.style.height = `${size}px`
+  const { w, h } = tileDims(item, longSide)
+  tile.style.width  = `${w}px`
+  tile.style.height = `${h}px`
   tile.style.left = `${x}px`
   tile.style.top  = `${y}px`
   const img = document.createElement('img')

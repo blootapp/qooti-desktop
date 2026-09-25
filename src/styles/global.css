@@ -3792,9 +3792,9 @@ button:active:not(:disabled),
 
 /* ─── Similarity canvas (fullscreen, pannable + zoomable board) ─── */
 .simcanvas {
+  /* Reads as the detail modal expanded to fullscreen — same surface, no blur. */
   position: fixed; inset: 0; z-index: 10000;
-  background: radial-gradient(circle at 50% 45%, rgba(20,22,28,0.92), rgba(8,9,12,0.98));
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: var(--bg-surface);
   overflow: hidden;
   opacity: 0;
   transition: opacity 0.5s ease;
@@ -3816,7 +3816,7 @@ button:active:not(:disabled),
   box-shadow: 0 10px 34px rgba(0,0,0,0.5);
   cursor: pointer;
 }
-.simcanvas-tile img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.simcanvas-tile img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
 .simcanvas-tile:not(.is-focus):hover { box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 0 2px rgba(255,255,255,0.25); }
 .simcanvas-tile.is-focus {
   border: 2px solid var(--accent, #1c93e3);
@@ -3824,7 +3824,8 @@ button:active:not(:disabled),
   z-index: 5;
 }
 .simcanvas-close {
-  position: absolute; top: 16px; right: 16px; z-index: 20;
+  /* Sit clear of the custom Windows title bar (z-index 10001, fixed at the top). */
+  position: absolute; top: calc(var(--title-bar-height, 38px) + 14px); right: 16px; z-index: 20;
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: rgba(30,32,38,0.72); border: 1px solid rgba(255,255,255,0.1);
