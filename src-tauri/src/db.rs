@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use tauri::{AppHandle, Manager};
 
-const SCHEMA_VERSION: i64 = 33;
+const SCHEMA_VERSION: i64 = 34;
 
 pub fn init(app: &AppHandle) -> Result<Connection> {
     let data_dir = app.path().app_data_dir()?;
@@ -137,6 +137,13 @@ fn run_additive_migrations(conn: &Connection) -> Result<()> {
          SELECT tag_id, COUNT(*) FROM inspiration_tags GROUP BY tag_id;
          INSERT OR IGNORE INTO tag_usage_counts (tag_id, count)
          SELECT id, 0 FROM tags;"
+    );
+
+    // v34: object detection is temporarily disabled (its labels were polluting search).
+    // Wipe the detected labels so the FTS rebuild below indexes them empty. The columns +
+    // FTS column are kept so the feature can be re-enabled later without a schema change.
+    let _ = conn.execute_batch(
+        "UPDATE inspirations SET object_tags = NULL, object_status = 'skipped' WHERE type IN ('image','gif')"
     );
 
     // Populate the FTS index from the content table (schema v30). Full rebuild
