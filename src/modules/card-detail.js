@@ -647,6 +647,7 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
     ctrl.innerHTML = `
       <button class="enh-btn" title="Enhance — AI upscale & sharpen">
         <span class="enh-btn-shine" aria-hidden="true"></span>
+        <span class="spinner-ring enh-btn-spinner" aria-hidden="true"></span>
         <span class="icon icon-14" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>
         <span class="enh-btn-label">Enhance</span>
       </button>`
