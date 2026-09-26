@@ -3,6 +3,7 @@ import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
 import { startTask } from './progress-ring.js'
+import { logAction } from './diagnostics.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 const YT_RE   = /(?:youtube\.com|youtu\.be)/i
@@ -625,11 +626,14 @@ async function startVideoDownload() {
     _activeDownloadId = null
   }
 
+  logAction(`[download] invoke (import-modal): ${url}`)
   try {
     downloadId = await api.downloadUrl(url, '')
     _activeDownloadId = downloadId
+    logAction(`[download] accepted id=${downloadId}`)
   } catch (err) {
     cleanup()
+    logAction(`[download] invoke failed: ${err}`)
     setProgress(0, `Error: ${err}`)
   }
 }

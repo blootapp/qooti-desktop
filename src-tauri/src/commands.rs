@@ -3634,6 +3634,13 @@ fn hi_res_image_url(url: &str) -> Option<String> {
     None
 }
 
+/// Technical download breadcrumb → feedback activity trail (download:diag event) + log.
+fn dl_diag(app: &AppHandle, msg: impl AsRef<str>) {
+    let m = msg.as_ref();
+    log::info!(target: "Download", "{m}");
+    let _ = app.emit("download:diag", m.to_string());
+}
+
 fn run_ytdlp(
     app: AppHandle,
     download_id: String,
@@ -3945,6 +3952,14 @@ fn run_ytdlp(
             .map(|e| e.path())
             .collect();
 
+    dl_diag(&app, format!(
+        "start id={download_id} youtube={is_youtube} quality={quality} pot_ready={pot_ready} bin={}{}",
+        binary.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+        if is_youtube {
+            format!(" clients={}", if pot_ready { yt_pot_clients_arg.as_str() } else { yt_clients_arg.as_str() })
+        } else { String::new() }
+    ));
+
     let mut child = match hidden_command(&binary)
         .args(&base_args)
         .env("PYTHONUNBUFFERED", "1")
@@ -4104,6 +4119,12 @@ fn run_ytdlp(
     let stderr_text = std::sync::Arc::try_unwrap(stderr_lines_shared)
         .map(|m| m.into_inner().unwrap())
         .unwrap_or_default();
+
+    dl_diag(&app, format!("yt-dlp exit id={download_id} code={:?}",
+        exit_status.as_ref().ok().and_then(|s| s.code())));
+    if let Some(err) = stderr_text.lines().rev().find(|l| l.contains("ERROR:")) {
+        dl_diag(&app, format!("yt-dlp stderr: {}", err.trim().chars().take(200).collect::<String>()));
+    }
 
     match exit_status {
         Ok(s) if s.success() => {

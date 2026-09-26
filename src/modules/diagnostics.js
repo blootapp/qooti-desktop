@@ -61,6 +61,9 @@ export function initDiagnostics() {
   // PO-token provider steps (emitted from Rust) — so feedback reports reveal exactly
   // where the YouTube provider setup fails on a user's machine.
   listen('pot:diag', e => action(`POT: ${e.payload}`)).catch(() => {})
+  // Technical download breadcrumbs from Rust: client chain, yt-dlp exit code, stderr —
+  // so a "download not working" report shows exactly what yt-dlp did and why it failed.
+  listen('download:diag', e => action(`[download] ${e.payload}`)).catch(() => {})
 
   bindActivityTrail()
 }
