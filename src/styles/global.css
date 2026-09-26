@@ -2609,9 +2609,11 @@ body.hide-collection-label .card-label--collection { display: none; }
   color: var(--text-secondary);
 }
 .s-plan-pro {
-  background: rgba(27,79,216,0.15);
-  border: 1px solid rgba(27,79,216,0.3);
-  color: var(--accent);
+  /* --accent-link is the theme-aware legible accent: bright (#6BA3FF) on dark, deep on
+     light — so the badge reads well in both modes (and follows the chosen accent). */
+  background: var(--accent-tint);
+  border: 1px solid color-mix(in srgb, var(--accent-link) 35%, transparent);
+  color: var(--accent-link);
 }
 
 .s-upgrade-btn {
