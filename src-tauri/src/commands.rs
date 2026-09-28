@@ -2659,20 +2659,12 @@ pub fn mark_not_duplicates(ids: Vec<String>, state: State<AppState>) -> Result<(
 pub struct SimilarResult {
     #[serde(flatten)]
     item: Inspiration,
-    tier: u8,   // 0 = visually similar (inner ring, full opacity); 1 = related (tags/title/objects)
+    tier: u8,   // 0 = clearly looks alike (full opacity); 1 = loosely looks alike (dimmed)
 }
 
-fn tokenize_words(s: &str) -> std::collections::HashSet<String> {
-    s.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.chars().count() > 2)
-        .map(|w| w.to_string())
-        .collect()
-}
-
-/// Find items similar to `id` (images only). Tier 0 = genuinely visually similar (dHash +
-/// grayscale MAD within a threshold); tier 1 = related by shared tags / title / detected
-/// objects (with next-nearest visuals as filler). The canvas dims tier 1 until hovered.
+/// Find images that look like `id`. Ranked purely on appearance — what the image shows,
+/// its style and colours (CLIP embeddings, clip.rs; fingerprint fallback until the library
+/// is indexed) — never on tags, titles or detected objects. The canvas dims tier 1.
 #[tauri::command]
 pub async fn find_similar(app: AppHandle, id: String, limit: i64) -> Result<Vec<SimilarResult>, String> {
     tauri::async_runtime::spawn_blocking(move || find_similar_impl(&app, &id, limit))
@@ -2680,96 +2672,54 @@ pub async fn find_similar(app: AppHandle, id: String, limit: i64) -> Result<Vec<
         .map_err(|e| e.to_string())?
 }
 
-/// Fingerprint ranking (dHash + 16×16 grayscale) — near-duplicate detectors, blind to
-/// content and colour. Only the fallback now: used until CLIP embeddings exist (clip.rs).
+/// Fingerprint ranking (dHash + 16×16 grayscale) — a near-duplicate detector, blind to
+/// content and colour. Only the fallback now, until CLIP embeddings exist (clip.rs).
+/// Visual only: just the items within the fingerprint threshold, nearest first.
 fn legacy_similar_order(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<(String, u8)>, String> {
     use tauri::Manager;
-    use std::collections::{HashMap, HashSet};
     ensure_phashes(app);
     let state = app.state::<AppState>();
 
-    struct Cand { id: String, fp: Fp, aspect: f64, words: HashSet<String> }
+    struct Cand { id: String, fp: Fp, aspect: f64 }
 
-    // Focus fingerprint + text profile (title + detected objects), and every other item's.
-    let (target, focus_words, cands): (Option<(Fp, f64)>, HashSet<String>, Vec<Cand>) = {
+    let (target, cands): (Option<(Fp, f64)>, Vec<Cand>) = {
         let db = state.db.lock().map_err(|_| "db lock".to_string())?;
         let mut target = None;
-        let mut focus_words = HashSet::new();
         let mut cands = Vec::new();
         if let Ok(mut stmt) = db.prepare(
-            "SELECT id, phash, aspect_ratio, COALESCE(title,''), COALESCE(object_tags,'') \
-             FROM inspirations WHERE type IN ('image','gif') AND phash IS NOT NULL"
+            "SELECT id, phash, aspect_ratio FROM inspirations \
+             WHERE type IN ('image','gif') AND phash IS NOT NULL"
         ) {
             if let Ok(it) = stmt.query_map([], |r| Ok((
                 r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<f64>>(2)?,
-                r.get::<_, String>(3)?, r.get::<_, String>(4)?,
             ))) {
-                for (rid, ph, ar, title, obj) in it.flatten() {
+                for (rid, ph, ar) in it.flatten() {
                     let Some(fp) = ph.as_deref().and_then(parse_fp) else { continue };
-                    let words = tokenize_words(&format!("{title} {obj}"));
-                    if rid == id { target = Some((fp, ar.unwrap_or(1.0))); focus_words = words; }
-                    else { cands.push(Cand { id: rid, fp, aspect: ar.unwrap_or(1.0), words }); }
+                    if rid == id { target = Some((fp, ar.unwrap_or(1.0))); }
+                    else { cands.push(Cand { id: rid, fp, aspect: ar.unwrap_or(1.0) }); }
                 }
             }
         }
-        (target, focus_words, cands)
+        (target, cands)
     };
     let Some((tfp, taspect)) = target else { return Ok(vec![]); };
-
-    // Candidates that share >= 1 tag with the focus (and how many).
-    let tag_shared: HashMap<String, u32> = {
-        let db = state.db.lock().map_err(|_| "db lock".to_string())?;
-        let mut m = HashMap::new();
-        if let Ok(mut stmt) = db.prepare(
-            "SELECT it2.inspiration_id, COUNT(*) FROM inspiration_tags it1 \
-             JOIN inspiration_tags it2 ON it1.tag_id = it2.tag_id \
-             WHERE it1.inspiration_id = ?1 AND it2.inspiration_id != ?1 \
-             GROUP BY it2.inspiration_id"
-        ) {
-            if let Ok(it) = stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?))) {
-                for (cid, n) in it.flatten() { m.insert(cid, n); }
-            }
-        }
-        m
-    };
 
     const MAX_ASPECT: f64 = 2.2;
     const VISUAL_MAX: u32 = 100;   // dHash*3 + MAD threshold to count as "visually similar"
     let limit = limit.max(0) as usize;
 
-    let dist = |c: &Cand| -> Option<u32> {
+    let mut visual: Vec<(u32, String)> = cands.iter().filter_map(|c| {
         let (hi, lo) = if taspect >= c.aspect { (taspect, c.aspect) } else { (c.aspect, taspect) };
         if lo > 0.0 && hi / lo > MAX_ASPECT { return None; }
         let dh  = (tfp.dhash ^ c.fp.dhash).count_ones();
         let mad = tfp.sig.iter().zip(c.fp.sig.iter())
             .map(|(x, y)| (*x as i32 - *y as i32).unsigned_abs()).sum::<u32>() / 256;
-        Some(dh * 3 + mad)
-    };
-
-    // Tier 0 — visually similar (within threshold), nearest first.
-    let mut visual: Vec<(u32, String)> = cands.iter()
-        .filter_map(|c| dist(c).filter(|d| *d <= VISUAL_MAX).map(|d| (d, c.id.clone())))
-        .collect();
+        let d = dh * 3 + mad;
+        (d <= VISUAL_MAX).then(|| (d, c.id.clone()))
+    }).collect();
     visual.sort_by_key(|(d, _)| *d);
     visual.truncate(limit.min(18));
-    let visual_ids: HashSet<&String> = visual.iter().map(|(_, id)| id).collect();
-
-    // Tier 1 — everything else, ranked by (metadata overlap desc, then visual distance asc).
-    let mut related: Vec<(u32, u32, String)> = cands.iter()
-        .filter(|c| !visual_ids.contains(&c.id))
-        .map(|c| {
-            let meta = tag_shared.get(&c.id).copied().unwrap_or(0) * 5
-                + focus_words.intersection(&c.words).count() as u32;
-            (meta, dist(c).unwrap_or(u32::MAX), c.id.clone())
-        })
-        .collect();
-    related.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    related.truncate(limit.saturating_sub(visual.len()));
-
-    let ordered: Vec<(String, u8)> = visual.into_iter().map(|(_, id)| (id, 0u8))
-        .chain(related.into_iter().map(|(_, _, id)| (id, 1u8)))
-        .collect();
-    Ok(ordered)
+    Ok(visual.into_iter().map(|(_, id)| (id, 0u8)).collect())
 }
 
 fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<SimilarResult>, String> {

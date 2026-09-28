@@ -15,7 +15,6 @@
 // time. Embeddings live in their own table, created with IF NOT EXISTS, so this needs
 // no SCHEMA_VERSION bump.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -52,8 +51,7 @@ const MIN_FOR_Z: usize = 30;       // tiny libraries: too few items for a stable
 const ABS_STRONG: f32 = 0.70;      // …so use fixed cut-offs instead
 const ABS_RELATED: f32 = 0.60;
 const COLOUR_WEIGHT: f32 = 0.15;   // palette similarity nudges the order toward the same mood
-const TAG_BOOST: f32 = 0.03;       // per tag the user shares between the two items…
-const TAG_BOOST_MAX: f32 = 0.06;   // …capped, so tags only break near-ties
+// Purely visual on purpose: tags, titles and detected objects never influence the result.
 
 static SESSION: OnceCell<Mutex<ort::session::Session>> = OnceCell::new();
 static INSTALL_LOCK: Mutex<()> = Mutex::new(());
@@ -277,10 +275,10 @@ fn colour_similarity(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
     (1.0 - d / 50.0).clamp(0.0, 1.0)
 }
 
-/// Ranking score + tier for one candidate, or None if it isn't similar enough to show.
-/// `z` is the candidate's standing against the focus's library-wide background (None for
-/// tiny libraries → fixed cut-offs).
-fn score_and_tier(cos: f32, z: Option<f32>, colour: f32, shared_tags: u32) -> Option<(f32, u8)> {
+/// Ranking score + tier for one candidate, or None if it doesn't look similar enough to
+/// show. `z` is the candidate's standing against the focus's library-wide background
+/// (None for tiny libraries → fixed cut-offs). Colour only reorders; it never admits.
+fn score_and_tier(cos: f32, z: Option<f32>, colour: f32) -> Option<(f32, u8)> {
     if cos < FLOOR { return None; }
     let tier = match z {
         Some(z) if z >= Z_STRONG => 0,
@@ -290,12 +288,11 @@ fn score_and_tier(cos: f32, z: Option<f32>, colour: f32, shared_tags: u32) -> Op
         None if cos >= ABS_RELATED => 1,
         None => return None,
     };
-    let score = cos + COLOUR_WEIGHT * colour + (TAG_BOOST * shared_tags as f32).min(TAG_BOOST_MAX);
-    Some((score, tier))
+    Some((cos + COLOUR_WEIGHT * colour, tier))
 }
 
-/// Rank items visually similar to `focus_id`: CLIP cosine + a colour-palette nudge + a
-/// small shared-tag boost. Returns (id, tier) best-first — tier 0 clearly similar, tier 1
+/// Rank items that look like `focus_id`: CLIP image-embedding cosine + a colour-palette
+/// nudge — appearance only, never tags or titles. Returns (id, tier) best-first — tier 0 clearly similar, tier 1
 /// loosely related (the canvas dims those); weaker items aren't returned at all.
 /// None when embeddings can't be used yet (model not downloaded, the focus can't be
 /// embedded, or most of the library isn't indexed) — the caller then falls back to the
@@ -347,22 +344,6 @@ pub fn rank_similar(app: &AppHandle, focus_id: &str, limit: usize) -> Option<Vec
         return None;
     }
 
-    let shared_tags: HashMap<String, u32> = {
-        let db = state.db.lock().ok()?;
-        let mut m = HashMap::new();
-        if let Ok(mut stmt) = db.prepare(
-            "SELECT it2.inspiration_id, COUNT(*) FROM inspiration_tags it1
-             JOIN inspiration_tags it2 ON it1.tag_id = it2.tag_id
-             WHERE it1.inspiration_id = ?1 AND it2.inspiration_id != ?1
-             GROUP BY it2.inspiration_id"
-        ) {
-            if let Ok(it) = stmt.query_map([focus_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?))) {
-                for (cid, n) in it.flatten() { m.insert(cid, n); }
-            }
-        }
-        m
-    };
-
     // Cosine to every candidate, then the focus's background (mean/std) for z-scores.
     let coss: Vec<f32> = cands.iter()
         .map(|(_, _, v)| focus.iter().zip(v.iter()).map(|(a, b)| a * b).sum())
@@ -377,8 +358,7 @@ pub fn rank_similar(app: &AppHandle, focus_id: &str, limit: usize) -> Option<Vec
     let mut scored: Vec<(u8, f32, String)> = cands.into_iter().zip(coss).filter_map(|((id, pal, _), cos)| {
         let z = background.map(|(mean, sd)| (cos - mean) / sd);
         let colour = colour_similarity(&focus_lab, &palette_lab(pal.as_deref()));
-        let tags = shared_tags.get(&id).copied().unwrap_or(0);
-        score_and_tier(cos, z, colour, tags).map(|(s, t)| (t, s, id))
+        score_and_tier(cos, z, colour).map(|(s, t)| (t, s, id))
     }).collect();
     // Clear matches first (best first), then the looser ones.
     scored.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
@@ -391,6 +371,7 @@ pub fn rank_similar(app: &AppHandle, focus_id: &str, limit: usize) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn blob_round_trip() {
@@ -413,18 +394,19 @@ mod tests {
     #[test]
     fn tiers_and_cutoff() {
         // Relative tiers.
-        assert_eq!(score_and_tier(0.70, Some(2.4), 0.5, 0).map(|s| s.1), Some(0));
-        assert_eq!(score_and_tier(0.70, Some(1.8), 0.5, 0).map(|s| s.1), Some(1));
-        assert_eq!(score_and_tier(0.70, Some(1.2), 1.0, 5), None);   // unremarkable for this focus
-        assert_eq!(score_and_tier(0.54, Some(3.0), 1.0, 5), None);   // under the absolute floor
+        assert_eq!(score_and_tier(0.70, Some(2.4), 0.5).map(|s| s.1), Some(0));
+        assert_eq!(score_and_tier(0.70, Some(1.8), 0.5).map(|s| s.1), Some(1));
+        assert_eq!(score_and_tier(0.70, Some(1.2), 1.0), None);   // unremarkable for this focus
+        assert_eq!(score_and_tier(0.54, Some(3.0), 1.0), None);   // under the absolute floor
         // Tiny libraries: fixed cut-offs.
-        assert_eq!(score_and_tier(0.72, None, 0.5, 0).map(|s| s.1), Some(0));
-        assert_eq!(score_and_tier(0.62, None, 0.5, 0).map(|s| s.1), Some(1));
-        assert_eq!(score_and_tier(0.58, None, 0.5, 0), None);
-        // Tag boost is capped.
-        let (a, _) = score_and_tier(0.7, Some(2.5), 0.0, 2).unwrap();
-        let (b, _) = score_and_tier(0.7, Some(2.5), 0.0, 9).unwrap();
-        assert!((a - b).abs() < 1e-6);
+        assert_eq!(score_and_tier(0.72, None, 0.5).map(|s| s.1), Some(0));
+        assert_eq!(score_and_tier(0.62, None, 0.5).map(|s| s.1), Some(1));
+        assert_eq!(score_and_tier(0.58, None, 0.5), None);
+        // Colour reorders but never admits a candidate that doesn't look alike.
+        let (a, _) = score_and_tier(0.70, Some(2.5), 0.0).unwrap();
+        let (b, _) = score_and_tier(0.70, Some(2.5), 1.0).unwrap();
+        assert!(b > a);
+        assert_eq!(score_and_tier(0.70, Some(1.0), 1.0), None);
     }
 
     /// Fidelity check against a canonical CLIP reference: PIL anti-aliased bicubic
