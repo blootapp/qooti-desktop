@@ -31,6 +31,7 @@ let currentCollectionIds  = new Set()
 let chordPending = false
 let chordTimer   = null
 let _viewTimer   = null
+let _stageRO     = null   // keeps the media fitted to the stage as the window resizes
 
 // ─── Init ─────────────────────────────────────────────────────────
 export function init() {
@@ -136,6 +137,7 @@ function navigate(dir) {
 // ─── Close ────────────────────────────────────────────────────────
 export function close() {
   clearTimeout(_viewTimer)
+  _stageRO?.disconnect(); _stageRO = null
   modalEl.classList.remove('open')
   backdropEl.classList.remove('open')
   modalEl.addEventListener('transitionend', () => {
@@ -155,117 +157,133 @@ function render() {
     ? convertFileSrc(item.stored_path)
     : item.stored_path
 
-  // Player uses a fixed-ratio box (images): the image is contained inside it. The box
-  // ratio is chosen AUTOMATICALLY — the nearest of a few clean presets to the item's own
-  // aspect ratio — so framing stays tidy with no manual control. (log distance so ratio
-  // nearness is symmetric, e.g. 2.0 and 0.5 are equally "far" from 1.0.)
-  const RATIO_PRESETS = [1.7778, 0.8, 1, 0.5625]  // 16:9, 4:5, 1:1, 9:16
   const itemAr = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
-  const ratioVal = RATIO_PRESETS.reduce((best, v) =>
-    Math.abs(Math.log(v) - Math.log(itemAr)) < Math.abs(Math.log(best) - Math.log(itemAr)) ? v : best,
-    RATIO_PRESETS[0])
 
   const dateStr = new Date(item.created_at).toLocaleDateString(currentLang() === 'uz' ? 'uz-Latn' : undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
   })
+  const sourceLabel = item.source_platform || hostOf(item.source_url)
+  const swatches = parsePalette(item.palette)
+  const hasNav = itemsList.length > 1
 
   modalEl.innerHTML = `
-    <div class="detail-modal-header">
-      <button class="detail-close" id="dp-close" aria-label="${tr('action.close')}">
-        <span class="icon icon-18" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span>
-      </button>
-    </div>
-
-    <div class="detail-media-area">
+    <div class="dp-stage" id="dp-stage">
       <div class="detail-media-wrap" id="dp-media"></div>
+      ${hasNav ? `
+        <button class="dp-nav dp-nav--prev" id="dp-prev" aria-label="${tr('detail.prev')}" ${itemIndex <= 0 ? 'disabled' : ''}>${I('caret-left', 18)}</button>
+        <button class="dp-nav dp-nav--next" id="dp-next" aria-label="${tr('detail.next')}" ${itemIndex >= itemsList.length - 1 ? 'disabled' : ''}>${I('caret-right', 18)}</button>` : ''}
     </div>
 
-    <div class="detail-info">
-      <!-- Read-only view (default) -->
-      <div class="detail-read" id="dp-read">
-        <div class="detail-title-row">
-          <div class="detail-read-title" id="dp-read-title">${escHtml(item.title ?? '')}</div>
-          <div class="detail-title-actions">
-            ${item.source_url ? `<button class="detail-orig-btn" id="dp-orig-btn" title="${tr('detail.go_original')}">
-              <span class="icon icon-16" style="mask-image:url('/icons/arrow-square-out.svg');-webkit-mask-image:url('/icons/arrow-square-out.svg')" aria-hidden="true"></span>
-            </button>` : ''}
-            ${item.type === 'image' ? `<button class="detail-orig-btn" id="dp-similar-btn" title="${tr('detail.find_similar')}">
-              <span class="icon icon-16" style="mask-image:url('/icons/magnifying-glass.svg');-webkit-mask-image:url('/icons/magnifying-glass.svg')" aria-hidden="true"></span>
-            </button>` : ''}
-            <button class="detail-coll-btn${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="${tr('detail.add_to_collection')}">
-              <span class="icon icon-16" style="mask-image:url('/icons/folders.svg');-webkit-mask-image:url('/icons/folders.svg')" aria-hidden="true"></span>
-            </button>
-            <button class="detail-edit-toggle" id="dp-edit-toggle" title="${tr('detail.edit')}">
-              <span class="icon icon-16" style="mask-image:url('/icons/pencil-simple.svg');-webkit-mask-image:url('/icons/pencil-simple.svg')" aria-hidden="true"></span>
-            </button>
-          </div>
-        </div>
-        <div class="detail-read-tags" id="dp-read-tags"></div>
-        <div class="detail-meta-row">
-          <span class="detail-meta-date">${dateStr}</span>
-          <span class="detail-meta-type">${escHtml(item.mime_type ?? item.type)}</span>
-        </div>
+    <aside class="dp-panel">
+      <div class="dp-panel-top">
+        ${item.source_url
+          ? `<button class="dp-source" id="dp-orig-btn" title="${tr('detail.go_original')}"><span>${escHtml(sourceLabel)}</span>${I('arrow-square-out', 14)}</button>`
+          : `<span class="dp-source dp-source--local">${tr('detail.local')}</span>`}
+        <button class="detail-close" id="dp-close" aria-label="${tr('action.close')}">${I('x', 18)}</button>
       </div>
 
-      <!-- Edit panel (hidden by default) -->
-      <div class="detail-edit" id="dp-edit">
-        <div class="detail-field">
-          <label class="detail-label">${tr('detail.title')}</label>
-          <input class="detail-input" id="dp-title" value="${escHtml(item.title ?? '')}"
-            placeholder="${tr('detail.title_ph')}" maxlength="200" />
-        </div>
+      <div class="detail-info">
+        <!-- Read-only view (default) -->
+        <div class="detail-read" id="dp-read">
+          <h2 class="detail-read-title${item.title ? '' : ' is-empty'}" id="dp-read-title">${escHtml(item.title || tr('detail.untitled'))}</h2>
 
-        <div class="detail-field">
-          <label class="detail-label">${tr('detail.tags')}</label>
-          <div class="detail-tag-list" id="dp-tag-list"></div>
-          <div class="detail-tag-picker">
-            <input class="detail-tag-search" id="dp-tag-search" placeholder="${tr('detail.tag_ph')}" autocomplete="off" />
-            <div class="detail-tag-suggestions" id="dp-tag-sug" hidden></div>
+          <div class="dp-actions">
+            ${item.type === 'image' ? `<button class="dp-action" id="dp-similar-btn">${I('magnifying-glass', 14)}<span>${tr('detail.find_similar')}</span></button>` : ''}
+            <button class="dp-action${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="${tr('detail.add_to_collection')}">${I('folders', 14)}<span>${tr('detail.collection')}</span></button>
+            <button class="dp-action" id="dp-edit-toggle" title="${tr('detail.edit')}">${I('pencil-simple', 14)}<span>${tr('action.edit')}</span></button>
           </div>
+
+          <div class="detail-read-tags" id="dp-read-tags"></div>
+
+          ${swatches.length ? `
+            <div class="dp-colors">
+              <div class="dp-section-label">${tr('detail.colors')}</div>
+              <div class="dp-swatches">${swatches.map(h => `<span class="dp-swatch" style="background:${escHtml(h)}" title="${escHtml(h)}"></span>`).join('')}</div>
+            </div>` : ''}
+
+          <dl class="dp-facts">
+            <dt>${tr('detail.added')}</dt><dd>${dateStr}</dd>
+            <dt>${tr('detail.type')}</dt><dd id="dp-type">${escHtml(typeLabel(item))}</dd>
+          </dl>
         </div>
 
-        ${item.source_url ? `
+        <!-- Edit panel (hidden by default) -->
+        <div class="detail-edit" id="dp-edit">
           <div class="detail-field">
-            <label class="detail-label">${tr('detail.source')}</label>
-            <a class="detail-source-link" href="${escHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">
-              ${item.source_platform ? `<strong>${escHtml(item.source_platform)}</strong> · ` : ''}${truncate(item.source_url, 55)}
-            </a>
-          </div>` : ''}
+            <label class="detail-label">${tr('detail.title')}</label>
+            <input class="detail-input" id="dp-title" value="${escHtml(item.title ?? '')}"
+              placeholder="${tr('detail.title_ph')}" maxlength="200" />
+          </div>
 
-        <div class="detail-edit-actions">
-          <button class="detail-delete-btn" id="dp-delete">
-            <span class="icon icon-14" style="mask-image:url('/icons/trash.svg');-webkit-mask-image:url('/icons/trash.svg')" aria-hidden="true"></span>
-            ${tr('action.delete')}
-          </button>
-          <div style="flex:1"></div>
-          <button class="detail-cancel-btn" id="dp-cancel">${tr('action.cancel')}</button>
-          <button class="detail-save-btn"   id="dp-save">${tr('action.save')}</button>
+          <div class="detail-field">
+            <label class="detail-label">${tr('detail.tags')}</label>
+            <div class="detail-tag-list" id="dp-tag-list"></div>
+            <div class="detail-tag-picker">
+              <input class="detail-tag-search" id="dp-tag-search" placeholder="${tr('detail.tag_ph')}" autocomplete="off" />
+              <div class="detail-tag-suggestions" id="dp-tag-sug" hidden></div>
+            </div>
+          </div>
+
+          ${item.source_url ? `
+            <div class="detail-field">
+              <label class="detail-label">${tr('detail.source')}</label>
+              <a class="detail-source-link" href="${escHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">
+                ${item.source_platform ? `<strong>${escHtml(item.source_platform)}</strong> · ` : ''}${truncate(item.source_url, 55)}
+              </a>
+            </div>` : ''}
+
+          <div class="detail-edit-actions">
+            <button class="detail-delete-btn" id="dp-delete">
+              ${I('trash', 14)}
+              ${tr('action.delete')}
+            </button>
+            <div style="flex:1"></div>
+            <button class="detail-cancel-btn" id="dp-cancel">${tr('action.cancel')}</button>
+            <button class="detail-save-btn"   id="dp-save">${tr('action.save')}</button>
+          </div>
         </div>
       </div>
-    </div>
+    </aside>
   `
 
-  // Drive the fixed-ratio image box from the auto-selected ratio.
-  modalEl.style.setProperty('--player-ratio', String(ratioVal))
-
-  // Media element
+  // Media element. The media box is sized to the item's own aspect ratio and contained
+  // in the stage (fitMedia) — first from the stored ratio (no layout jump), then from
+  // the real pixel size once known — and re-fitted whenever the stage resizes.
+  const stage     = modalEl.querySelector('#dp-stage')
   const mediaWrap = modalEl.querySelector('#dp-media')
+  let nat = { w: itemAr * 1000, h: 1000, cap: Infinity }
+  const refit = () => fitMedia(stage, mediaWrap, nat.w, nat.h, nat.cap)
+  _stageRO?.disconnect()
+  _stageRO = new ResizeObserver(refit)
+  _stageRO.observe(stage)
+  refit()
+
   if (item.type === 'video') {
-    mediaWrap.appendChild(makeVideoPlayer(mediaSrc))
+    mediaWrap.appendChild(makeVideoPlayer(mediaSrc, (w, h, dur) => {
+      nat = { w, h, cap: MAX_UPSCALE }; refit()
+      const typeEl = modalEl.querySelector('#dp-type')
+      if (typeEl && dur) typeEl.textContent = typeLabel(item, dur)
+    }))
   } else {
     const img = document.createElement('img')
     img.src       = mediaSrc
     img.alt       = item.title ?? ''
     img.className = 'detail-media-el'
-    img.loading   = 'lazy'
     img.decoding  = 'async'
-    img.onload = () => { img.style.opacity = '1' }
-    if (img.complete) img.style.opacity = '1'
+    const onLoad = () => {
+      img.style.opacity = '1'
+      if (img.naturalWidth) { nat = { w: img.naturalWidth, h: img.naturalHeight, cap: MAX_UPSCALE }; refit() }
+    }
+    img.addEventListener('load', onLoad)   // also fires after Original ⇄ Enhanced swaps
     mediaWrap.appendChild(img)
-    mediaWrap.classList.add('detail-media-wrap--fixed')   // fixed-ratio box; image contained
+    if (img.complete) onLoad()
     // AI enhance: button (with subtle magic shimmer) → badge + Original⇄Enhanced toggle.
     setupEnhanceUI(item, img, mediaWrap, mediaSrc)
   }
+
+  // Prev / next on the stage edges (same as ← / →).
+  modalEl.querySelector('#dp-prev')?.addEventListener('click', () => navigate(-1))
+  modalEl.querySelector('#dp-next')?.addEventListener('click', () => navigate(1))
 
   // Close
   modalEl.querySelector('#dp-close').addEventListener('click', close)
@@ -299,7 +317,10 @@ function render() {
     const newTitle = titleInput.value.trim()
     await saveTitle(newTitle)
     const readTitleEl = modalEl.querySelector('#dp-read-title')
-    if (readTitleEl) readTitleEl.textContent = newTitle || ''
+    if (readTitleEl) {
+      readTitleEl.textContent = newTitle || tr('detail.untitled')
+      readTitleEl.classList.toggle('is-empty', !newTitle)
+    }
   }
 
   editToggle.addEventListener('click', () => {
@@ -686,9 +707,13 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
 }
 
 // ─── Custom video player ──────────────────────────────────────────
-function makeVideoPlayer(src) {
+// Custom video player: a floating frosted control bar over the video (hides while
+// playing and idle), a centre play affordance while paused, and a scrubber with the
+// buffered range, a handle and a hover time tip. `onMeta(w, h, duration)` reports the
+// real video size so the stage can fit it.
+function makeVideoPlayer(src, onMeta) {
   const wrap = document.createElement('div')
-  wrap.className = 'video-player'
+  wrap.className = 'video-player is-paused'
 
   const vid = document.createElement('video')
   vid.src = src
@@ -696,46 +721,49 @@ function makeVideoPlayer(src) {
   vid.className = 'detail-media-el'
   vid.style.opacity = '1'
 
-  // Controls bar
-  const controls = document.createElement('div')
-  controls.className = 'vp-controls'
+  const center = document.createElement('div')
+  center.className = 'vp-center'
+  center.innerHTML = I('play', 24)
 
-  // Play/pause
+  // Control bar
+  const bar = document.createElement('div')
+  bar.className = 'vp-bar'
+
   const playBtn = document.createElement('button')
-  playBtn.className = 'vp-btn'
+  playBtn.className = 'vp-btn vp-play'
 
-  // Time display
-  const timeEl  = document.createElement('span')
-  timeEl.className = 'vp-time'
-  const curEl  = document.createElement('span')
-  const sepEl  = document.createElement('span')
-  sepEl.textContent = ' / '
-  const durEl  = document.createElement('span')
-  durEl.textContent = '0:00'
+  const curEl = document.createElement('span')
+  curEl.className = 'vp-time'
   curEl.textContent = '0:00'
-  timeEl.append(curEl, sepEl, durEl)
 
-  // Progress bar
-  const prog  = document.createElement('div')
-  prog.className = 'vp-progress'
-  const track = document.createElement('div')
+  const scrub  = document.createElement('div')
+  scrub.className = 'vp-scrub'
+  const track  = document.createElement('div')
   track.className = 'vp-track'
-  const fill  = document.createElement('div')
+  const buffer = document.createElement('div')
+  buffer.className = 'vp-buffer'
+  const fill   = document.createElement('div')
   fill.className = 'vp-fill'
-  const thumb = document.createElement('div')
-  thumb.className = 'vp-thumb'
-  track.append(fill, thumb)
-  prog.append(track)
+  const handle = document.createElement('div')
+  handle.className = 'vp-handle'
+  const tip    = document.createElement('div')
+  tip.className = 'vp-tip'
+  track.append(buffer, fill, handle)
+  scrub.append(track, tip)
 
-  // Volume
-  const volWrap  = document.createElement('div')
+  const durEl = document.createElement('span')
+  durEl.className = 'vp-time vp-time--dur'
+  durEl.textContent = '0:00'
+
+  const volWrap   = document.createElement('div')
   volWrap.className = 'vp-vol-wrap'
-  const muteBtn  = document.createElement('button')
+  const muteBtn   = document.createElement('button')
   muteBtn.className = 'vp-btn'
   const volSlider = document.createElement('input')
   volSlider.type  = 'range'
   volSlider.className = 'vp-vol'
   volSlider.min = '0'; volSlider.max = '1'; volSlider.step = '0.01'
+  volWrap.append(muteBtn, volSlider)
 
   // Restore persisted volume
   const _savedVol   = parseFloat(localStorage.getItem('__qooti_vol')   ?? '1')
@@ -744,62 +772,90 @@ function makeVideoPlayer(src) {
   vid.muted        = _savedMuted
   volSlider.value  = String(_savedMuted ? 0 : _savedVol)
 
-  volWrap.append(muteBtn, volSlider)
-
-  // Fullscreen
   const fsBtn = document.createElement('button')
   fsBtn.className = 'vp-btn'
   fsBtn.title = tr('player.fullscreen')
 
-  controls.append(playBtn, timeEl, prog, volWrap, fsBtn)
-  wrap.append(vid, controls)
+  bar.append(playBtn, curEl, scrub, durEl, volWrap, fsBtn)
+  wrap.append(vid, center, bar)
 
-  // ── Icon helpers ──
+  // ── Icons ──
   const setPlayIcon  = () => { playBtn.innerHTML = I('play',  16); playBtn.title = tr('player.play') }
   const setPauseIcon = () => { playBtn.innerHTML = I('pause', 16); playBtn.title = tr('player.pause') }
   const setSpeaker   = () => { muteBtn.innerHTML = I(vid.muted || vid.volume === 0 ? 'speaker-slash' : 'speaker-high', 16); muteBtn.title = vid.muted ? tr('player.unmute') : tr('player.mute') }
   const setFsIcon    = () => { fsBtn.innerHTML   = I(document.fullscreenElement ? 'arrows-in' : 'arrows-out', 16) }
-
   setPlayIcon(); setSpeaker(); setFsIcon()
 
-  // ── Time format ──
-  function fmt(s) {
-    const t = Math.round(s || 0)
-    const m = Math.floor(t / 60)
-    return `${m}:${String(t % 60).padStart(2, '0')}`
+  // ── Idle: hide the bar (and cursor) a moment after the pointer stops, while playing ──
+  let idleTimer = null
+  const wake = () => {
+    wrap.classList.remove('is-idle')
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => {
+      if (!vid.paused && !scrub.classList.contains('is-dragging') && !bar.matches(':hover')) wrap.classList.add('is-idle')
+    }, 2200)
   }
+  wrap.addEventListener('pointermove', wake)
+  wrap.addEventListener('pointerleave', () => { if (!vid.paused) wrap.classList.add('is-idle') })
 
   // ── Video events ──
-  vid.addEventListener('loadedmetadata', () => { durEl.textContent = fmt(vid.duration) })
+  vid.addEventListener('loadedmetadata', () => {
+    durEl.textContent = fmtDuration(vid.duration)
+    onMeta?.(vid.videoWidth, vid.videoHeight, vid.duration)
+  })
+  const updateBuffer = () => {
+    if (!vid.duration) return
+    let end = 0
+    for (let i = 0; i < vid.buffered.length; i++) {
+      if (vid.buffered.start(i) <= vid.currentTime + 0.5) end = Math.max(end, vid.buffered.end(i))
+    }
+    buffer.style.width = `${(end / vid.duration) * 100}%`
+  }
+  vid.addEventListener('progress', updateBuffer)
   vid.addEventListener('timeupdate', () => {
-    curEl.textContent = fmt(vid.currentTime)
+    curEl.textContent = fmtDuration(vid.currentTime)
     if (!vid.duration) return
     const pct = (vid.currentTime / vid.duration) * 100
-    fill.style.width = `${pct}%`
-    thumb.style.left = `${pct}%`
+    fill.style.width  = `${pct}%`
+    handle.style.left = `${pct}%`
+    updateBuffer()
   })
-  vid.addEventListener('play',  setPauseIcon)
-  vid.addEventListener('pause', setPlayIcon)
-  vid.addEventListener('ended', () => { setPlayIcon(); vid.currentTime = 0 })
+  vid.addEventListener('play',  () => { setPauseIcon(); wrap.classList.remove('is-paused'); wake() })
+  vid.addEventListener('pause', () => { setPlayIcon(); wrap.classList.add('is-paused'); wrap.classList.remove('is-idle') })
+  vid.addEventListener('ended', () => { setPlayIcon(); wrap.classList.add('is-paused'); vid.currentTime = 0 })
 
-  // ── Play/pause toggle ──
-  playBtn.addEventListener('click', () => vid.paused ? vid.play().catch(() => {}) : vid.pause())
-  vid.addEventListener('click', () => vid.paused ? vid.play().catch(() => {}) : vid.pause())
+  // ── Play/pause ──
+  const toggle = () => (vid.paused ? vid.play().catch(() => {}) : vid.pause())
+  playBtn.addEventListener('click', toggle)
+  vid.addEventListener('click', toggle)
 
-  // ── Seek (pointer capture — no global listeners needed) ──
-  prog.addEventListener('pointerdown', e => {
-    prog.setPointerCapture(e.pointerId)
-    seekTo(e)
+  // ── Scrub (pointer capture) + hover time tip ──
+  const pctAt = e => {
+    const r = scrub.getBoundingClientRect()
+    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width))
+  }
+  const showTip = pct => {
+    const w = scrub.clientWidth
+    tip.textContent = fmtDuration(pct * (vid.duration || 0))
+    const half = tip.offsetWidth / 2
+    tip.style.left = `${Math.max(half, Math.min(w - half, pct * w))}px`
+  }
+  scrub.addEventListener('pointerdown', e => {
+    scrub.setPointerCapture(e.pointerId)
+    scrub.classList.add('is-dragging')
+    const pct = pctAt(e)
+    if (vid.duration) vid.currentTime = pct * vid.duration
+    showTip(pct)
     e.preventDefault()
   })
-  prog.addEventListener('pointermove', e => { if (prog.hasPointerCapture(e.pointerId)) seekTo(e) })
-  prog.addEventListener('pointerup',   e => { prog.releasePointerCapture(e.pointerId) })
-
-  function seekTo(e) {
-    const r = prog.getBoundingClientRect()
-    const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width))
-    if (vid.duration) vid.currentTime = pct * vid.duration
-  }
+  scrub.addEventListener('pointermove', e => {
+    const pct = pctAt(e)
+    showTip(pct)
+    if (scrub.hasPointerCapture(e.pointerId) && vid.duration) vid.currentTime = pct * vid.duration
+  })
+  const endDrag = e => { if (scrub.hasPointerCapture(e.pointerId)) scrub.releasePointerCapture(e.pointerId); scrub.classList.remove('is-dragging') }
+  scrub.addEventListener('pointerup', endDrag)
+  scrub.addEventListener('pointercancel', endDrag)
 
   // ── Volume ──
   function saveVol() {
@@ -830,6 +886,43 @@ function makeVideoPlayer(src) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────
+const MAX_UPSCALE = 2   // small media may be enlarged to fill the stage, but no blurrier than 2×
+
+/** Size `box` to the media's aspect ratio, as large as fits inside the stage's content
+ *  area (upscaling by at most `maxScale`), so rounded corners and overlays hug the real
+ *  picture instead of a letterbox around it. */
+function fitMedia(stage, box, natW, natH, maxScale = Infinity) {
+  if (!stage || !box || !natW || !natH) return
+  const cs = getComputedStyle(stage)
+  const availW = stage.clientWidth  - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+  const availH = stage.clientHeight - parseFloat(cs.paddingTop)  - parseFloat(cs.paddingBottom)
+  if (availW <= 0 || availH <= 0) return
+  const k = Math.min(availW / natW, availH / natH, maxScale)
+  box.style.width  = `${Math.round(natW * k)}px`
+  box.style.height = `${Math.round(natH * k)}px`
+}
+
+function fmtDuration(s) {
+  const t = Math.max(0, Math.round(s || 0))
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = String(t % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+/** "Video · MP4 · 0:24", "Image · JPEG", "GIF" — readable, not a raw MIME type. */
+function typeLabel(item, durationSecs) {
+  const kind = item.type === 'gif' ? 'gif' : item.type === 'video' ? 'video' : 'image'
+  const parts = [tr(`detail.kind.${kind}`)]
+  const fmt = (item.mime_type || '').split('/')[1]
+  if (fmt && kind !== 'gif') parts.push(fmt.replace('quicktime', 'mov').toUpperCase())
+  const d = durationSecs ?? item.duration_secs
+  if (kind === 'video' && d) parts.push(fmtDuration(d))
+  return parts.join(' · ')
+}
+
+function hostOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url ?? '' }
+}
+
 function escHtml(str) {
   if (!str) return ''
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
