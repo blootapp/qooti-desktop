@@ -56,11 +56,12 @@ export function init() {
     set(download_id, { filename })
   })
 
-  store.on(events.DOWNLOAD_PROGRESS, ({ download_id, pct }) => {
+  store.on(events.DOWNLOAD_PROGRESS, ({ download_id, pct, stage }) => {
     const e = _entries.get(download_id)
     if (!e) return
     e.status = 'active'
     e.pct    = pct ?? 0
+    e.stage  = stage ?? null   // e.g. 'preparing_youtube' — not byte progress
     store.emit(events.DOWNLOADS_CHANGED)
   })
 
@@ -145,6 +146,7 @@ export async function retryDownload(id, fallback = null) {
 
   const newId = await api.downloadUrl(e.url, e.quality ?? 'best')
   console.info('[tracker] retry started as', newId)
+  importWhenDone(newId, e.url)
   store.emit(events.DOWNLOAD_STARTED, {
     downloadId:   newId,
     url:          e.url,
@@ -152,4 +154,34 @@ export async function retryDownload(id, fallback = null) {
     importSource: src,
   })
   return newId
+}
+
+// A retried download has no owner — the search bar / import modal / extension flow
+// that started the original is long gone — so nobody imported it: it finished,
+// showed "Saved to library", and the file stayed in downloads_tmp. The tracker
+// imports it itself.
+function importWhenDone(id, url) {
+  let onDone, onErr
+  const cleanup = () => {
+    store.off(events.DOWNLOAD_COMPLETE, onDone)
+    store.off(events.DOWNLOAD_ERROR,    onErr)
+  }
+  onDone = store.on(events.DOWNLOAD_COMPLETE, async ({ download_id, paths }) => {
+    if (download_id !== id) return
+    cleanup()
+    const all = Array.isArray(paths) ? paths : (paths ? [paths] : [])
+    let imported = 0
+    for (const p of all) {
+      try {
+        await api.finalizeDownload(p, url ?? null)
+        imported++
+      } catch (err) {
+        if (!String(err).includes('duplicate')) console.error('[tracker] retry finalize failed:', err)
+      }
+    }
+    if (imported > 0) store.emit(events.GRID_RELOAD, {})
+  })
+  onErr = store.on(events.DOWNLOAD_ERROR, ({ download_id }) => {
+    if (download_id === id) cleanup()
+  })
 }

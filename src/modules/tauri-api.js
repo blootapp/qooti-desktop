@@ -176,7 +176,7 @@ const tauriApi = {
   copyFileToClipboard:  path                                    => _invoke('copy_file_to_clipboard', { path }),
   revealInFolder:       path                                    => _invoke('reveal_in_folder', { path }),
 
-  downloadUrl:           (url, quality, extId = null) => _invoke('download_url', { url, quality, extId }),
+  downloadUrl:           (url, quality, extId = null) => _downloadUrl(url, quality, extId),
   finalizeDownload:      (path, url, extId = null, title = null) => _invoke('finalize_download', { path, url: url ?? null, extId, title }),
   cancelDownload:        downloadId => _invoke('cancel_download', { downloadId }),
   setExtProgressError:   extId      => _invoke('set_ext_progress_error', { extId }),
@@ -221,24 +221,54 @@ const tauriApi = {
 }
 
 // ─── Download event bridge ───────────────────────────────────────
+// Every listener matches download events against the id downloadUrl returned. An
+// event can beat that return, though — an instant failure (e.g. a YouTube link with
+// no video id) is emitted from the backend thread before the command responds — and
+// was then dropped, leaving the UI spinning forever. So events for ids we haven't
+// handed out yet are held and replayed right after the caller has the id.
+const _knownDownloads      = new Set()
+const _earlyDownloadEvents = new Map()   // download_id → [[storeEvent, payload], …]
+
+function _emitDownloadEvent(name, payload) {
+  const id = payload?.download_id ?? payload?.downloadId
+  if (id && !_knownDownloads.has(id)) {
+    if (!_earlyDownloadEvents.has(id)) _earlyDownloadEvents.set(id, [])
+    _earlyDownloadEvents.get(id).push([name, payload])
+    return
+  }
+  store.emit(name, payload)
+}
+
+async function _downloadUrl(url, quality, extId) {
+  const id = await _invoke('download_url', { url, quality, extId })
+  // A macrotask, so the caller's `await` continuation has stored the id first.
+  setTimeout(() => {
+    _knownDownloads.add(id)
+    const early = _earlyDownloadEvents.get(id) ?? []
+    _earlyDownloadEvents.delete(id)
+    for (const [name, payload] of early) store.emit(name, payload)
+  }, 0)
+  return id
+}
+
 // Re-emits Tauri backend events into the app's store event bus.
 export async function initDownloadListeners() {
   if (!IS_TAURI) return
   if (!_listen) await loadTauri()
   await _listen('download:queued', e => {
-    store.emit(events.DOWNLOAD_QUEUED, e.payload)
+    _emitDownloadEvent(events.DOWNLOAD_QUEUED, e.payload)
   })
   await _listen('download:filename', e => {
-    store.emit(events.DOWNLOAD_FILENAME, e.payload)
+    _emitDownloadEvent(events.DOWNLOAD_FILENAME, e.payload)
   })
   await _listen('download:progress', e => {
-    store.emit(events.DOWNLOAD_PROGRESS, e.payload)
+    _emitDownloadEvent(events.DOWNLOAD_PROGRESS, e.payload)
   })
   await _listen('download:complete', e => {
-    store.emit(events.DOWNLOAD_COMPLETE, e.payload)
+    _emitDownloadEvent(events.DOWNLOAD_COMPLETE, e.payload)
   })
   await _listen('download:error', e => {
-    store.emit(events.DOWNLOAD_ERROR, e.payload)
+    _emitDownloadEvent(events.DOWNLOAD_ERROR, e.payload)
   })
   await _listen('update-available', e => {
     store.emit(events.UPDATE_AVAILABLE, e.payload)

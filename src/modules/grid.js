@@ -126,6 +126,9 @@ export function init(el, _settings) {
   store.on(events.TAG_DELETED,       ()           => refreshTagChips())
   store.on(events.FILES_DROPPED, ({ paths }) => { if (!isImporterOpen()) importPaths(paths) })
   store.on(events.SEARCH_QUERY_CHANGED, ({ query }) => {
+    // No-op resets (e.g. the search bar clearing itself after a download) must not
+    // reload — on the shuffled home view that reshuffled the whole grid.
+    if ((query || null) === filter.query) return
     if (query) log.info('search', { query })
     filter.query = query || null
     filter.page  = 0
@@ -1152,9 +1155,9 @@ function makeSuggestions(item) {
   if (!autoTags.length) return null
   const wrap = document.createElement('div')
   wrap.className = 'card-suggestions'
-  for (const { tag } of autoTags) {
-    wrap.appendChild(makeSuggestionRow(item, tag))
-  }
+  // One question at a time — three stacked rows covered a third of the image on
+  // every tagged card. Answering it brings up the next one (removeSuggestionRow).
+  wrap.appendChild(makeSuggestionRow(item, autoTags[0].tag))
   return wrap
 }
 
@@ -1226,6 +1229,11 @@ function removeSuggestionRow(item, tagId, row) {
   setTimeout(() => {
     const wrap = row.parentElement
     row.remove()
+    const next = parseAutoTags(item.auto_tag_confidence)[0]
+    if (wrap && next && !wrap.querySelector('.suggestion-item')) {
+      wrap.appendChild(makeSuggestionRow(item, next.tag))
+      return
+    }
     if (wrap && !wrap.querySelector('.suggestion-item')) {
       wrap.remove()
       card?.classList.remove('has-suggestion')  // caption reverts to hover-only

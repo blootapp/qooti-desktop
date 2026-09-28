@@ -9,6 +9,8 @@ import { getEntries, dismissEntry, retryDownload } from './download-tracker.js'
 import { api } from './tauri-api.js'
 import { open as openInBrowser } from '@tauri-apps/plugin-shell'
 import { getSetting } from './settings.js'
+import { t } from './i18n.js'
+import { friendlyDownloadError } from './download-errors.js'
 
 let _btn       = null   // the button element in top-bar-right
 let _importBtn = null   // the + import button (hidden while indicator is visible)
@@ -47,10 +49,13 @@ function renderDropdown(entries) {
 
   const header = document.createElement('div')
   header.className = 'dl-dropdown-header'
-  header.innerHTML = '<span class="dl-dropdown-title">Downloads</span>'
+  const title = document.createElement('span')
+  title.className = 'dl-dropdown-title'
+  title.textContent = t('dl.panel.title')
+  header.appendChild(title)
   const clearBtn = document.createElement('button')
   clearBtn.className = 'dl-dropdown-clear'
-  clearBtn.textContent = 'Clear all'
+  clearBtn.textContent = t('dl.panel.clear_all')
   clearBtn.addEventListener('click', () => {
     for (const e of entries) {
       if (e.status === 'failed' || e.status === 'cancelled' || e.status === 'complete') {
@@ -65,7 +70,7 @@ function renderDropdown(entries) {
   if (!entries.length) {
     const empty = document.createElement('div')
     empty.className = 'dl-dropdown-empty'
-    empty.textContent = 'No downloads'
+    empty.textContent = t('dl.panel.empty')
     _dropdown.appendChild(empty)
     return
   }
@@ -100,6 +105,8 @@ function buildRow(entry) {
   const sub = document.createElement('span')
   sub.className = 'dl-row-sub'
   sub.textContent = rowSubtext(entry)
+  // The friendly message is what we show; keep the raw one a hover away for support.
+  if (entry.status === 'failed' && entry.error) sub.title = entry.error
   body.appendChild(sub)
 
   if (entry.status === 'active' && entry.pct > 0) {
@@ -120,7 +127,7 @@ function buildRow(entry) {
   if (entry.status === 'active' || entry.status === 'queued') {
     const cancel = document.createElement('button')
     cancel.className = 'dl-row-btn dl-row-btn--cancel'
-    cancel.title = 'Cancel'
+    cancel.title = t('dl.panel.cancel')
     cancel.innerHTML = '&times;'
     cancel.addEventListener('click', async () => {
       await api.cancelDownload(entry.id)
@@ -132,15 +139,15 @@ function buildRow(entry) {
     if (entry.url) {
       const open = document.createElement('button')
       open.className = 'dl-row-btn dl-row-btn--open'
-      open.textContent = 'Open'
-      open.title = 'Open in browser'
+      open.textContent = t('dl.panel.open')
+      open.title = t('dl.panel.open_title')
       open.addEventListener('click', () => openInBrowser(entry.url).catch(() => {}))
       actions.appendChild(open)
     }
 
     const retry = document.createElement('button')
     retry.className = 'dl-row-btn dl-row-btn--retry'
-    retry.textContent = 'Retry'
+    retry.textContent = t('dl.panel.retry')
     retry.addEventListener('click', async () => {
       await retryDownload(entry.id)
     })
@@ -148,7 +155,7 @@ function buildRow(entry) {
 
     const clear = document.createElement('button')
     clear.className = 'dl-row-btn dl-row-btn--clear'
-    clear.textContent = 'Clear'
+    clear.textContent = t('dl.panel.clear')
     clear.addEventListener('click', () => dismissEntry(entry.id))
     actions.appendChild(clear)
   }
@@ -156,7 +163,7 @@ function buildRow(entry) {
   if (entry.status === 'complete' || entry.status === 'cancelled') {
     const clear = document.createElement('button')
     clear.className = 'dl-row-btn dl-row-btn--clear'
-    clear.title = 'Dismiss'
+    clear.title = t('dl.panel.dismiss')
     clear.innerHTML = '&times;'
     clear.addEventListener('click', () => dismissEntry(entry.id))
     actions.appendChild(clear)
@@ -176,12 +183,16 @@ function rowIcon(status) {
 }
 
 function rowSubtext(entry) {
-  if (entry.status === 'queued')    return 'Waiting in queue…'
-  if (entry.status === 'complete')  return 'Saved to library'
-  if (entry.status === 'cancelled') return 'Cancelled'
-  if (entry.status === 'failed')    return entry.error ?? 'Failed'
+  if (entry.status === 'queued')    return t('dl.status.queued')
+  if (entry.status === 'complete')  return t('dl.status.saved')
+  if (entry.status === 'cancelled') return t('dl.status.cancelled')
+  if (entry.status === 'failed')    return friendlyDownloadError(entry.error)
+  if (entry.stage) {
+    const label = t(`dl.stage.${entry.stage}`)
+    return entry.pct > 0 ? `${label} · ${Math.round(entry.pct * 100)}%` : label
+  }
   if (entry.pct > 0) return `${Math.round(entry.pct * 100)}%`
-  return 'Downloading…'
+  return t('dl.status.downloading')
 }
 
 // ─── Open / close ─────────────────────────────────────────────────
@@ -264,5 +275,6 @@ export function init() {
   store.on(events.SETTINGS_CHANGED, ({ key }) => {
     if (key === 'show_download_toast') sync()
   })
+  document.addEventListener('i18n:changed', () => { if (_open) renderDropdown(getEntries()) })
   sync()
 }

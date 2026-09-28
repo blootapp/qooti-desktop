@@ -4,6 +4,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 
 pub mod commands;
 pub mod pot_provider;
+pub mod js_runtime;
 pub mod enhancer;
 pub mod db;
 pub mod logger;
@@ -140,6 +141,10 @@ pub fn run() {
                     }
                 });
             }
+
+            // YouTube needs a JS runtime for yt-dlp (js_runtime.rs). Fetch deno in the
+            // background so it's ready before the first YouTube save; no-op once installed.
+            js_runtime::prefetch_in_background(app.handle());
 
             let handle = app.handle().clone();
             std::thread::spawn(move || extension_server::start(handle));

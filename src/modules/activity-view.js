@@ -6,6 +6,11 @@ import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { retryDownload, dismissEntry } from './download-tracker.js'
+// `tr`, not `t`: this module uses `t` as a local name.
+import { t as tr, currentLang } from './i18n.js'
+import { friendlyDownloadError } from './download-errors.js'
+
+const locale = () => (currentLang() === 'uz' ? 'uz-Latn' : undefined)
 
 let _root       = null
 let _loaded     = false
@@ -14,18 +19,18 @@ let _packOpen   = new Set()  // batch_ids whose pack row is expanded
 // ─── Source labels ────────────────────────────────────────────────
 
 const SOURCE_LABELS = {
-  app_download: { label: 'App download',       cls: 'tag--app'       },
-  extension:    { label: 'Extension',          cls: 'tag--extension' },
-  file_import:  { label: 'File import',        cls: 'tag--file'      },
-  pack_import:  { label: 'Pack import',        cls: 'tag--pack'      },
-  mobile:       { label: 'Mobile app',         cls: 'tag--mobile'    },
+  app_download: { key: 'activity.src.app_download', cls: 'tag--app'       },
+  extension:    { key: 'activity.src.extension',    cls: 'tag--extension' },
+  file_import:  { key: 'activity.src.file_import',  cls: 'tag--file'      },
+  pack_import:  { key: 'activity.src.pack_import',  cls: 'tag--pack'      },
+  mobile:       { key: 'activity.src.mobile',       cls: 'tag--mobile'    },
 }
 
 function sourceTag(importSource) {
-  const s = SOURCE_LABELS[importSource] ?? { label: importSource ?? 'Unknown', cls: 'tag--file' }
+  const s = SOURCE_LABELS[importSource]
   const el = document.createElement('span')
-  el.className = `activity-tag ${s.cls}`
-  el.textContent = s.label
+  el.className = `activity-tag ${s?.cls ?? 'tag--file'}`
+  el.textContent = s ? tr(s.key) : (importSource ?? tr('activity.src.unknown'))
   return el
 }
 
@@ -34,13 +39,13 @@ function sourceTag(importSource) {
 function relTime(ts) {
   const diff = Date.now() - ts
   const m = Math.floor(diff / 60000)
-  if (m <  1)  return 'Just now'
-  if (m <  60) return `${m}m ago`
+  if (m <  1)  return tr('activity.just_now')
+  if (m <  60) return tr('activity.minutes_ago', { n: m })
   const h = Math.floor(m / 60)
-  if (h <  24) return `${h}h ago`
+  if (h <  24) return tr('activity.hours_ago', { n: h })
   const d = Math.floor(h / 24)
-  if (d <  7)  return `${d}d ago`
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  if (d <  7)  return tr('date.days_ago', { n: d })
+  return new Date(ts).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 }
 
 // ─── Title resolution ─────────────────────────────────────────────
@@ -59,7 +64,7 @@ function resolveTitle(entry) {
     if (name && name.length < 80) return name
   }
   if (entry.source_platform) return entry.source_platform
-  return 'Untitled'
+  return tr('activity.untitled')
 }
 
 // ─── Thumbnail icon ───────────────────────────────────────────────
@@ -190,7 +195,7 @@ function buildPackRow(entry) {
   meta.appendChild(sourceTag('pack_import'))
   const cnt = document.createElement('span')
   cnt.className = 'activity-platform'
-  cnt.textContent = `${entry.item_count} files`
+  cnt.textContent = tr(entry.item_count === 1 ? 'import.files_one' : 'import.files_many', { n: entry.item_count })
   meta.appendChild(cnt)
   const time = document.createElement('span')
   time.className = 'activity-time'
@@ -228,7 +233,9 @@ function buildFailedRow(entry) {
   if (entry.error_msg) {
     const err = document.createElement('span')
     err.className = 'activity-error-msg'
-    err.textContent = entry.error_msg
+    // Readable message; the raw one stays a hover away for support.
+    err.textContent = friendlyDownloadError(entry.error_msg)
+    err.title = entry.error_msg
     body.appendChild(err)
   }
 
@@ -248,11 +255,11 @@ function buildFailedRow(entry) {
 
   const retry = document.createElement('button')
   retry.className = 'activity-btn activity-btn--retry'
-  retry.textContent = 'Retry'
+  retry.textContent = tr('dl.panel.retry')
   retry.addEventListener('click', async e => {
     e.stopPropagation()
     retry.disabled = true
-    retry.textContent = 'Retrying…'
+    retry.textContent = tr('dl.stage.retrying')
     await retryDownload(entry.id, entry).catch(err => console.error('[activity] retry failed:', err))
     row.remove()
   })
@@ -260,7 +267,7 @@ function buildFailedRow(entry) {
 
   const clear = document.createElement('button')
   clear.className = 'activity-btn activity-btn--clear'
-  clear.textContent = 'Clear'
+  clear.textContent = tr('dl.panel.clear')
   clear.addEventListener('click', e => {
     e.stopPropagation()
     dismissEntry(entry.id)
@@ -279,28 +286,28 @@ function dayLabel(ts) {
   const today     = new Date(); today.setHours(0,0,0,0)
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
   const dMid = new Date(d); dMid.setHours(0,0,0,0)
-  if (dMid >= today)     return 'Today'
-  if (dMid >= yesterday) return 'Yesterday'
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+  if (dMid >= today)     return tr('date.today')
+  if (dMid >= yesterday) return tr('date.yesterday')
+  return d.toLocaleDateString(locale(), { weekday: 'long', month: 'short', day: 'numeric' })
 }
 
 // ─── Render ───────────────────────────────────────────────────────
 
 async function render() {
   if (!_root) return
-  _root.innerHTML = '<div class="activity-loading">Loading…</div>'
+  _root.innerHTML = `<div class="activity-loading">${tr('activity.loading')}</div>`
   let data
   try {
     data = await api.listActivity(300)
   } catch (err) {
     console.error('[activity] listActivity failed:', err)
-    _root.innerHTML = '<div class="activity-empty">Could not load activity.</div>'
+    _root.innerHTML = `<div class="activity-empty">${tr('activity.load_failed')}</div>`
     return
   }
 
   const entries = data?.entries ?? []
   if (!entries.length) {
-    _root.innerHTML = '<div class="activity-empty">No downloads or imports yet.</div>'
+    _root.innerHTML = `<div class="activity-empty">${tr('activity.empty')}</div>`
     return
   }
 
@@ -331,6 +338,7 @@ export function init(root) {
   store.on(events.NAV_CHANGE, ({ view }) => {
     if (view === 'activity') render()
   })
+  document.addEventListener('i18n:changed', () => { if (_root?.childElementCount) render() })
 
   // Refresh when a download completes or a file is imported
   store.on(events.DOWNLOAD_COMPLETE, () => {

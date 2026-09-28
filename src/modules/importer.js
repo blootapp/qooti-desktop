@@ -4,6 +4,8 @@ import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
 import { startTask } from './progress-ring.js'
 import { logAction } from './diagnostics.js'
+import { t } from './i18n.js'
+import { friendlyDownloadError } from './download-errors.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 const YT_RE   = /(?:youtube\.com|youtu\.be)/i
@@ -38,6 +40,9 @@ export function init() {
   _modal = buildModal()
   document.getElementById('overlays').appendChild(_modal)
   wireModal()
+  applyAttrLabels()
+  // data-i18n covers the static text; attributes/placeholders are re-applied here.
+  document.addEventListener('i18n:changed', applyAttrLabels)
 
   store.on(events.IMPORT_REQUESTED, () => openModal())
 
@@ -110,15 +115,15 @@ function buildModal() {
   el.hidden = true
   el.setAttribute('role', 'dialog')
   el.setAttribute('aria-modal', 'true')
-  el.setAttribute('aria-label', 'Import')
+  el.setAttribute('aria-label', t('import.title'))
 
   el.innerHTML = `
     <div class="import-modal-backdrop"></div>
     <div class="import-modal-sheet">
 
       <div class="import-modal-header">
-        <span class="import-modal-title">Import</span>
-        <button class="import-close-btn" id="import-close-btn" aria-label="Close">
+        <span class="import-modal-title" data-i18n="import.title">${t('import.title')}</span>
+        <button class="import-close-btn" id="import-close-btn" aria-label="${t('action.close')}">
           <span class="icon icon-16" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span>
         </button>
       </div>
@@ -129,22 +134,22 @@ function buildModal() {
           <span class="icon icon-28 import-drop-icon"
             style="mask-image:url('/icons/upload-simple.svg');-webkit-mask-image:url('/icons/upload-simple.svg')"
             aria-hidden="true"></span>
-          <p class="import-drop-label">Drop files or a folder here</p>
-          <p class="import-drop-sub">Images, videos, Notion .zip, Telegram export folder, or .qooti collection</p>
-          <button class="import-browse-btn" id="import-browse-btn">Browse files…</button>
+          <p class="import-drop-label" data-i18n="import.drop">${t('import.drop')}</p>
+          <p class="import-drop-sub" data-i18n="import.drop_sub">${t('import.drop_sub')}</p>
+          <button class="import-browse-btn" id="import-browse-btn" data-i18n="import.browse">${t('import.browse')}</button>
         </div>
 
-        <div class="import-or-row"><span class="import-or-text">or paste a link</span></div>
+        <div class="import-or-row"><span class="import-or-text" data-i18n="import.or_link">${t('import.or_link')}</span></div>
 
         <div class="import-url-row">
           <input class="import-url-input" id="import-url-input"
             type="url" placeholder="https://youtube.com/watch?v=…"
             autocomplete="off" spellcheck="false" />
-          <button class="import-url-go" id="import-url-go" disabled>Download</button>
-          <button class="import-url-icon-btn" id="import-url-video" hidden aria-label="Download video" data-tooltip="Download video">
+          <button class="import-url-go" id="import-url-go" disabled data-i18n="action.download">${t('action.download')}</button>
+          <button class="import-url-icon-btn" id="import-url-video" hidden aria-label="${t('import.download_video')}" data-tooltip="${t('import.download_video')}">
             <span class="icon icon-18" style="mask-image:url('/icons/video-camera.svg');-webkit-mask-image:url('/icons/video-camera.svg')" aria-hidden="true"></span>
           </button>
-          <button class="import-url-icon-btn" id="import-url-thumb" hidden aria-label="Download thumbnail" data-tooltip="Download thumbnail">
+          <button class="import-url-icon-btn" id="import-url-thumb" hidden aria-label="${t('import.download_thumb')}" data-tooltip="${t('import.download_thumb')}">
             <span class="icon icon-18" style="mask-image:url('/icons/image.svg');-webkit-mask-image:url('/icons/image.svg')" aria-hidden="true"></span>
           </button>
         </div>
@@ -160,34 +165,34 @@ function buildModal() {
           </div>
         </div>
         <div class="import-save-collection-row">
-          <span class="import-toggle-label">Save as collection</span>
+          <span class="import-toggle-label" data-i18n="import.save_as_collection">${t('import.save_as_collection')}</span>
           <label class="import-toggle">
             <input type="checkbox" id="import-save-as-collection" checked />
             <span class="import-toggle-track"><span class="import-toggle-thumb"></span></span>
           </label>
         </div>
         <div id="import-collection-field" class="import-collection-field">
-          <input class="import-field-input" id="import-collection-input" placeholder="Collection name…" />
+          <input class="import-field-input" id="import-collection-input" placeholder="${t('collection.name_ph')}" />
         </div>
         <div class="import-analysis-actions">
           <button class="import-back-btn" id="import-back-btn">
             <span class="icon icon-14" style="mask-image:url('/icons/arrow-left.svg');-webkit-mask-image:url('/icons/arrow-left.svg')" aria-hidden="true"></span>
-            Back
+            <span data-i18n="import.back">${t('import.back')}</span>
           </button>
-          <button class="btn btn-primary import-go-btn" id="import-go-btn">Import</button>
+          <button class="btn btn-primary import-go-btn" id="import-go-btn" data-i18n="action.import">${t('action.import')}</button>
         </div>
       </div>
 
       <!-- Pane: progress -->
       <div id="import-pane-progress" class="import-pane" hidden>
-        <div class="import-progress-label" id="import-progress-label">Importing…</div>
+        <div class="import-progress-label" id="import-progress-label">${t('import.importing')}</div>
         <div class="import-progress-track">
           <div class="import-progress-fill" id="import-progress-fill" style="width:0%"></div>
         </div>
         <p class="import-progress-sub" id="import-progress-sub"></p>
         <div class="import-progress-btns">
-          <button class="import-cancel-btn" id="import-cancel-btn" hidden>Cancel</button>
-          <button class="import-bg-btn" id="import-bg-btn">Minimize</button>
+          <button class="import-cancel-btn" id="import-cancel-btn" hidden data-i18n="action.cancel">${t('action.cancel')}</button>
+          <button class="import-bg-btn" id="import-bg-btn" data-i18n="import.minimize">${t('import.minimize')}</button>
         </div>
       </div>
 
@@ -196,12 +201,26 @@ function buildModal() {
   return el
 }
 
+// Attribute labels (aria/tooltips/placeholders) — data-i18n only updates text.
+function applyAttrLabels() {
+  if (!_modal) return
+  _modal.setAttribute('aria-label', t('import.title'))
+  _modal.querySelector('#import-close-btn')?.setAttribute('aria-label', t('action.close'))
+  for (const [id, key] of [['#import-url-video', 'import.download_video'], ['#import-url-thumb', 'import.download_thumb']]) {
+    const btn = _modal.querySelector(id)
+    btn?.setAttribute('aria-label', t(key))
+    btn?.setAttribute('data-tooltip', t(key))
+  }
+  const col = _modal.querySelector('#import-collection-input')
+  if (col) col.placeholder = t('collection.name_ph')
+}
+
 // ─── Smart close: minimize if a download is running, otherwise close ─────────
 function handleClose() {
   if (_activeDownloadId) {
     _downloadMinimized = true
     if (!_activeRingTask) {
-      _activeRingTask = startTask(_activeDownloadId, { label: 'Downloading', indeterminate: false })
+      _activeRingTask = startTask(_activeDownloadId, { label: t('dl.status.downloading'), indeterminate: false })
       _activeRingTask.update(_lastPct)
     }
   }
@@ -325,7 +344,7 @@ async function browseFiles() {
   }
   const selected = await open({
     multiple: true,
-    filters: [{ name: 'Media, archives & collections', extensions: ['jpg','jpeg','png','webp','avif','gif','mp4','webm','mov','avi','mkv','zip','qooti'] }],
+    filters: [{ name: t('import.filter_name'), extensions: ['jpg','jpeg','png','webp','avif','gif','mp4','webm','mov','avi','mkv','zip','qooti'] }],
   }).catch(() => null)
   if (!selected) return
   const paths = Array.isArray(selected) ? selected : [selected]
@@ -365,7 +384,7 @@ function hasMediaExtension(p) {
 
 // ─── Analysis pane ───────────────────────────────────────────────
 function showAnalysis(analysis, sourcePath) {
-  const typeLabels = { notion: 'Notion export', telegram: 'Telegram export', qooti: 'qooti collection' }
+  const typeLabels = { notion: t('import.type.notion'), telegram: t('import.type.telegram'), qooti: t('import.type.qooti') }
   const typeIcons  = { notion: 'file-zip', telegram: 'folder', qooti: 'stack' }
   const iconName   = typeIcons[analysis.source_type] ?? 'folder'
   const label      = typeLabels[analysis.source_type] ?? analysis.source_type
@@ -374,7 +393,7 @@ function showAnalysis(analysis, sourcePath) {
     `<span class="icon icon-20" style="mask-image:url('/icons/${iconName}.svg');-webkit-mask-image:url('/icons/${iconName}.svg')" aria-hidden="true"></span>`
   _modal.querySelector('#import-source-type').textContent  = label
   _modal.querySelector('#import-source-count').textContent =
-    `${analysis.media_count} ${analysis.media_count === 1 ? 'file' : 'files'}`
+    t(analysis.media_count === 1 ? 'import.files_one' : 'import.files_many', { n: analysis.media_count })
 
   const nameInput = _modal.querySelector('#import-collection-input')
   nameInput.value = analysis.display_name || ''
@@ -391,15 +410,16 @@ async function startArchiveImport() {
 
   // .qooti packs carry their own collection + tags — import directly
   if (_analysis.source_type === 'qooti') {
-    setProgress(0, `Importing "${_analysis.display_name}"…`)
+    setProgress(0, t('import.importing_named', { name: _analysis.display_name }))
     try {
       const result = await api.importQooTiPack(_sourcePath)
-      setProgress(1, `Imported ${result.imported_count} item${result.imported_count !== 1 ? 's' : ''} into "${result.collection_name}"`)
+      setProgress(1, t(result.imported_count === 1 ? 'import.imported_into_one' : 'import.imported_into_many',
+        { n: result.imported_count, name: result.collection_name }))
       sfx.success()
       store.emit(events.COLLECTION_CREATED)
       store.emit(events.GRID_RELOAD)
     } catch (err) {
-      setProgress(0, `Import failed: ${err}`)
+      setProgress(0, `${t('import.failed')}: ${err}`)
     }
     return
   }
@@ -409,18 +429,18 @@ async function startArchiveImport() {
     ? (_modal.querySelector('#import-collection-input').value.trim() || _analysis.display_name)
     : null
 
-  setProgress(0, 'Extracting files…')
+  setProgress(0, t('import.extracting'))
 
   let paths
   try {
     paths = await api.extractImportArchive(_sourcePath, _analysis.source_type)
   } catch (err) {
-    setProgress(0, `Extract failed: ${err}`)
+    setProgress(0, `${t('import.extract_failed')}: ${err}`)
     return
   }
 
   if (!paths.length) {
-    setProgress(0, 'No media files found')
+    setProgress(0, t('import.no_media'))
     return
   }
 
@@ -430,18 +450,18 @@ async function startArchiveImport() {
 // ─── Direct file import ──────────────────────────────────────────
 async function runFileImport(paths, collectionName) {
   showPane('progress')
-  setProgress(0, `Importing 0 / ${paths.length}…`)
+  setProgress(0, t('import.progress', { i: 0, n: paths.length }))
 
   const imported = []
   for (let i = 0; i < paths.length; i++) {
-    setProgress(i / paths.length, `Importing ${i + 1} / ${paths.length}…`)
+    setProgress(i / paths.length, t('import.progress', { i: i + 1, n: paths.length }))
     try {
       const result = await api.importFiles([paths[i]])
       if (result.imported?.length) imported.push(...result.imported)
     } catch { /* skip bad file */ }
   }
 
-  setProgress(1, `Imported ${imported.length} file${imported.length !== 1 ? 's' : ''}`)
+  setProgress(1, t(imported.length === 1 ? 'import.imported_one' : 'import.imported_many', { n: imported.length }))
 
   // Create collection and add items if a name was provided
   if (collectionName && imported.length) {
@@ -498,19 +518,19 @@ async function startThumbDownload() {
   const url = _modal.querySelector('#import-url-input').value.trim()
   if (!url) return
   showPane('progress')
-  setProgress(0, 'Fetching thumbnail…', true)
+  setProgress(0, t('import.fetching_thumb'), true)
   try {
     const thumbPath = await api.fetchYoutubeThumbnail(url)
-    setProgress(0.5, 'Importing…', true)
+    setProgress(0.5, t('import.importing'), true)
     const result = await api.importFiles([thumbPath])
-    setProgress(1, 'Cover saved')
+    setProgress(1, t('import.cover_saved'))
     if (result.imported?.length) {
       sfx.success()
       store.emit(events.GRID_RELOAD)
     }
     setTimeout(() => { if (_isOpen) closeModal() }, 1400)
   } catch (err) {
-    setProgress(0, `Error: ${err}`)
+    setProgress(0, friendlyDownloadError(err))
   }
 }
 
@@ -519,7 +539,7 @@ async function startVideoDownload() {
   if (!url) return
 
   showPane('progress')
-  setProgress(0, 'Starting download…', true)
+  setProgress(0, t('import.starting'), true)
 
   // Reset per-download state
   _activeDownloadId  = null
@@ -533,21 +553,29 @@ async function startVideoDownload() {
 
   let downloadId = null
 
+  // Match strictly on our id: events that arrive before downloadUrl returns are held
+  // and replayed by the api bridge, so there's no need to accept unknown ids (which
+  // used to pick up progress/completion of *other* downloads, e.g. from the extension).
   const hProgress = store.on(events.DOWNLOAD_PROGRESS, payload => {
     const p = payload.downloadId ?? payload.download_id
-    if (downloadId && p !== downloadId) return
+    if (!downloadId || p !== downloadId) return
     const pct = payload.pct ?? 0
+    if (payload.stage) {
+      const label = t(`dl.stage.${payload.stage}`)
+      if (!_downloadMinimized) setProgress(pct, pct > 0 ? `${label} · ${Math.round(pct * 100)}%` : label, !pct)
+      return
+    }
     _lastPct = pct
     if (_downloadMinimized) {
       _activeRingTask?.update(pct)
     } else {
-      setProgress(pct, `Downloading… ${Math.round(pct * 100)}%`)
+      setProgress(pct, t('import.downloading', { pct: Math.round(pct * 100) }))
     }
   })
 
   const hComplete = store.on(events.DOWNLOAD_COMPLETE, async payload => {
     const p = payload.downloadId ?? payload.download_id
-    if (downloadId && p !== downloadId) return
+    if (!downloadId || p !== downloadId) return
     cleanup()
 
     const paths = Array.isArray(payload.paths) ? payload.paths : (payload.paths ? [payload.paths] : [])
@@ -569,7 +597,7 @@ async function startVideoDownload() {
               if (r?.imported?.length) imported++
             } catch (err2) {
               console.error('[importer] importFiles fallback failed:', String(err2))
-              if (!_downloadMinimized) setProgress(0, `Error: ${msg.slice(0, 80)}`)
+              if (!_downloadMinimized) setProgress(0, t('dl.err.save_failed'))
             }
           }
         }
@@ -589,15 +617,15 @@ async function startVideoDownload() {
     }
 
     if (paths.length) {
-      setProgress(0.98, 'Saving to library…')
+      setProgress(0.98, t('import.saving'))
       const imported = await finalize()
       if (imported > 0) {
         store.emit(events.GRID_RELOAD)
-        setProgress(1, 'Done')
+        setProgress(1, t('action.done'))
         sfx.success()
       }
     } else {
-      setProgress(1, 'Download complete')
+      setProgress(1, t('import.download_complete'))
       sfx.success()
     }
 
@@ -606,17 +634,21 @@ async function startVideoDownload() {
 
   const hError = store.on(events.DOWNLOAD_ERROR, payload => {
     const p = payload.downloadId ?? payload.download_id
-    if (downloadId && p !== downloadId) return
+    if (!downloadId || p !== downloadId) return
     cleanup()
 
     if (_downloadMinimized) {
-      if (_downloadCancelled) _activeRingTask?.fail('Cancelled')
-      else _activeRingTask?.fail(payload.message ?? 'Download failed')
+      if (_downloadCancelled) _activeRingTask?.cancel()
+      else {
+        _activeRingTask?.fail(friendlyDownloadError(payload.message))
+        // Minimized: the ring's brief flash is easy to miss — say it in a toast too.
+        store.emit(events.SYSTEM_TOAST, { type: 'error', message: friendlyDownloadError(payload.message), duration: 7000 })
+      }
       _activeRingTask = null
       return
     }
 
-    if (!_downloadCancelled) setProgress(0, `Error: ${payload.message ?? 'download failed'}`)
+    if (!_downloadCancelled) setProgress(0, friendlyDownloadError(payload.message))
   })
 
   function cleanup() {
@@ -634,7 +666,7 @@ async function startVideoDownload() {
   } catch (err) {
     cleanup()
     logAction(`[download] invoke failed: ${err}`)
-    setProgress(0, `Error: ${err}`)
+    setProgress(0, friendlyDownloadError(err))
   }
 }
 

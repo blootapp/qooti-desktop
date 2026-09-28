@@ -1,7 +1,7 @@
 // Handles URL-paste-to-download flow:
 //  1. Caller feeds every search-bar input value to checkUrl()
 //  2. When a URL is detected the color-picker button morphs to a download button
-//  3. Clicking the morphed button triggers the download
+//  3. Clicking the morphed button (or Enter) triggers the download
 //  4. Progress shown in the ring and as input placeholder text
 //  5. Button morphs to a cancel (X) button; clicking it stops the download
 //  6. On completion the file is imported and the grid reloads
@@ -13,11 +13,13 @@ import { startTask } from './progress-ring.js'
 import { getSetting } from './settings.js'
 import { makeLogger, createOp } from './logger.js'
 import { dismissEntry } from './download-tracker.js'
+import { t } from './i18n.js'
+import { friendlyDownloadError, isCancelled } from './download-errors.js'
 
 const log = makeLogger('Download')
 
 const URL_RE = /^https?:\/\/.+/i
-const DEFAULT_PLACEHOLDER = 'Search...'
+const placeholder = () => t('search.placeholder')
 
 let _searchInput   = null
 let _swatchBtn     = null
@@ -32,14 +34,23 @@ let _progressLabel = ''     // last known "Downloading · speed · pct%" string
 let _phase   = 0
 let _prevPct = 0
 
+export function isUrl(value) {
+  return URL_RE.test(String(value ?? '').trim())
+}
+
 export function initDownloader(searchInput, swatchBtn) {
   _searchInput = searchInput
   _swatchBtn   = swatchBtn
+  _searchInput.placeholder = placeholder()
+
+  document.addEventListener('i18n:changed', () => {
+    if (!_activeId && _searchInput) _searchInput.placeholder = placeholder()
+  })
 
   // Track input focus so we suppress placeholder updates while the user is typing
   _searchInput.addEventListener('focus', () => {
     _inputFocused = true
-    if (_activeId) _searchInput.placeholder = DEFAULT_PLACEHOLDER
+    if (_activeId) _searchInput.placeholder = placeholder()
   })
   _searchInput.addEventListener('blur', () => {
     _inputFocused = false
@@ -48,12 +59,22 @@ export function initDownloader(searchInput, swatchBtn) {
 
   store.on(events.DOWNLOAD_QUEUED, ({ download_id }) => {
     if (_activeId !== download_id) return
-    _progressLabel = 'Queued · waiting…'
+    _progressLabel = t('dl.search.queued')
     if (!_inputFocused) _searchInput.placeholder = _progressLabel
   })
 
-  store.on(events.DOWNLOAD_PROGRESS, ({ download_id, pct, speed }) => {
+  store.on(events.DOWNLOAD_PROGRESS, ({ download_id, pct, speed, stage }) => {
     if (_activeId !== download_id) return
+
+    if (stage) {
+      // Setup / retry stages (e.g. installing YouTube support on first use) aren't
+      // byte progress: say what's happening, and keep them out of the two-phase arc.
+      const label = t(`dl.stage.${stage}`)
+      _progressLabel = pct > 0 ? `${label} · ${Math.round(pct * 100)}%` : label
+      if (stage === 'retrying') { _phase = 0; _prevPct = 0 }
+      if (!_inputFocused) _searchInput.placeholder = _progressLabel
+      return
+    }
 
     // Detect phase reset: yt-dlp downloads video then audio, each 0→100%
     if (_phase === 0 && pct < _prevPct - 0.15 && _prevPct > 0.8) _phase = 1
@@ -62,8 +83,9 @@ export function initDownloader(searchInput, swatchBtn) {
     // Map two phases into a single 0–100% arc
     const scaled = _phase === 0 ? pct * 0.5 : 0.5 + pct * 0.5
     const pctStr = Math.round(scaled * 100) + '%'
-    const speedStr = speed || ''
-    _progressLabel = speedStr ? `Downloading · ${speedStr} · ${pctStr}` : `Downloading · ${pctStr}`
+    _progressLabel = speed
+      ? t('dl.search.progress_speed', { speed, pct: pctStr })
+      : t('dl.search.progress', { pct: pctStr })
 
     _activeTask?.update(scaled)
     // Ring is visual-only during download; all text lives in the placeholder
@@ -82,8 +104,11 @@ export function initDownloader(searchInput, swatchBtn) {
     log.info('complete', { paths: allPaths.length })
     let imported = 0
     let duplicates = 0
+    let failed = 0
     if (allPaths.length) {
-      _searchInput.placeholder = allPaths.length > 1 ? `Importing ${allPaths.length} files…` : 'Importing…'
+      _searchInput.placeholder = allPaths.length > 1
+        ? t('dl.search.importing_n', { n: allPaths.length })
+        : t('dl.search.importing')
       for (const p of allPaths) {
         try {
           const result = await api.finalizeDownload(p, url ?? null)
@@ -93,6 +118,7 @@ export function initDownloader(searchInput, swatchBtn) {
           if (String(err).includes('duplicate')) {
             duplicates++
           } else {
+            failed++
             log.error('finalize_error', { error: err, path: p })
           }
         }
@@ -107,9 +133,12 @@ export function initDownloader(searchInput, swatchBtn) {
     _activeTask = null
 
     if (imported === 0 && duplicates > 0) {
-      _searchInput.placeholder = 'Already in your library'
-      setTimeout(() => { if (_searchInput) _searchInput.placeholder = DEFAULT_PLACEHOLDER }, 3000)
+      _searchInput.placeholder = t('dl.search.already')
+      setTimeout(() => { if (_searchInput && !_activeId) _searchInput.placeholder = placeholder() }, 3000)
     } else {
+      if (imported === 0 && failed > 0) {
+        store.emit(events.SYSTEM_TOAST, { type: 'error', message: t('dl.err.save_failed'), duration: 6000 })
+      }
       _resetSearchBar()
     }
   })
@@ -130,10 +159,11 @@ export function initDownloader(searchInput, swatchBtn) {
       // yt-dlp failed due to missing auth cookies — ask the extension to handle
       // it using its own browser session instead of surfacing an error.
       const failedId = download_id
+      const askingLabel = t('dl.search.asking_extension')
       _activeTask?.finish()  // removes the task from the ring's Map so the spinner clears
       _activeTask = null
       _finishDownload()
-      _searchInput.placeholder = 'Asking extension for cookies…'
+      _searchInput.placeholder = askingLabel
       _swatchBtn?.classList.remove('cancel-mode', 'download-mode')
 
       // dismiss the failed tracker entry so it doesn't appear in the dropdown
@@ -149,10 +179,10 @@ export function initDownloader(searchInput, swatchBtn) {
       let onExtStart
       const fallbackTimer = setTimeout(() => {
         store.off(events.DOWNLOAD_STARTED, onExtStart)
-        if (_searchInput.placeholder === 'Asking extension for cookies…') {
-          _searchInput.placeholder = 'Extension not found — install qooti in Chrome'
+        if (_searchInput.placeholder === askingLabel) {
+          _searchInput.placeholder = t('dl.search.no_extension')
           setTimeout(() => {
-            if (_searchInput.placeholder !== DEFAULT_PLACEHOLDER) _resetSearchBar()
+            if (_searchInput.placeholder !== placeholder()) _resetSearchBar()
           }, 4000)
         }
       }, 12000)
@@ -170,10 +200,17 @@ export function initDownloader(searchInput, swatchBtn) {
       return
     }
 
-    _activeTask?.fail(message ?? 'Download failed')
+    const friendly = friendlyDownloadError(message)
+    _activeTask?.fail(friendly)
     _activeTask = null
     _finishDownload()
     _resetSearchBar()
+    if (!isCancelled(message)) {
+      // The ring only flashes an error for ~1.6 s — failures used to look like
+      // "nothing happened". Say it where it can actually be read.
+      log.warn('failed', { error: message })
+      store.emit(events.SYSTEM_TOAST, { type: 'error', message: friendly, duration: 7000 })
+    }
   })
 }
 
@@ -186,7 +223,8 @@ function _watchDelegated(id) {
   // Own ring task, kept local — the delegated download isn't cancellable via the
   // swatch, so it must not touch _activeTask (that's the app-initiated download).
   const task = startTask(id, { label: '', indeterminate: true })
-  if (!_activeId && !_inputFocused) _searchInput.placeholder = 'Downloading…'
+  const savedLabel = t('dl.search.saved')
+  if (!_activeId && !_inputFocused) _searchInput.placeholder = t('dl.status.downloading')
 
   let onProg, onDone, onErr
   const cleanup = () => {
@@ -200,7 +238,9 @@ function _watchDelegated(id) {
     task?.update(pct)
     if (!_activeId && !_inputFocused) {
       const pctStr = Math.round(pct * 100) + '%'
-      _searchInput.placeholder = speed ? `Downloading · ${speed} · ${pctStr}` : `Downloading · ${pctStr}`
+      _searchInput.placeholder = speed
+        ? t('dl.search.progress_speed', { speed, pct: pctStr })
+        : t('dl.search.progress', { pct: pctStr })
     }
   })
 
@@ -208,11 +248,11 @@ function _watchDelegated(id) {
     if (download_id !== id) return
     cleanup()
     task?.finish()
-    store.emit(events.SYSTEM_TOAST, { type: 'success', message: 'Saved to qooti', duration: 3000 })
+    store.emit(events.SYSTEM_TOAST, { type: 'success', message: savedLabel, duration: 3000 })
     if (!_activeId) {
-      _searchInput.placeholder = 'Saved to qooti'
+      _searchInput.placeholder = savedLabel
       setTimeout(() => {
-        if (_searchInput && !_activeId && _searchInput.placeholder === 'Saved to qooti') _resetSearchBar()
+        if (_searchInput && !_activeId && _searchInput.placeholder === savedLabel) _resetSearchBar()
       }, 2500)
     }
   })
@@ -220,10 +260,10 @@ function _watchDelegated(id) {
   onErr = store.on(events.DOWNLOAD_ERROR, ({ download_id, message }) => {
     if (download_id !== id) return
     cleanup()
-    task?.fail(message ?? 'Download failed')
+    task?.fail(friendlyDownloadError(message))
     store.emit(events.SYSTEM_TOAST, {
       type: 'error',
-      message: 'Could not save this link — make sure you are signed in to the site in your browser.',
+      message: t('dl.err.delegated'),
       duration: 5000,
     })
     if (!_activeId) _resetSearchBar()
@@ -233,14 +273,16 @@ function _watchDelegated(id) {
 // Called by main.js on every search input event
 export function checkUrl(value) {
   if (_activeId) return  // don't interfere with an active download
-  const isUrl = URL_RE.test(value.trim())
-  if (isUrl === _isUrlMode) return
-  _isUrlMode = isUrl
-  _swatchBtn?.classList.toggle('download-mode', isUrl)
+  const url = isUrl(value)
+  if (url === _isUrlMode) return
+  _isUrlMode = url
+  _swatchBtn?.classList.toggle('download-mode', url)
 }
 
-// Called by main.js when the swatch/download button is clicked
-// Returns true if it handled the click (caller should skip color picker)
+// Called by main.js when the swatch/download button is clicked.
+// Returns true if it handled the click (caller should skip color picker).
+// This is the ONLY place a click cancels — Enter in the search box goes through
+// startDownloadFromInput, so searching while a download runs can't kill it.
 export async function handleSwatchClick() {
   // Cancel an active download — clean dismissal, not an error flash.
   if (_activeId) {
@@ -254,16 +296,26 @@ export async function handleSwatchClick() {
   }
 
   if (!_isUrlMode) return false
+  return startDownloadFromInput()
+}
 
+// Enter in the search box with a URL in it. Returns true if handled.
+export async function startDownloadFromInput() {
   const url = _searchInput?.value.trim()
-  if (!url) return false
+  if (!url || !isUrl(url)) return false
+
+  if (_activeId) {
+    // One search-bar download at a time; tell the user instead of silently ignoring.
+    store.emit(events.SYSTEM_TOAST, { type: 'info', message: t('dl.search.busy'), duration: 3500 })
+    return true
+  }
 
   const existing = await api.checkUrlExists(url)
   if (existing) {
     const { showDuplicateDialog } = await import('./dialog.js')
     const action = await showDuplicateDialog({
-      title: 'Already in your library',
-      message: `"${existing.title ?? 'This item'}" was already downloaded. Download again anyway?`,
+      title: t('dl.dup.title'),
+      message: t('dl.dup.message', { title: existing.title ?? t('dl.dup.this_item') }),
     })
     if (action === 'view') {
       store.emit(events.CARD_OPEN, { item: existing })
@@ -293,7 +345,7 @@ export async function handleSwatchClick() {
 
     // Clear the URL from the input immediately
     _searchInput.value = ''
-    _progressLabel = 'Fetching info…'
+    _progressLabel = t('dl.search.fetching')
     _searchInput.placeholder = _progressLabel
 
     // Morph button to cancel
@@ -306,12 +358,13 @@ export async function handleSwatchClick() {
     if (String(err).includes('UPGRADE_REQUIRED:download_limit')) {
       store.emit(events.SYSTEM_TOAST, {
         type: 'warning',
-        message: `Daily download limit reached (${20}/day on free plan). Upgrade to Pro for unlimited downloads.`,
+        message: friendlyDownloadError(err),
         duration: 6000,
       })
       return true
     }
     log.error('start_failed', { error: err }, op)
+    store.emit(events.SYSTEM_TOAST, { type: 'error', message: friendlyDownloadError(err), duration: 6000 })
   }
 
   return true
@@ -326,9 +379,11 @@ function _finishDownload() {
 }
 
 function _resetSearchBar() {
-  if (_searchInput) {
-    _searchInput.value       = ''
-    _searchInput.placeholder = DEFAULT_PLACEHOLDER
-  }
+  if (!_searchInput) return
+  _searchInput.placeholder = placeholder()
+  // The URL was cleared when the download started, so anything in the box now was
+  // typed during the download (a search, or the next link) — keep it and its
+  // results, and re-sync the swatch in case it's a URL.
+  if (_searchInput.value.trim()) { checkUrl(_searchInput.value); return }
   store.emit(events.SEARCH_QUERY_CHANGED, { query: null })
 }

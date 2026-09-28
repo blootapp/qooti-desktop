@@ -5,6 +5,7 @@ import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
 import { showPrompt, showConfirm } from './dialog.js'
 import { makeLogger } from './logger.js'
+import { t } from './i18n.js'
 
 const log = makeLogger('Collections')
 
@@ -25,6 +26,7 @@ export function init(el) {
   store.on(events.COLLECTION_UPDATED, () => reload())
   store.on(events.COLLECTION_DELETED, () => reload())
   store.on(events.NAV_CHANGE, ({ view }) => { if (view === 'collections') reload() })
+  document.addEventListener('i18n:changed', () => { if (container?.childElementCount) reload() })
 }
 
 async function reload() {
@@ -42,10 +44,10 @@ function render(cols) {
   container.innerHTML = `
     <div class="collections-page">
       <div class="collections-header">
-        <h1 class="collections-title">Collections</h1>
+        <h1 class="collections-title">${t('nav.collections')}</h1>
         <button class="btn btn-ghost collections-new-btn" id="collections-new">
           <span class="icon icon-16" style="mask-image:url('/icons/plus.svg');-webkit-mask-image:url('/icons/plus.svg')" aria-hidden="true"></span>
-          New collection
+          ${t('collection.new_title')}
         </button>
       </div>
       <div class="collections-grid" id="collections-grid"></div>
@@ -58,8 +60,8 @@ function render(cols) {
     grid.innerHTML = `
       <div class="empty-state">
         <span class="icon icon-32" style="mask-image:url('/icons/folder.svg');-webkit-mask-image:url('/icons/folder.svg');opacity:0.2" aria-hidden="true"></span>
-        <span class="empty-state-title">No collections yet</span>
-        <p class="empty-state-body">Create your first collection to organise your inspiration.</p>
+        <span class="empty-state-title">${t('collections.empty.title')}</span>
+        <p class="empty-state-body">${t('collections.empty.body')}</p>
       </div>
     `
   } else {
@@ -122,11 +124,11 @@ function showColCtxMenu(triggerCard, col) {
     menu.appendChild(btn)
   }
 
-  addBtn('arrow-square-out', 'Export', false, async () => {
+  addBtn('arrow-square-out', t('action.export'), false, async () => {
     const save = await getSaveDialog()
     if (!save) return
     const savePath = await save({
-      title: 'Export collection',
+      title: t('collection.export_title'),
       defaultPath: `${col.name}.qooti`,
       filters: [{ name: 'qooti Pack', extensions: ['qooti'] }],
     })
@@ -144,11 +146,11 @@ function showColCtxMenu(triggerCard, col) {
   divider.className = 'ctx-divider'
   menu.appendChild(divider)
 
-  addBtn('pencil-simple', col.locked ? 'Edit (Pro)' : 'Edit', false, async () => {
+  addBtn('pencil-simple', col.locked ? t('collections.edit_pro') : t('action.edit'), false, async () => {
     if (col.locked) { showCollectionLockedModal(); return }
     const name = await showPrompt({
-      title: 'Rename collection',
-      placeholder: 'Collection name…',
+      title: t('collections.rename_title'),
+      placeholder: t('collection.name_ph'),
       icon: 'folder',
       value: col.name,
     })
@@ -162,13 +164,13 @@ function showColCtxMenu(triggerCard, col) {
     }
   })
 
-  addBtn('trash', 'Delete', true, async () => {
+  addBtn('trash', t('action.delete'), true, async () => {
     const result = await showConfirm({
-      title: 'Delete collection',
-      message: `Delete "${col.name}"?`,
-      confirmLabel: 'Delete',
+      title: t('collections.delete_title'),
+      message: t('collections.delete_message', { name: col.name }),
+      confirmLabel: t('action.delete'),
       danger: true,
-      checkboxLabel: 'Also delete all items inside',
+      checkboxLabel: t('collections.delete_items'),
     })
     if (!result) return
     const deleteItems = result.checked ?? false
@@ -211,7 +213,7 @@ function makeCard(col) {
   card.className = 'col-card'
   const paths = parsePreviewPaths(col.preview_paths)
   const coverAttrs = paths.length ? '' : ` style="background:${coverGradient(col.name)}"`
-  const countLabel = col.item_count === 1 ? '1 item' : `${col.item_count ?? 0} items`
+  const countLabel = t(col.item_count === 1 ? 'collections.items_one' : 'collections.items_many', { n: col.item_count ?? 0 })
 
   card.innerHTML = `
     <div class="col-card-cover"${coverAttrs}>
@@ -222,8 +224,8 @@ function makeCard(col) {
       <span class="col-card-name">${escHtml(col.name)}</span>
       <span class="col-card-meta">${countLabel} · ${relativeDate(col.created_at)}</span>
     </div>
-    ${col.locked ? `<span class="col-card-lock" title="Read-only on free plan">${I('lock', 13)}</span>` : ''}
-    <button class="col-card-menu-btn" title="Options" aria-label="Collection options">···</button>
+    ${col.locked ? `<span class="col-card-lock" title="${t('collections.readonly_short')}">${I('lock', 13)}</span>` : ''}
+    <button class="col-card-menu-btn" title="${t('collections.options')}" aria-label="${t('collections.options')}">···</button>
   `
 
   card.addEventListener('click', e => {
@@ -246,7 +248,7 @@ function makeCard(col) {
 }
 
 async function promptCreate() {
-  const name = await showPrompt({ title: 'New collection', placeholder: 'Collection name…', icon: 'folder' })
+  const name = await showPrompt({ title: t('collection.new_title'), placeholder: t('collection.name_ph'), icon: 'folder' })
   if (!name) return
   try {
     const col = await api.createCollection(name)
@@ -271,11 +273,11 @@ function showCollectionsUpgradeModal() {
   modal.className = 'upgrade-modal-backdrop'
   modal.innerHTML = `
     <div class="upgrade-modal">
-      <button class="upgrade-modal__close" aria-label="Close">${I('x', 16)}</button>
+      <button class="upgrade-modal__close" aria-label="${t('action.close')}">${I('x', 16)}</button>
       <div class="upgrade-modal__icon">${I('folders', 32)}</div>
-      <h2 class="upgrade-modal__title">Collection limit reached</h2>
-      <p class="upgrade-modal__body">Free plan allows up to 3 collections. Upgrade to Pro for unlimited collections.</p>
-      <button class="btn btn-accent upgrade-modal__cta">Upgrade to Pro</button>
+      <h2 class="upgrade-modal__title">${t('collections.limit_title')}</h2>
+      <p class="upgrade-modal__body">${t('collections.limit_body')}</p>
+      <button class="btn btn-accent upgrade-modal__cta">${t('collections.upgrade')}</button>
     </div>
   `
   document.body.appendChild(modal)
@@ -298,11 +300,11 @@ function showCollectionLockedModal() {
   modal.className = 'upgrade-modal-backdrop'
   modal.innerHTML = `
     <div class="upgrade-modal">
-      <button class="upgrade-modal__close" aria-label="Close">${I('x', 16)}</button>
+      <button class="upgrade-modal__close" aria-label="${t('action.close')}">${I('x', 16)}</button>
       <div class="upgrade-modal__icon">${I('lock', 32)}</div>
-      <h2 class="upgrade-modal__title">Collection is read-only</h2>
-      <p class="upgrade-modal__body">Your free plan includes 3 editable collections. This collection is view-only. Upgrade to Pro to edit all collections.</p>
-      <button class="btn btn-accent upgrade-modal__cta">Upgrade to Pro</button>
+      <h2 class="upgrade-modal__title">${t('collections.locked_title')}</h2>
+      <p class="upgrade-modal__body">${t('collections.locked_body')}</p>
+      <button class="btn btn-accent upgrade-modal__cta">${t('collections.upgrade')}</button>
     </div>
   `
   document.body.appendChild(modal)
@@ -379,9 +381,9 @@ function escHtml(str) {
 function relativeDate(ts) {
   const diff = Date.now() - ts
   const days = Math.floor(diff / 86400000)
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Yesterday'
-  if (days < 30)  return `${days}d ago`
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`
-  return `${Math.floor(days / 365)}y ago`
+  if (days === 0) return t('date.today')
+  if (days === 1) return t('date.yesterday')
+  if (days < 30)  return t('date.days_ago', { n: days })
+  if (days < 365) return t('date.months_ago', { n: Math.floor(days / 30) })
+  return t('date.years_ago', { n: Math.floor(days / 365) })
 }

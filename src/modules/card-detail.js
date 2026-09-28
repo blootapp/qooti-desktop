@@ -6,6 +6,8 @@ import { sfx } from './sfx.js'
 import { getSetting } from './settings.js'
 import { openSimilarCanvas } from './similar-canvas.js'
 import { makeLogger } from './logger.js'
+// `tr`, not `t`: this module uses `t` for tags / toggle elements in local scopes.
+import { t as tr, currentLang } from './i18n.js'
 
 const log = makeLogger('Detail')
 
@@ -163,13 +165,13 @@ function render() {
     Math.abs(Math.log(v) - Math.log(itemAr)) < Math.abs(Math.log(best) - Math.log(itemAr)) ? v : best,
     RATIO_PRESETS[0])
 
-  const dateStr = new Date(item.created_at).toLocaleDateString(undefined, {
+  const dateStr = new Date(item.created_at).toLocaleDateString(currentLang() === 'uz' ? 'uz-Latn' : undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
   })
 
   modalEl.innerHTML = `
     <div class="detail-modal-header">
-      <button class="detail-close" id="dp-close" aria-label="Close">
+      <button class="detail-close" id="dp-close" aria-label="${tr('action.close')}">
         <span class="icon icon-18" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span>
       </button>
     </div>
@@ -184,16 +186,16 @@ function render() {
         <div class="detail-title-row">
           <div class="detail-read-title" id="dp-read-title">${escHtml(item.title ?? '')}</div>
           <div class="detail-title-actions">
-            ${item.source_url ? `<button class="detail-orig-btn" id="dp-orig-btn" title="Go to original">
+            ${item.source_url ? `<button class="detail-orig-btn" id="dp-orig-btn" title="${tr('detail.go_original')}">
               <span class="icon icon-16" style="mask-image:url('/icons/arrow-square-out.svg');-webkit-mask-image:url('/icons/arrow-square-out.svg')" aria-hidden="true"></span>
             </button>` : ''}
-            ${item.type === 'image' ? `<button class="detail-orig-btn" id="dp-similar-btn" title="Find similar">
+            ${item.type === 'image' ? `<button class="detail-orig-btn" id="dp-similar-btn" title="${tr('detail.find_similar')}">
               <span class="icon icon-16" style="mask-image:url('/icons/magnifying-glass.svg');-webkit-mask-image:url('/icons/magnifying-glass.svg')" aria-hidden="true"></span>
             </button>` : ''}
-            <button class="detail-coll-btn${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="Add to collection">
+            <button class="detail-coll-btn${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="${tr('detail.add_to_collection')}">
               <span class="icon icon-16" style="mask-image:url('/icons/folders.svg');-webkit-mask-image:url('/icons/folders.svg')" aria-hidden="true"></span>
             </button>
-            <button class="detail-edit-toggle" id="dp-edit-toggle" title="Edit details">
+            <button class="detail-edit-toggle" id="dp-edit-toggle" title="${tr('detail.edit')}">
               <span class="icon icon-16" style="mask-image:url('/icons/pencil-simple.svg');-webkit-mask-image:url('/icons/pencil-simple.svg')" aria-hidden="true"></span>
             </button>
           </div>
@@ -208,23 +210,23 @@ function render() {
       <!-- Edit panel (hidden by default) -->
       <div class="detail-edit" id="dp-edit">
         <div class="detail-field">
-          <label class="detail-label">Title</label>
+          <label class="detail-label">${tr('detail.title')}</label>
           <input class="detail-input" id="dp-title" value="${escHtml(item.title ?? '')}"
-            placeholder="Add a title…" maxlength="200" />
+            placeholder="${tr('detail.title_ph')}" maxlength="200" />
         </div>
 
         <div class="detail-field">
-          <label class="detail-label">Tags</label>
+          <label class="detail-label">${tr('detail.tags')}</label>
           <div class="detail-tag-list" id="dp-tag-list"></div>
           <div class="detail-tag-picker">
-            <input class="detail-tag-search" id="dp-tag-search" placeholder="Add tag…" autocomplete="off" />
+            <input class="detail-tag-search" id="dp-tag-search" placeholder="${tr('detail.tag_ph')}" autocomplete="off" />
             <div class="detail-tag-suggestions" id="dp-tag-sug" hidden></div>
           </div>
         </div>
 
         ${item.source_url ? `
           <div class="detail-field">
-            <label class="detail-label">Source</label>
+            <label class="detail-label">${tr('detail.source')}</label>
             <a class="detail-source-link" href="${escHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">
               ${item.source_platform ? `<strong>${escHtml(item.source_platform)}</strong> · ` : ''}${truncate(item.source_url, 55)}
             </a>
@@ -233,11 +235,11 @@ function render() {
         <div class="detail-edit-actions">
           <button class="detail-delete-btn" id="dp-delete">
             <span class="icon icon-14" style="mask-image:url('/icons/trash.svg');-webkit-mask-image:url('/icons/trash.svg')" aria-hidden="true"></span>
-            Delete
+            ${tr('action.delete')}
           </button>
           <div style="flex:1"></div>
-          <button class="detail-cancel-btn" id="dp-cancel">Cancel</button>
-          <button class="detail-save-btn"   id="dp-save">Save</button>
+          <button class="detail-cancel-btn" id="dp-cancel">${tr('action.cancel')}</button>
+          <button class="detail-save-btn"   id="dp-save">${tr('action.save')}</button>
         </div>
       </div>
     </div>
@@ -378,9 +380,9 @@ function renderTagList() {
     ? currentTags.map(t => `
         <span class="detail-tag ${t.source === 'model' ? 'detail-tag--model' : 'detail-tag--user'}">
           ${escHtml(t.name)}
-          <button class="detail-tag-remove" data-tag-id="${t.id}" aria-label="Remove ${escHtml(t.name)}">×</button>
+          <button class="detail-tag-remove" data-tag-id="${t.id}" aria-label="${escHtml(tr('detail.remove_tag', { name: t.name }))}">×</button>
         </span>`).join('')
-    : '<span class="detail-no-tags">No tags yet</span>'
+    : `<span class="detail-no-tags">${tr('detail.no_tags')}</span>`
 
   list.querySelectorAll('.detail-tag-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -410,7 +412,7 @@ function bindCollectionPicker() {
     popover.className = 'dp-coll-popover'
 
     if (!allCollections.length) {
-      popover.innerHTML = `<div class="dp-coll-empty">No collections yet</div>`
+      popover.innerHTML = `<div class="dp-coll-empty">${tr('collections.empty.title')}</div>`
     } else {
       popover.innerHTML = allCollections.map(c => `
         <button class="dp-coll-item${currentCollectionIds.has(c.id) ? ' is-active' : ''}${c.locked ? ' is-locked' : ''}" data-coll-id="${escHtml(c.id)}" data-locked="${c.locked ? '1' : '0'}">
@@ -433,7 +435,7 @@ function bindCollectionPicker() {
           closePicker()
           store.emit(events.SYSTEM_TOAST, {
             type: 'info',
-            message: 'This collection is read-only on the free plan. Upgrade to Pro to edit it.',
+            message: tr('collection.readonly_free'),
             duration: 4000,
           })
           return
@@ -606,7 +608,7 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
     const btn = ctrl.querySelector('.enh-btn')
     if (!btn || btn.classList.contains('is-working')) return
     btn.classList.add('is-working')
-    btn.querySelector('.enh-btn-label').textContent = 'Enhancing…'
+    btn.querySelector('.enh-btn-label').textContent = tr('enhance.working')
     try {
       const path = await api.enhanceImage(item.id)
       item.enhanced_path = path
@@ -619,10 +621,10 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
       log.warn('enhance failed:', String(err))
       btn.classList.remove('is-working')
       btn.classList.add('is-error')
-      btn.querySelector('.enh-btn-label').textContent = 'Couldn’t enhance'
+      btn.querySelector('.enh-btn-label').textContent = tr('enhance.failed')
       setTimeout(() => {
         btn.classList.remove('is-error')
-        btn.querySelector('.enh-btn-label').textContent = 'Enhance'
+        btn.querySelector('.enh-btn-label').textContent = tr('enhance.label')
       }, 2600)
     }
   }
@@ -645,11 +647,11 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
 
   function showEnhanceButton() {
     ctrl.innerHTML = `
-      <button class="enh-btn" title="Enhance — AI upscale & sharpen">
+      <button class="enh-btn" title="${tr('enhance.title')}">
         <span class="enh-btn-shine" aria-hidden="true"></span>
         <span class="spinner-ring enh-btn-spinner" aria-hidden="true"></span>
         <span class="icon icon-14" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>
-        <span class="enh-btn-label">Enhance</span>
+        <span class="enh-btn-label">${tr('enhance.label')}</span>
       </button>`
     ctrl.querySelector('.enh-btn').addEventListener('click', onEnhance)
   }
@@ -657,11 +659,11 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
   function renderControl() {
     if (item.enhanced_path) {
       ctrl.innerHTML = `
-        <div class="enh-toggle" role="group" aria-label="Compare original and enhanced">
-          <button class="enh-toggle-opt" data-v="orig">Original</button>
-          <button class="enh-toggle-opt" data-v="enh">Enhanced</button>
+        <div class="enh-toggle" role="group" aria-label="${tr('enhance.compare')}">
+          <button class="enh-toggle-opt" data-v="orig">${tr('enhance.original')}</button>
+          <button class="enh-toggle-opt" data-v="enh">${tr('enhance.enhanced')}</button>
         </div>
-        <button class="enh-del" title="Remove enhanced">
+        <button class="enh-del" title="${tr('enhance.remove')}">
           <span class="icon icon-14" style="mask-image:url('/icons/trash.svg');-webkit-mask-image:url('/icons/trash.svg')" aria-hidden="true"></span>
         </button>`
       ctrl.querySelector('[data-v="orig"]').addEventListener('click', () => { showingEnhanced = false; applyView() })
@@ -747,15 +749,15 @@ function makeVideoPlayer(src) {
   // Fullscreen
   const fsBtn = document.createElement('button')
   fsBtn.className = 'vp-btn'
-  fsBtn.title = 'Fullscreen'
+  fsBtn.title = tr('player.fullscreen')
 
   controls.append(playBtn, timeEl, prog, volWrap, fsBtn)
   wrap.append(vid, controls)
 
   // ── Icon helpers ──
-  const setPlayIcon  = () => { playBtn.innerHTML = I('play',  16); playBtn.title = 'Play' }
-  const setPauseIcon = () => { playBtn.innerHTML = I('pause', 16); playBtn.title = 'Pause' }
-  const setSpeaker   = () => { muteBtn.innerHTML = I(vid.muted || vid.volume === 0 ? 'speaker-slash' : 'speaker-high', 16); muteBtn.title = vid.muted ? 'Unmute' : 'Mute' }
+  const setPlayIcon  = () => { playBtn.innerHTML = I('play',  16); playBtn.title = tr('player.play') }
+  const setPauseIcon = () => { playBtn.innerHTML = I('pause', 16); playBtn.title = tr('player.pause') }
+  const setSpeaker   = () => { muteBtn.innerHTML = I(vid.muted || vid.volume === 0 ? 'speaker-slash' : 'speaker-high', 16); muteBtn.title = vid.muted ? tr('player.unmute') : tr('player.mute') }
   const setFsIcon    = () => { fsBtn.innerHTML   = I(document.fullscreenElement ? 'arrows-in' : 'arrows-out', 16) }
 
   setPlayIcon(); setSpeaker(); setFsIcon()

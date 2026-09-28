@@ -127,6 +127,7 @@ pub fn start(app: AppHandle) {
                         }
 
                         // ── Free plan daily download limit ────────────────────
+                        let mut quota_charged = false;
                         {
                             let state = app.state::<crate::AppState>();
                             let db = state.db.lock().unwrap();
@@ -184,8 +185,10 @@ pub fn start(app: AppHandle) {
                                     }));
                                     continue;
                                 }
-                                // Under the limit — count this save
+                                // Under the limit — count this save (refunded by the
+                                // download queue if the download then fails).
                                 increment_ext_dl_count(&db);
+                                quota_charged = true;
                             }
                         }
 
@@ -194,6 +197,7 @@ pub fn start(app: AppHandle) {
                         if let Some(obj) = payload.as_object_mut() {
                             obj.insert("_ext_id".into(), serde_json::Value::String(ext_id.clone()));
                         }
+                        if quota_charged { crate::commands::mark_ext_quota_charged(&ext_id); }
 
                         // Extract browser cookies sent by the extension, write to a temp
                         // Netscape file, and store the path keyed by ext_id for yt-dlp.

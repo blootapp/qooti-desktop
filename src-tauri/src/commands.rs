@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -30,6 +30,125 @@ pub fn hidden_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Co
 static ACTIVE_PIDS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
 fn active_pids() -> &'static Mutex<HashMap<String, u32>> {
     ACTIVE_PIDS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// Download lifecycle sets. RUNNING: popped from the queue, not finished yet (it may be
+// between yt-dlp processes — setting up YouTube, sleeping before a retry — so it can
+// have no PID). CANCELLED: the user cancelled it; every later step bails out quietly.
+// COMPLETED: reached `download:complete`; anything else refunds the free-plan quota.
+static RUNNING_DOWNLOADS:   OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static CANCELLED_DOWNLOADS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static COMPLETED_DOWNLOADS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+fn running_downloads()   -> &'static Mutex<HashSet<String>> { RUNNING_DOWNLOADS.get_or_init(Default::default) }
+fn cancelled_downloads() -> &'static Mutex<HashSet<String>> { CANCELLED_DOWNLOADS.get_or_init(Default::default) }
+fn completed_downloads() -> &'static Mutex<HashSet<String>> { COMPLETED_DOWNLOADS.get_or_init(Default::default) }
+
+fn is_cancelled(download_id: &str) -> bool {
+    cancelled_downloads().lock().unwrap().contains(download_id)
+}
+
+/// Kill a download's whole process tree. Windows: `taskkill /T`, so the ffmpeg that
+/// yt-dlp spawns to merge streams dies too (plain /PID orphaned it). Unix: yt-dlp runs
+/// in its own process group (see `ytdlp_command`), so signalling the group does the same.
+fn kill_process_tree(pid: u32) {
+    #[cfg(windows)]
+    { let _ = hidden_command("taskkill").args(["/F", "/T", "/PID", &pid.to_string()]).spawn(); }
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: plain kill(2) on a pid (and its process group) we spawned.
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = hidden_command("kill").args(["-s", "KILL", "--", &format!("-{pid}")]).spawn();
+        let _ = hidden_command("kill").args(["-9", &pid.to_string()]).spawn();
+    }
+}
+
+/// A yt-dlp invocation: no console window, unbuffered UTF-8 output, and (Unix) its own
+/// process group so `kill_process_tree` reaches its ffmpeg child.
+fn ytdlp_command(binary: &std::path::Path) -> std::process::Command {
+    let mut cmd = hidden_command(binary);
+    cmd.env("PYTHONUNBUFFERED", "1").env("PYTHONIOENCODING", "utf-8");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    cmd
+}
+
+/// Give back one free-plan download when a counted download didn't succeed (failed,
+/// cancelled, or dropped from the queue). Quota is charged up front — so a burst of
+/// requests can't overshoot the limit — and refunded here, so only successful
+/// downloads use it up. Only touches today's counter.
+fn refund_download_quota(app: &AppHandle, from_extension: bool) {
+    let (count_key, date_key) = if from_extension {
+        ("ext_dl_count", "ext_dl_date")
+    } else {
+        ("app_dl_count", "app_dl_date")
+    };
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let state = app.state::<AppState>();
+    let Ok(db) = state.db.lock() else { return };
+    let date: String = db.query_row(
+        "SELECT value FROM preferences WHERE key = ?1", [date_key], |r| r.get(0),
+    ).unwrap_or_default();
+    if date != today { return; }
+    let used: u32 = db.query_row(
+        "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = ?1", [count_key], |r| r.get(0),
+    ).unwrap_or(0);
+    if used == 0 { return; }
+    let _ = db.execute(
+        "INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)",
+        params![count_key, (used - 1).to_string()],
+    );
+    log::info!(target: "Download", "quota_refunded key={count_key} used={}", used - 1);
+}
+
+/// The one way a download reports success. Drops the result if the user already
+/// cancelled (so a cancelled download can never still land in the library), and
+/// records the success so the queue keeps the quota charge.
+fn emit_download_complete(app: &AppHandle, download_id: &str, paths: &[String], url: &str, ext_id: Option<&str>) {
+    if is_cancelled(download_id) {
+        for p in paths { let _ = std::fs::remove_file(p); }
+        log::info!(target: "Download", "complete_after_cancel_dropped download_id={download_id}");
+        return;
+    }
+    completed_downloads().lock().unwrap().insert(download_id.to_string());
+    let _ = app.emit("download:complete", serde_json::json!({
+        "download_id": download_id,
+        "paths": paths,
+        "url":   url,
+    }));
+    if let Some(eid) = ext_id { set_ext_progress(app, eid, 1.0, "", "finalizing", "Saving to library…"); }
+}
+
+/// The one way a download reports failure. Silent after a cancel — `cancel_download`
+/// already told the UI, and a second (confusing) error would follow the kill.
+fn emit_download_error(app: &AppHandle, download_id: &str, message: &str, ext_id: Option<&str>) {
+    if is_cancelled(download_id) { return; }
+    let _ = app.emit("download:error", serde_json::json!({
+        "download_id": download_id,
+        "message": message,
+    }));
+    if let Some(eid) = ext_id { set_ext_progress(app, eid, 0.0, "", "error", message); }
+}
+
+/// Progress event for a download stage that isn't byte progress (setting up YouTube,
+/// retrying). `stage` is a stable key the UI translates (downloader.js); `speed`
+/// carries an English label for older listeners and the browser extension.
+fn emit_download_stage(app: &AppHandle, download_id: &str, stage: &str, label: &str, pct: f64, ext_id: Option<&str>) {
+    let _ = app.emit("download:progress", serde_json::json!({
+        "download_id": download_id,
+        "pct":   pct,
+        "speed": label,
+        "stage": stage,
+    }));
+    if let Some(eid) = ext_id { set_ext_progress(app, eid, pct, label, "downloading", ""); }
 }
 
 // ─── .qooti file open (double-click / "Open with") ────────────────
@@ -73,11 +192,25 @@ struct DownloadRequest {
     quality:     String,
     tmp_dir:     std::path::PathBuf,
     ext_id:      Option<String>,
+    /// A free-plan daily download was charged for this request (in-app counter, or
+    /// the extension counter when it came from the extension). Refunded unless the
+    /// download succeeds — see `refund_download_quota`.
+    charged:     bool,
 }
 
 static DOWNLOAD_QUEUE: OnceLock<Mutex<VecDeque<DownloadRequest>>> = OnceLock::new();
 fn download_queue() -> &'static Mutex<VecDeque<DownloadRequest>> {
     DOWNLOAD_QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+// ext_ids whose extension save was charged against the free extension quota
+// (extension_server.rs). Midnight-queue replays aren't charged, so only these refund.
+static CHARGED_EXT_IDS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+fn charged_ext_ids() -> &'static Mutex<HashSet<String>> { CHARGED_EXT_IDS.get_or_init(Default::default) }
+
+/// Called by the extension server when it counts a save against today's quota.
+pub fn mark_ext_quota_charged(ext_id: &str) {
+    charged_ext_ids().lock().unwrap().insert(ext_id.to_string());
 }
 
 /// Attempt to pop one request from the queue and start it.
@@ -98,9 +231,15 @@ fn try_start_next() {
             if let Some(ref eid) = r.ext_id {
                 set_ext_progress(&r.app, eid, 0.0, "", "pending", "");
             }
+            running_downloads().lock().unwrap().insert(r.download_id.clone());
             std::thread::spawn(move || {
+                let (app, id, charged, from_ext) = (r.app.clone(), r.download_id.clone(), r.charged, r.ext_id.is_some());
                 run_ytdlp(r.app, r.download_id, r.url, r.quality, r.tmp_dir, r.ext_id);
-                // All run_ytdlp exit paths (success, error, early-return) land here.
+                // All run_ytdlp exit paths (success, error, cancel, early-return) land here.
+                let succeeded = completed_downloads().lock().unwrap().remove(&id);
+                if charged && !succeeded { refund_download_quota(&app, from_ext); }
+                running_downloads().lock().unwrap().remove(&id);
+                cancelled_downloads().lock().unwrap().remove(&id);
                 ACTIVE_DOWNLOADS.fetch_sub(1, Ordering::SeqCst);
                 try_start_next();
             });
@@ -112,47 +251,47 @@ fn try_start_next() {
     }
 }
 
-#[tauri::command]
-pub fn cancel_download(download_id: String, app: AppHandle) -> Result<(), String> {
-    // Check the queue first — the download may not have started yet.
-    {
+/// Cancel a queued or running download. Returns false if it's unknown (already
+/// finished). A running download is marked cancelled first, so whatever step it's in
+/// — a yt-dlp run, a retry, the YouTube setup, a back-off sleep — stops quietly and
+/// can't import anything afterwards.
+fn cancel_download_by_id(app: &AppHandle, download_id: &str) -> bool {
+    // Queued: just drop it.
+    let queued = {
         let mut queue = download_queue().lock().unwrap();
-        if let Some(pos) = queue.iter().position(|r| r.download_id == download_id) {
-            let req = queue.remove(pos).unwrap();
-            drop(queue); // release lock before any further state mutation
-            log::info!(target: "Download", "cancel_queued download_id={download_id}");
-            app.state::<AppState>()
-                .ext_id_map.lock().unwrap()
-                .remove(&download_id);
-            if let Some(ref eid) = req.ext_id {
-                set_ext_progress(&app, eid, 0.0, "", "cancelled", "Cancelled");
-            }
-            let _ = app.emit("download:error", serde_json::json!({
-                "download_id": download_id,
-                "message": "Cancelled",
-            }));
-            return Ok(());
+        queue.iter().position(|r| r.download_id == download_id).and_then(|pos| queue.remove(pos))
+    };
+    if let Some(req) = queued {
+        log::info!(target: "Download", "cancel_queued download_id={download_id}");
+        app.state::<AppState>().ext_id_map.lock().unwrap().remove(download_id);
+        if let Some(ref eid) = req.ext_id {
+            set_ext_progress(app, eid, 0.0, "", "cancelled", "Cancelled");
         }
-    }
-    // Download is running — kill the yt-dlp process.
-    let pid = active_pids().lock().unwrap().remove(&download_id);
-    if let Some(pid) = pid {
-        log::info!(target: "Download", "cancel_running pid={pid} download_id={download_id}");
-        #[cfg(windows)]
-        hidden_command("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
-            .spawn()
-            .ok();
-        #[cfg(not(windows))]
-        hidden_command("kill")
-            .args(["-9", &pid.to_string()])
-            .spawn()
-            .ok();
+        if req.charged { refund_download_quota(app, req.ext_id.is_some()); }
         let _ = app.emit("download:error", serde_json::json!({
             "download_id": download_id,
             "message": "Cancelled",
         }));
+        return true;
     }
+
+    if !running_downloads().lock().unwrap().contains(download_id) { return false; }
+    // Announce first, then mark: after the mark, run_ytdlp's own error/complete
+    // events are suppressed, so this is the only outcome the UI sees.
+    let _ = app.emit("download:error", serde_json::json!({
+        "download_id": download_id,
+        "message": "Cancelled",
+    }));
+    cancelled_downloads().lock().unwrap().insert(download_id.to_string());
+    let pid = active_pids().lock().unwrap().remove(download_id);
+    log::info!(target: "Download", "cancel_running pid={pid:?} download_id={download_id}");
+    if let Some(pid) = pid { kill_process_tree(pid); }
+    true
+}
+
+#[tauri::command]
+pub fn cancel_download(download_id: String, app: AppHandle) -> Result<(), String> {
+    cancel_download_by_id(&app, &download_id);
     Ok(())
 }
 
@@ -3174,40 +3313,48 @@ pub fn download_url(
     quality: String,
     ext_id: Option<String>,
 ) -> Result<String, String> {
-    // In-app downloads (no ext_id) are capped at FREE_DOWNLOAD_DAILY_LIMIT per day for free users.
-    if ext_id.is_none() {
-        let state = app.state::<AppState>();
-        let db = state.db.lock().unwrap();
-        let plan = get_plan_from_db(&db);
-        if is_free_plan(&plan) {
-            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-            let stored_date: String = db.query_row(
-                "SELECT value FROM preferences WHERE key = 'app_dl_date'", [], |r| r.get(0)
-            ).unwrap_or_default();
-            let used: u32 = if stored_date == today {
-                db.query_row(
-                    "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = 'app_dl_count'",
-                    [], |r| r.get(0),
-                ).unwrap_or(0)
-            } else { 0 };
-            if used >= FREE_DOWNLOAD_DAILY_LIMIT {
-                return Err("UPGRADE_REQUIRED:download_limit".to_string());
-            }
-            // Record this download against today's quota
-            let _ = db.execute(
-                "INSERT OR REPLACE INTO preferences (key, value) VALUES ('app_dl_date', ?1)",
-                [&today],
-            );
-            let _ = db.execute(
-                "INSERT OR REPLACE INTO preferences (key, value) VALUES ('app_dl_count', ?1)",
-                [(used + 1).to_string()],
-            );
-        }
-    }
-
     let vault_path = vault::get_vault_path(&app).map_err(|e| e.to_string())?;
     let tmp_dir = vault_path.join("downloads_tmp");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+
+    // In-app downloads (no ext_id) are capped at FREE_DOWNLOAD_DAILY_LIMIT per day for
+    // free users. Charged here (so a burst of requests can't overshoot the limit) and
+    // refunded by the queue if the download doesn't succeed — failures and cancels
+    // don't use up the quota. Extension saves are charged by extension_server.rs.
+    let charged = match ext_id {
+        Some(ref eid) => charged_ext_ids().lock().unwrap().remove(eid),
+        None => {
+            let state = app.state::<AppState>();
+            let db = state.db.lock().unwrap();
+            let plan = get_plan_from_db(&db);
+            if is_free_plan(&plan) {
+                let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+                let stored_date: String = db.query_row(
+                    "SELECT value FROM preferences WHERE key = 'app_dl_date'", [], |r| r.get(0)
+                ).unwrap_or_default();
+                let used: u32 = if stored_date == today {
+                    db.query_row(
+                        "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = 'app_dl_count'",
+                        [], |r| r.get(0),
+                    ).unwrap_or(0)
+                } else { 0 };
+                if used >= FREE_DOWNLOAD_DAILY_LIMIT {
+                    return Err("UPGRADE_REQUIRED:download_limit".to_string());
+                }
+                let _ = db.execute(
+                    "INSERT OR REPLACE INTO preferences (key, value) VALUES ('app_dl_date', ?1)",
+                    [&today],
+                );
+                let _ = db.execute(
+                    "INSERT OR REPLACE INTO preferences (key, value) VALUES ('app_dl_count', ?1)",
+                    [(used + 1).to_string()],
+                );
+                true
+            } else {
+                false
+            }
+        }
+    };
 
     let download_id = Uuid::new_v4().to_string();
 
@@ -3237,6 +3384,7 @@ pub fn download_url(
         quality,
         tmp_dir,
         ext_id,
+        charged,
     });
 
     try_start_next();
@@ -3552,7 +3700,7 @@ fn set_ext_progress(app: &AppHandle, ext_id: &str, pct: f64, speed: &str, status
     });
 }
 
-/// Cancel the yt-dlp process associated with the given ext_id.
+/// Cancel the download associated with the given ext_id.
 /// Called by the HTTP server when the extension user hits the × button.
 pub fn cancel_download_for_ext_id(ext_id: &str, app: &AppHandle) {
     let state = app.state::<crate::AppState>();
@@ -3568,20 +3716,8 @@ pub fn cancel_download_for_ext_id(ext_id: &str, app: &AppHandle) {
     };
 
     if let Some(did) = download_id {
-        let pid = active_pids().lock().unwrap().remove(&did);
-        if let Some(pid) = pid {
-            log::info!(target: "Download", "cancel pid={pid} ext_id={ext_id}");
-            #[cfg(windows)]
-            hidden_command("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
-                .spawn()
-                .ok();
-            #[cfg(not(windows))]
-            hidden_command("kill")
-                .args(["-9", &pid.to_string()])
-                .spawn()
-                .ok();
-        }
+        log::info!(target: "Download", "cancel ext_id={ext_id} download_id={did}");
+        cancel_download_by_id(app, &did);
     }
 
     set_ext_progress(app, ext_id, 0.0, "", "cancelled", "Cancelled by user");
@@ -3641,6 +3777,147 @@ fn dl_diag(app: &AppHandle, msg: impl AsRef<str>) {
     let _ = app.emit("download:diag", m.to_string());
 }
 
+/// Deletes a temp file (the extension's cookie jar) when the download finishes —
+/// on every exit path, including after retries that still need it.
+struct TempFileGuard(Option<String>);
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(ref p) = self.0 {
+            std::fs::remove_file(p).ok();
+            log::debug!(target: "Download", "cookie_file_deleted path={:?}", p);
+        }
+    }
+}
+
+/// Sleep, waking early if the download is cancelled. Returns false if it was.
+fn sleep_unless_cancelled(download_id: &str, dur: std::time::Duration) -> bool {
+    let end = std::time::Instant::now() + dur;
+    while std::time::Instant::now() < end {
+        if is_cancelled(download_id) { return false; }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    !is_cancelled(download_id)
+}
+
+/// Files that appeared in `dir` since the `pre` snapshot, minus partials/metadata.
+fn new_download_files(dir: &std::path::Path, pre: &HashSet<std::path::PathBuf>) -> Vec<String> {
+    const SKIP_EXTS: &[&str] = &["part", "ytdl", "json", "description", "annotations"];
+    std::fs::read_dir(dir).into_iter().flatten().flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if pre.contains(&path) { return None; }
+            let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+            if SKIP_EXTS.contains(&ext.as_str()) { return None; }
+            path.to_str().map(|s| s.to_string())
+        })
+        .collect()
+}
+
+/// Delete everything (partials included) that appeared in `dir` since `pre`.
+fn remove_new_files(dir: &std::path::Path, pre: &HashSet<std::path::PathBuf>) {
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if !pre.contains(&p) { let _ = std::fs::remove_file(&p); }
+    }
+}
+
+fn snapshot_dir(dir: &std::path::Path) -> HashSet<std::path::PathBuf> {
+    std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect()
+}
+
+/// Run a follow-up yt-dlp attempt (a fallback after the main run failed) the same way
+/// as the main run: PID registered so Cancel can kill it, progress streamed, and a hard
+/// time limit so a stalled retry can't hold the serial download queue forever.
+/// Returns (exited successfully, stderr).
+fn run_tracked(
+    app: &AppHandle,
+    binary: &std::path::Path,
+    args: &[String],
+    download_id: &str,
+    limit: std::time::Duration,
+) -> (bool, String) {
+    use std::io::Read;
+    let mut child = match ytdlp_command(binary)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c)  => c,
+        Err(e) => return (false, format!("ERROR: {e}")),
+    };
+    let pid = child.id();
+    active_pids().lock().unwrap().insert(download_id.to_string(), pid);
+    // Cancelled between our last check and the PID becoming visible to cancel_download.
+    if is_cancelled(download_id) {
+        active_pids().lock().unwrap().remove(download_id);
+        kill_process_tree(pid);
+    }
+
+    let stderr = child.stderr.take();
+    let err_reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut e) = stderr { let _ = e.read_to_end(&mut buf); }
+        String::from_utf8_lossy(&buf).into_owned()
+    });
+    let stdout = child.stdout.take();
+    let (app_o, did_o) = (app.clone(), download_id.to_string());
+    let out_reader = std::thread::spawn(move || {
+        if let Some(o) = stdout {
+            for line in BufReader::new(o).lines().flatten() {
+                if line.starts_with("[download]") { emit_download_progress(&line, &app_o, &did_o); }
+            }
+        }
+    });
+
+    let deadline = std::time::Instant::now() + limit;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break Some(s),
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                log::warn!(target: "Download", "retry_timeout download_id={download_id}");
+                kill_process_tree(pid);
+                let _ = child.wait();
+                break None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(250)),
+            Err(_)   => break None,
+        }
+    };
+    active_pids().lock().unwrap().remove(download_id);
+    let _ = out_reader.join();
+    let err = err_reader.join().unwrap_or_default();
+    (status.is_some_and(|s| s.success()), err)
+}
+
+/// Copy of `args` with the `--format` value replaced.
+fn with_format(args: &[String], format: &str) -> Vec<String> {
+    let mut out = args.to_vec();
+    if let Some(i) = out.iter().position(|a| a == "--format") {
+        if i + 1 < out.len() { out[i + 1] = format.to_string(); }
+    }
+    out
+}
+
+/// Copy of `args` with any YouTube player-client override replaced by `clients`.
+fn with_youtube_clients(args: &[String], clients: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(args.len() + 2);
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--extractor-args"
+            && args.get(i + 1).is_some_and(|v| v.starts_with("youtube:player_client"))
+        {
+            i += 2;
+            continue;
+        }
+        out.push(args[i].clone());
+        i += 1;
+    }
+    out.push("--extractor-args".into());
+    out.push(format!("youtube:player_client={clients}"));
+    out
+}
+
 fn run_ytdlp(
     app: AppHandle,
     download_id: String,
@@ -3658,6 +3935,7 @@ fn run_ytdlp(
         log::debug!(target: "Download", "binary path={:?}", binary);
     }
     log::info!(target: "Download", "start download_id={download_id} url={url:?} quality={quality}");
+    let eid = ext_id.as_deref();
 
     // Direct image URL: bypass yt-dlp entirely and download via HTTP.
     // yt-dlp cannot handle plain image file URLs (exits with code 1).
@@ -3671,8 +3949,8 @@ fn run_ytdlp(
     if is_direct_image {
         let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
                   (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-        if let Some(ref eid) = ext_id {
-            set_ext_progress(&app, eid, 0.1, "", "downloading", "");
+        if let Some(e) = eid {
+            set_ext_progress(&app, e, 0.1, "", "downloading", "");
         }
         // Try the highest-res variant of known CDNs (Pinterest/Twitter) first, then
         // the original URL. The hi-res guess can 404, so the original is always kept
@@ -3708,28 +3986,16 @@ fn run_ytdlp(
                 let out_path  = tmp_dir.join(format!("image_{download_id}.{ext}"));
                 if let Err(e) = std::fs::write(&out_path, &bytes) {
                     log::warn!(target: "Download", "direct_image_write_err error={e}");
-                    let _ = app.emit("download:error", serde_json::json!({
-                        "download_id": download_id,
-                        "message": format!("Failed to save image: {e}"),
-                    }));
-                    if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.0, "", "error", "Save failed"); }
+                    emit_download_error(&app, &download_id, &format!("Failed to save image: {e}"), eid);
                     return;
                 }
                 log::info!(target: "Download", "direct_image_ok path={:?}", out_path);
-                let _ = app.emit("download:complete", serde_json::json!({
-                    "download_id": download_id,
-                    "paths": [out_path.to_string_lossy().to_string()],
-                    "url":   url,
-                }));
-                if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
+                emit_download_complete(&app, &download_id,
+                    &[out_path.to_string_lossy().to_string()], &url, eid);
             }
             None => {
                 log::warn!(target: "Download", "direct_image_fetch_err all candidates failed");
-                let _ = app.emit("download:error", serde_json::json!({
-                    "download_id": download_id,
-                    "message": "Failed to download image",
-                }));
-                if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.0, "", "error", "Download failed"); }
+                emit_download_error(&app, &download_id, "Failed to download image", eid);
             }
         }
         return;
@@ -3744,38 +4010,20 @@ fn run_ytdlp(
         .to_string_lossy()
         .into_owned();
 
-    let mut base_args: Vec<&str> = vec![
-        "--no-playlist",
-        "--newline",
-        "--progress",
-        "--force-overwrites",
-        "--merge-output-format", "mp4/mkv",
-        "--retries", "5",
-        "--fragment-retries", "5",
-        "--socket-timeout", "30",
-        "--add-header", "Accept-Language:en-US,en;q=0.9",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "-o", &out_tpl,
-    ];
-
-    // Point yt-dlp at our bundled ffmpeg so it can merge split streams (required for 1080p+).
-    if let Some(ref fp) = ffmpeg_path_str {
-        base_args.extend_from_slice(&["--ffmpeg-location", fp]);
-    }
-
     let is_youtube   = url.contains("youtube.com")   || url.contains("youtu.be");
     let is_pinterest = url.contains("pinterest.")    || url.contains("pin.it");
     let is_instagram = url.contains("instagram.com") || url.contains("instagr.am");
     let is_tiktok    = url.contains("tiktok.com");
     let needs_auth   = is_instagram || is_tiktok;
 
-    // Resolve browser cookie file before format selection — needed to pick the right
-    // YouTube player client (web client unlocks 1080p split streams when cookies supply PO tokens).
+    // Browser cookies sent by the extension for this save (a temp file, deleted by the
+    // guard when this download ends — after any retries that reuse it).
     let cookie_file_path: Option<String> = ext_id.as_ref().and_then(|eid| {
         app.state::<crate::AppState>()
             .cookie_files.lock().unwrap()
             .remove(eid)
     });
+    let _cookie_guard = TempFileGuard(cookie_file_path.clone());
 
     // User-provided cookies.txt from Settings → Downloads → Cookies file.
     // Second priority after extension-provided cookies.
@@ -3844,126 +4092,150 @@ fn run_ytdlp(
             || url.contains("/embed/");
         if !is_youtu_be && !has_video_id {
             log::warn!(target: "Download", "youtube_no_video_id url={url:?} download_id={download_id}");
-            let _ = app.emit("download:error", serde_json::json!({
-                "download_id": download_id,
-                "message": "Couldn't read the video link — open the video page first",
-            }));
-            if let Some(ref eid) = ext_id {
-                set_ext_progress(&app, eid, 0.0, "", "error",
-                    "Couldn't read the video link — open the video page first");
-            }
+            emit_download_error(&app, &download_id,
+                "Couldn't read the video link — open the video page first", eid);
             return;
         }
     }
 
-    // Build the YouTube player-client extractor arg here so the String lives long
-    // enough for base_args (&str borrows from it until Command::spawn() below).
-    // tv: full format list whose media URLs need NO PO token — the most reliable
-    //   client for cookieless downloads, so it leads both chains. YouTube has been
-    //   locking android_vr/web_embedded/ios behind GVS PO tokens (→ HTTP 403 on the
-    //   media fetch), which is why those-only chains fail intermittently by IP/session.
-    // android_vr: split streams without PO tokens, accepts account cookies.
-    // web_embedded: fallback for publicly embeddable videos (no token needed).
-    let yt_clients_arg = if is_youtube {
-        format!("youtube:player_client={}",
-            if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "tv,android_vr,web_embedded,ios" })
+    // YouTube requires a JavaScript runtime: yt-dlp runs YouTube's player challenges in
+    // it, and without one every media URL returns HTTP 403 (js_runtime.rs). It's
+    // normally prefetched at boot; if not, install it now (once, ~45 MB) with progress.
+    let deno: Option<std::path::PathBuf> = if is_youtube {
+        match crate::js_runtime::ready_path(&app) {
+            Some(p) => Some(p),
+            None => {
+                emit_download_stage(&app, &download_id, "preparing_youtube",
+                    "preparing YouTube support…", 0.0, eid);
+                let last_pct = std::cell::Cell::new(-1i32);
+                let report = |f: f64| {
+                    let pct = (f * 100.0) as i32;
+                    if pct != last_pct.get() {
+                        last_pct.set(pct);
+                        emit_download_stage(&app, &download_id, "preparing_youtube",
+                            "preparing YouTube support…", f, eid);
+                    }
+                };
+                match crate::js_runtime::ensure(&app, &report) {
+                    Ok(p)  => Some(p),
+                    Err(e) => {
+                        log::warn!(target: "Download", "js_runtime_unavailable err={e}");
+                        None
+                    }
+                }
+            }
+        }
     } else {
-        String::new()
+        None
     };
-    // When the PO-token provider is running, switch to web-based clients, which are the
-    // ones that actually CONSUME the GVS PO token (verified end-to-end: web + provider
-    // mints a token on macOS + Windows CI). The default tv/android_vr/ios formats ignore
-    // the token, so if yt-dlp picks one of their (higher-res) formats its media URL keeps
-    // 403-ing under SABR gating even while the provider is up — that's the macOS failure.
-    // Restricting to web clients guarantees every offered format carries a working token.
-    let yt_pot_clients_arg = "youtube:player_client=web,web_embedded".to_string();
+    if is_cancelled(&download_id) { return; }
 
-    // On-demand PO-token provider: once a prior YouTube 403 has pulled the provider
-    // into app-data, install the bgutil plugin + start its server so every subsequent
-    // YouTube download auto-carries a GVS PO token. (yt-dlp loads the plugin from its
-    // config dir; the initial provider download happens lazily in the 403 fallback.)
+    let mut args: Vec<String> = [
+        "--no-playlist",
+        "--newline",
+        "--progress",
+        "--force-overwrites",
+        // mp4 for H.264/AAC; webm (not mkv) when only VP9/Opus exists, so the file
+        // is a real WebM that WebView2 and macOS WebKit can both play.
+        "--merge-output-format", "mp4/webm/mkv",
+        "--retries", "5",
+        "--fragment-retries", "5",
+        "--socket-timeout", "30",
+        "--add-header", "Accept-Language:en-US,en;q=0.9",
+        "-o", out_tpl.as_str(),
+    ].map(String::from).to_vec();
+
+    // YouTube picks client-specific User-Agents itself; a fixed desktop-Chrome UA
+    // only makes its requests look inconsistent. Other sites keep the browser UA.
+    if !is_youtube {
+        args.extend(["--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"].map(String::from));
+    }
+
+    // Point yt-dlp at our bundled ffmpeg so it can merge split streams (required for 1080p+).
+    if let Some(ref fp) = ffmpeg_path_str {
+        args.extend(["--ffmpeg-location".to_string(), fp.clone()]);
+    }
+
+    // Legacy no-JS player-client chain, from before YouTube required a JS runtime. Only
+    // used when deno couldn't be installed (e.g. offline on first use). With a runtime,
+    // yt-dlp's default clients are the right choice: tuned upstream against YouTube's
+    // current gating, and our yt-dlp copy self-updates daily (update_ytdlp_once).
+    let yt_legacy_clients = format!("youtube:player_client={}",
+        if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "tv,android_vr,web_embedded,ios" });
+    // Web-based clients are the ones that consume a GVS PO token — used for the retry
+    // once the PO-token provider is running (see the 403 fallback below).
+    const YT_POT_CLIENTS: &str = "web,web_embedded";
+
+    // PO-token provider: if a previous 403 already pulled it into app-data, make sure
+    // its server is up so yt-dlp's bgutil plugin can attach tokens to this run too.
     let pot_ready = is_youtube
+        && deno.is_some()
         && crate::pot_provider::is_downloaded(&app)
         && crate::pot_provider::ensure_running(&app);
 
     if is_youtube {
-        if quality == "medium" {
-            // Same client chain as best — height cap is the only difference.
-            // Avoids the mweb-only trap where format 22 absent → silent 360p fallback.
-            base_args.extend_from_slice(&[
-                "--format",
-                "bv*[height<=720]+ba/b[height<=720]/b",
-                "--format-sort", "res:720,fps,vcodec:h264:vp9:av01,acodec:aac:opus",
-            ]);
-        } else {
-            // Best: up to 4K.  Resolution is the primary sort key so VP9/AV1 4K is
-            // not suppressed in favour of lower-resolution h264.
-            base_args.extend_from_slice(&[
-                "--format",
-                "bv*[height<=2160]+ba/b[height<=2160]/b",
-                "--format-sort", "res:2160,fps,vcodec:vp9.2:av01:vp9:h264,acodec:opus:aac",
-            ]);
+        args.extend(crate::js_runtime::ytdlp_args(deno.as_deref()));
+        // H.264 + AAC first (→ .mp4): plays in both WebView2 and macOS WebKit, where
+        // VP9/AV1 in MKV often doesn't (AV1 needs an M3+ Mac). YouTube serves H.264 up
+        // to 1080p, so "best" caps there — 4K VP9 was ~10× larger (1.4 GB for a
+        // 10-minute video) for no visible gain in an inspiration library.
+        let cap = if quality == "medium" { 720 } else { 1080 };
+        args.extend([
+            "--format".to_string(), format!("bv*[height<={cap}]+ba/b[height<={cap}]/b"),
+            "--format-sort".to_string(), format!("res:{cap},vcodec:h264,fps,acodec:aac"),
+        ]);
+        args.extend(["--print", "before_dl:%(format_id)s %(height)s %(vcodec)s"].map(String::from));
+        if deno.is_none() {
+            args.extend(["--extractor-args".to_string(), yt_legacy_clients.clone()]);
         }
-        base_args.extend_from_slice(&["--print", "before_dl:%(format_id)s %(height)s %(vcodec)s"]);
-        base_args.extend_from_slice(&["--extractor-args",
-            if pot_ready { yt_pot_clients_arg.as_str() } else { yt_clients_arg.as_str() }]);
     } else if quality == "medium" {
-        base_args.extend_from_slice(&[
+        args.extend([
             "--format",
             "bestvideo[height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
             "--format-sort", "vcodec:h264:vp9:av01,res:720,fps",
-        ]);
+        ].map(String::from));
     } else {
-        base_args.extend_from_slice(&[
+        args.extend([
             "--format",
             "bestvideo[height<=2160]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
             "--format-sort", "vcodec:h264:vp9:av01,res:2160,fps",
-        ]);
+        ].map(String::from));
     }
     // Instagram: when we have session cookies (from extension or user cookies.txt), let yt-dlp
     // choose the best API automatically — forcing graphql conflicts with the bloks auth flow
     // that Instagram requires for cookie-authenticated downloads.  Without cookies, graphql
     // is still the best bet for public content.
     if is_instagram && effective_cookie_path.is_none() && auto_cookie_browser.is_none() {
-        base_args.extend_from_slice(&["--extractor-args", "instagram:api=graphql"]);
+        args.extend(["--extractor-args", "instagram:api=graphql"].map(String::from));
     }
 
     if let Some(cp) = effective_cookie_path {
-        base_args.extend_from_slice(&["--cookies", cp]);
+        args.extend(["--cookies".to_string(), cp.to_string()]);
         let cookie_source = if cookie_file_path.is_some() { "extension" } else { "user_cookies_txt" };
         log::debug!(target: "Download", "cookie_source={cookie_source} download_id={download_id}");
     } else if let Some(browser) = auto_cookie_browser {
-        base_args.extend_from_slice(&["--cookies-from-browser", browser]);
+        args.extend(["--cookies-from-browser".to_string(), browser.to_string()]);
         log::debug!(target: "Download", "cookie_source=browser_{browser} download_id={download_id}");
     } else if needs_auth {
         // No cookie source — limit retries so the user gets a fast failure.
-        base_args.extend_from_slice(&["--retries", "1", "--fragment-retries", "1"]);
+        args.extend(["--retries", "1", "--fragment-retries", "1"].map(String::from));
         log::warn!(target: "Download", "cookie_source=none needs_auth=true download_id={download_id}");
     }
 
-    base_args.push(&url);
+    let with_url = |mut a: Vec<String>| -> Vec<String> { a.push(url.clone()); a };
 
     // Snapshot tmp_dir BEFORE spawning so the diff after exit is accurate.
-    let pre_files: std::collections::HashSet<std::path::PathBuf> =
-        std::fs::read_dir(&tmp_dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .collect();
+    let pre_files = snapshot_dir(&tmp_dir);
 
     dl_diag(&app, format!(
-        "start id={download_id} youtube={is_youtube} quality={quality} pot_ready={pot_ready} bin={}{}",
+        "start id={download_id} youtube={is_youtube} quality={quality} js_runtime={} pot_ready={pot_ready} bin={}{}",
+        if deno.is_some() { "deno" } else { "none" },
         binary.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-        if is_youtube {
-            format!(" clients={}", if pot_ready { yt_pot_clients_arg.as_str() } else { yt_clients_arg.as_str() })
-        } else { String::new() }
+        if is_youtube && deno.is_none() { format!(" clients={yt_legacy_clients}") } else { String::new() }
     ));
 
-    let mut child = match hidden_command(&binary)
-        .args(&base_args)
-        .env("PYTHONUNBUFFERED", "1")
-        .env("PYTHONIOENCODING", "utf-8")
+    let mut child = match ytdlp_command(&binary)
+        .args(with_url(args.clone()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -3971,21 +4243,20 @@ fn run_ytdlp(
         Ok(c) => {
             log::info!(target: "Download", "spawned pid={:?} download_id={download_id}", c.id());
             active_pids().lock().unwrap().insert(download_id.clone(), c.id());
-            if let Some(ref eid) = ext_id {
+            // Cancelled before the PID was visible to cancel_download: stop it now.
+            if is_cancelled(&download_id) {
+                active_pids().lock().unwrap().remove(&download_id);
+                kill_process_tree(c.id());
+            }
+            if let Some(e) = eid {
                 app.state::<crate::AppState>().ext_id_map.lock().unwrap()
-                    .insert(download_id.clone(), eid.clone());
-                set_ext_progress(&app, eid, 0.0, "", "downloading", "");
+                    .insert(download_id.clone(), e.to_string());
+                set_ext_progress(&app, e, 0.0, "", "downloading", "");
             }
             c
         }
         Err(e) => {
-            let _ = app.emit("download:error", serde_json::json!({
-                "download_id": download_id,
-                "message": format!("yt-dlp not found: {}", e),
-            }));
-            if let Some(ref eid) = ext_id {
-                set_ext_progress(&app, eid, 0.0, "", "error", "yt-dlp not found");
-            }
+            emit_download_error(&app, &download_id, &format!("yt-dlp not found: {e}"), eid);
             return;
         }
     };
@@ -4004,14 +4275,7 @@ fn run_ytdlp(
                 to_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 log::warn!(target: "Download", "watchdog_timeout download_id={wd_did}");
                 if let Some(pid) = active_pids().lock().unwrap().remove(&wd_did) {
-                    #[cfg(windows)]
-                    hidden_command("taskkill")
-                        .args(["/F", "/PID", &pid.to_string()])
-                        .spawn().ok();
-                    #[cfg(not(windows))]
-                    hidden_command("kill")
-                        .args(["-9", &pid.to_string()])
-                        .spawn().ok();
+                    kill_process_tree(pid);
                 }
             }
         });
@@ -4089,30 +4353,16 @@ fn run_ytdlp(
 
     stderr_handle.join().ok();
 
-    // Delete the temp cookie file now that yt-dlp has finished.
-    if let Some(ref cp) = cookie_file_path {
-        std::fs::remove_file(cp).ok();
-        log::debug!(target: "Download", "cookie_file_deleted path={:?}", cp);
+    // Cancelled: the UI already shows it; just drop whatever was written.
+    if is_cancelled(&download_id) {
+        remove_new_files(&tmp_dir, &pre_files);
+        log::info!(target: "Download", "cancelled_cleanup download_id={download_id}");
+        return;
     }
 
     // Discover files written by yt-dlp: anything new in tmp_dir that isn't
     // a partial download or metadata artifact.
-    const SKIP_EXTS: &[&str] = &["part", "ytdl", "json", "description", "annotations"];
-    let final_paths: Vec<String> = std::fs::read_dir(&tmp_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let path = e.path();
-            if pre_files.contains(&path) { return None; }
-            let ext = path.extension()
-                .and_then(|x| x.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            if SKIP_EXTS.contains(&ext.as_str()) { return None; }
-            path.to_str().map(|s| s.to_string())
-        })
-        .collect();
+    let final_paths = new_download_files(&tmp_dir, &pre_files);
     log::info!(target: "Download", "files_ready count={} download_id={download_id}", final_paths.len());
 
     // Extract a human-readable error from stderr for failure cases.
@@ -4127,292 +4377,137 @@ fn run_ytdlp(
     }
 
     match exit_status {
-        Ok(s) if s.success() => {
+        Ok(ref s) if s.success() => {
             if final_paths.is_empty() {
                 log::warn!(target: "Download", "no_output_files download_id={download_id}");
-                let _ = app.emit("download:error", serde_json::json!({
-                    "download_id": download_id,
-                    "message": "yt-dlp produced no importable files",
-                }));
-                if let Some(ref eid) = ext_id {
-                    set_ext_progress(&app, eid, 0.0, "", "error", "No output files — try again");
-                }
-                return;
-            }
-            let _ = app.emit("download:complete", serde_json::json!({
-                "download_id": download_id,
-                "paths": final_paths,
-                "url":   url,
-            }));
-            if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
-        }
-        Ok(_) => {
-            // Pinterest image-pin fallback: the bundled yt-dlp doesn't expose
-            // image formats for image-only pins, but it CAN download the pin's
-            // thumbnail (which IS the original image on Pinterest).
-            let no_video_formats = stderr_text.contains("No video formats found");
-            if is_pinterest && no_video_formats {
-                let fallback = pinterest_image_fallback(&binary, &url, &tmp_dir, &pre_files);
-                if !fallback.is_empty() {
-                    let _ = app.emit("download:complete", serde_json::json!({
-                        "download_id": download_id,
-                        "paths": fallback,
-                        "url":   url,
-                    }));
-                    if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
-                    return;
-                }
-            }
-
-            // Clean up orphaned fragment files left by a failed split-stream download.
-            // yt-dlp names them like "Title.f137.mp4" / "Title.f140.m4a" — the ".fNNN."
-            // pattern identifies unmerged stream fragments that should not be imported.
-            for path in &final_paths {
-                let name = std::path::Path::new(path)
-                    .file_name().and_then(|n| n.to_str()).unwrap_or("");
-                let is_fragment = {
-                    let mut found = false;
-                    let bytes = name.as_bytes();
-                    for i in 0..bytes.len().saturating_sub(2) {
-                        if bytes[i] == b'.' && bytes[i+1] == b'f' {
-                            let rest = &name[i+2..];
-                            let digits: usize = rest.chars().take_while(|c| c.is_ascii_digit()).count();
-                            if digits > 0 && rest.len() > digits && rest.as_bytes()[digits] == b'.' {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    found
-                };
-                if is_fragment {
-                    let _ = std::fs::remove_file(path);
-                    log::debug!(target: "Download", "fragment_removed path={:?}", path);
-                }
-            }
-
-            // YouTube split-stream (1080p) 503 fallback: retry with 720p combined stream.
-            // Split streams require PO tokens that yt-dlp 2026.03.17 doesn't auto-generate.
-            // Combined streams (format 22, 720p h264) work without PO tokens.
-            // Update the bundled yt-dlp binary to a newer version to restore 1080p support.
-            let is_503 = stderr_text.contains("HTTP Error 503");
-            if is_youtube && is_503 {
-                log::warn!(target: "Download", "youtube_503 download_id={download_id} retrying=720p_fallback");
-
-                // Unfreeze the progress bar — the UI has had no update since the
-                // last stderr line while we wait for the rate limit to reset.
-                let _ = app.emit("download:progress", serde_json::json!({
-                    "download_id": download_id,
-                    "pct": 0.5_f64,
-                    "speed": "retrying at 720p…",
-                }));
-
-                // Wait for YouTube's per-IP rate limit to reset after the failed
-                // split-stream attempt burned through 5 retries on the video CDN.
-                std::thread::sleep(std::time::Duration::from_secs(12));
-
-                // Only try format 22 (720p progressive h264, no PO token needed).
-                // Avoid falling through to HLS formats 95/94 — they are also
-                // CDN-rate-limited after the first attempt's 5 retries.
-                let fallback_format = if quality == "medium" { "22" } else { "22" };
-
-                // Delete all files that appeared during the failed first attempt so
-                // yt-dlp doesn't try to resume/merge stale partial streams.
-                if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if !pre_files.contains(&path) {
-                            let _ = std::fs::remove_file(&path);
-                            log::debug!(target: "Download", "fallback_cleanup removed={:?}", path);
-                        }
-                    }
-                }
-
-                let pre_fallback: std::collections::HashSet<std::path::PathBuf> =
-                    std::fs::read_dir(&tmp_dir).into_iter().flatten().flatten()
-                        .map(|e| e.path()).collect();
-
-                let mut fallback_args: Vec<&str> = vec![
-                    "--no-playlist",
-                    "--merge-output-format", "mp4",
-                    "--retries", "5", "--fragment-retries", "5",
-                    "--socket-timeout", "30",
-                    "--force-overwrites",
-                    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                    "-o", &out_tpl,
-                ];
-                if let Some(ref fp) = ffmpeg_path_str {
-                    fallback_args.extend_from_slice(&["--ffmpeg-location", fp]);
-                }
-                fallback_args.extend_from_slice(&["--format", fallback_format, &url]);
-
-                let fallback_output = hidden_command(&binary)
-                    .args(&fallback_args)
-                    .env("PYTHONUNBUFFERED", "1")
-                    .env("PYTHONIOENCODING", "utf-8")
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::piped())
-                    .output();
-
-                let fallback_ok = fallback_output.as_ref()
-                    .map(|o| {
-                        let stderr = String::from_utf8_lossy(&o.stderr);
-                        if !stderr.trim().is_empty() {
-                            log::debug!(target: "Download", "fallback_stderr={:?}", &*stderr);
-                        }
-                        o.status.success()
-                    })
-                    .unwrap_or(false);
-
-                let fallback_paths: Vec<String> = std::fs::read_dir(&tmp_dir)
-                    .into_iter().flatten().flatten()
-                    .filter_map(|e| {
-                        let path = e.path();
-                        if pre_fallback.contains(&path) { return None; }
-                        let ext = path.extension().and_then(|x| x.to_str())
-                            .unwrap_or("").to_lowercase();
-                        if SKIP_EXTS.contains(&ext.as_str()) { return None; }
-                        path.to_str().map(|s| s.to_string())
-                    })
-                    .collect();
-
-                log::info!(target: "Download", "fallback_result ok={fallback_ok} paths={}", fallback_paths.len());
-
-                if !fallback_paths.is_empty() {
-                    let _ = app.emit("download:complete", serde_json::json!({
-                        "download_id": download_id,
-                        "paths": fallback_paths,
-                        "url":   url,
-                    }));
-                    if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
-                    return;
-                }
-            }
-
-            // YouTube PO-token / SABR 403 fallback: some sessions are gated behind a
-            // GVS PO token (HTTP 403 on the media stream). Download + start the bgutil
-            // provider on demand (once) and retry with --plugin-dirs so yt-dlp gets a
-            // token. Only triggers when we didn't already use the provider this run.
-            let looks_pot = is_youtube && !pot_ready && {
-                let s = stderr_text.to_lowercase();
-                s.contains("http error 403") || s.contains("po token") || s.contains("sabr")
-            };
-            if looks_pot {
-                log::warn!(target: "Download", "youtube_pot_403 download_id={download_id} — fetching PO-token provider");
-                let _ = app.emit("download:progress", serde_json::json!({
-                    "download_id": download_id, "pct": 0.3_f64, "speed": "setting up YouTube…",
-                }));
-                if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.3, "setting up YouTube…", "downloading", ""); }
-
-                // Downloads the provider (once), installs the bgutil plugin into yt-dlp's
-                // config dir, and starts the local server. Then a plain re-run auto-uses
-                // a PO token — no extra flags (the frozen yt-dlp can't take --plugin-dirs).
-                if crate::pot_provider::ensure_running(&app) {
-                    if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
-                        for entry in entries.flatten() {
-                            let p = entry.path();
-                            if !pre_files.contains(&p) { let _ = std::fs::remove_file(&p); }
-                        }
-                    }
-                    let pre_pot: std::collections::HashSet<std::path::PathBuf> =
-                        std::fs::read_dir(&tmp_dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
-
-                    let _ = app.emit("download:progress", serde_json::json!({
-                        "download_id": download_id, "pct": 0.5_f64, "speed": "retrying with PO token…",
-                    }));
-
-                    // Retry with web-based clients so the freshly-started provider's PO
-                    // token is actually applied to the media URLs. Re-using the default
-                    // chain here is pointless — its tv/android_vr formats ignore the token
-                    // and 403 again (this was the bug that left macOS failing on retry).
-                    let pot_args: Vec<&str> = base_args.iter()
-                        .map(|&a| if a == yt_clients_arg.as_str() { yt_pot_clients_arg.as_str() } else { a })
-                        .collect();
-
-                    let pot_out = hidden_command(&binary)
-                        .args(&pot_args)
-                        .env("PYTHONUNBUFFERED", "1")
-                        .env("PYTHONIOENCODING", "utf-8")
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::piped())
-                        .output();
-                    if let Ok(ref o) = pot_out {
-                        let se = String::from_utf8_lossy(&o.stderr);
-                        if !se.trim().is_empty() { log::debug!(target: "Download", "pot_retry_stderr={:?}", &*se); }
-                    }
-
-                    let pot_paths: Vec<String> = std::fs::read_dir(&tmp_dir)
-                        .into_iter().flatten().flatten()
-                        .filter_map(|e| {
-                            let path = e.path();
-                            if pre_pot.contains(&path) { return None; }
-                            let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
-                            if SKIP_EXTS.contains(&ext.as_str()) { return None; }
-                            path.to_str().map(|s| s.to_string())
-                        })
-                        .collect();
-
-                    if !pot_paths.is_empty() {
-                        log::info!(target: "Download", "pot_retry_ok paths={}", pot_paths.len());
-                        let _ = app.emit("download:complete", serde_json::json!({
-                            "download_id": download_id, "paths": pot_paths, "url": url,
-                        }));
-                        if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 1.0, "", "finalizing", "Saving to library…"); }
-                        return;
-                    }
-                    log::warn!(target: "Download", "pot_retry_failed download_id={download_id}");
-                }
-            }
-
-            // Extract the most useful error line from yt-dlp's stderr output.
-            let raw_err = stderr_text
-                .lines()
-                .rev()
-                .find(|l| l.contains("ERROR:"))
-                .map(|l| l.trim_start_matches("ERROR:").trim().to_string())
-                .unwrap_or_default();
-
-            // Surface the best possible error message.
-            // For Instagram/TikTok auth failures, explain the cookie situation clearly.
-            if !raw_err.is_empty() {
-                log::warn!(target: "Download", "ytdlp_error download_id={download_id} err={raw_err:?}");
-            }
-            let is_chrome_cookie_err = raw_err.contains("Could not copy Chrome cookie database");
-            let is_auth_err = is_chrome_cookie_err
-                || raw_err.to_lowercase().contains("login")
-                || raw_err.to_lowercase().contains("cookie")
-                || raw_err.to_lowercase().contains("auth")
-                || raw_err.to_lowercase().contains("not accessible")
-                || raw_err.contains("HTTP Error 401")
-                || raw_err.contains("HTTP Error 403")
-                || raw_err.contains("checkpoint")
-                || raw_err.contains("empty media response");
-            let msg = if timed_out.load(std::sync::atomic::Ordering::SeqCst) {
-                "Download timed out after 15 minutes — the source may be slow or unresponsive.".to_string()
-            } else if is_chrome_cookie_err {
-                "Chrome blocks cookie access on Windows. Open the link in Chrome and save it via the qooti extension — it sends your session automatically.".to_string()
-            } else if needs_auth && effective_cookie_path.is_none() && auto_cookie_browser.is_none() && (is_auth_err || raw_err.is_empty()) {
-                "Open the link in Chrome and save it with the qooti extension.".to_string()
-            } else if !raw_err.is_empty() {
-                raw_err
+                emit_download_error(&app, &download_id, "yt-dlp produced no importable files", eid);
             } else {
-                "Download failed — the URL may be private or unsupported.".to_string()
-            };
-            let _ = app.emit("download:error", serde_json::json!({
-                "download_id": download_id,
-                "message": msg.clone(),
-            }));
-            if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.0, "", "error", &msg); }
+                emit_download_complete(&app, &download_id, &final_paths, &url, eid);
+            }
+            return;
         }
         Err(e) => {
-            let e_str = e.to_string();
-            let _ = app.emit("download:error", serde_json::json!({
-                "download_id": download_id,
-                "message": e_str.clone(),
-            }));
-            if let Some(ref eid) = ext_id { set_ext_progress(&app, eid, 0.0, "", "error", &e_str); }
+            emit_download_error(&app, &download_id, &e.to_string(), eid);
+            return;
+        }
+        Ok(_) => {}
+    }
+
+    // ── Failure: fallbacks ────────────────────────────────────────────
+
+    // Pinterest image-pin fallback: the bundled yt-dlp doesn't expose
+    // image formats for image-only pins, but it CAN download the pin's
+    // thumbnail (which IS the original image on Pinterest).
+    if is_pinterest && stderr_text.contains("No video formats found") {
+        let fallback = pinterest_image_fallback(&binary, &url, &tmp_dir, &pre_files);
+        if !fallback.is_empty() {
+            emit_download_complete(&app, &download_id, &fallback, &url, eid);
+            return;
         }
     }
+
+    // Unmerged split-stream fragments ("Title.f137.mp4") and partials from the failed
+    // attempt must never be imported or resumed by a retry.
+    remove_new_files(&tmp_dir, &pre_files);
+
+    // The stderr of the most recent attempt — the source of the final error message.
+    let mut last_stderr = stderr_text;
+
+    // YouTube 503 (per-IP rate limit on the split streams): back off, then retry once at
+    // ≤720p. Same arguments as the main run (JS runtime, clients) — only the format changes.
+    if is_youtube && last_stderr.contains("HTTP Error 503") {
+        log::warn!(target: "Download", "youtube_503 download_id={download_id} retrying=720p_fallback");
+        emit_download_stage(&app, &download_id, "retrying", "retrying at 720p…", 0.0, eid);
+        if !sleep_unless_cancelled(&download_id, std::time::Duration::from_secs(12)) { return; }
+
+        let pre = snapshot_dir(&tmp_dir);
+        let fb_args = with_url(with_format(&args, "bv*[height<=720]+ba/b[height<=720]/b"));
+        let (ok, se) = run_tracked(&app, &binary, &fb_args, &download_id,
+            std::time::Duration::from_secs(10 * 60));
+        let paths = new_download_files(&tmp_dir, &pre);
+        log::info!(target: "Download", "fallback_result ok={ok} paths={}", paths.len());
+        if is_cancelled(&download_id) { remove_new_files(&tmp_dir, &pre); return; }
+        if ok && !paths.is_empty() {
+            emit_download_complete(&app, &download_id, &paths, &url, eid);
+            return;
+        }
+        remove_new_files(&tmp_dir, &pre);
+        if !se.trim().is_empty() { last_stderr = se; }
+    }
+
+    // YouTube PO-token / SABR 403: some sessions gate the media streams behind a GVS PO
+    // token. Download + start the bgutil provider on demand (once), then retry with the
+    // web clients that consume the token. Pointless without a JS runtime — the 403 is
+    // then the unsolved player challenge, which no token fixes.
+    let looks_pot = is_youtube && deno.is_some() && {
+        let s = last_stderr.to_lowercase();
+        s.contains("http error 403") || s.contains("po token") || s.contains("sabr")
+    };
+    if looks_pot {
+        log::warn!(target: "Download", "youtube_pot_403 download_id={download_id} pot_ready={pot_ready}");
+        emit_download_stage(&app, &download_id, "setting_up_youtube", "setting up YouTube…", 0.3, eid);
+
+        // Downloads the provider (once), installs the bgutil plugin into yt-dlp's
+        // config dir, and starts the local server (the frozen yt-dlp can't take
+        // --plugin-dirs, so the plugin is picked up from there automatically).
+        if crate::pot_provider::ensure_running(&app) && !is_cancelled(&download_id) {
+            emit_download_stage(&app, &download_id, "retrying", "retrying…", 0.0, eid);
+            let pre = snapshot_dir(&tmp_dir);
+            let pot_args = with_url(with_youtube_clients(&args, YT_POT_CLIENTS));
+            let (ok, se) = run_tracked(&app, &binary, &pot_args, &download_id,
+                std::time::Duration::from_secs(10 * 60));
+            if !se.trim().is_empty() { log::debug!(target: "Download", "pot_retry_stderr={:?}", se); }
+            let paths = new_download_files(&tmp_dir, &pre);
+            if is_cancelled(&download_id) { remove_new_files(&tmp_dir, &pre); return; }
+            if ok && !paths.is_empty() {
+                log::info!(target: "Download", "pot_retry_ok paths={}", paths.len());
+                emit_download_complete(&app, &download_id, &paths, &url, eid);
+                return;
+            }
+            remove_new_files(&tmp_dir, &pre);
+            log::warn!(target: "Download", "pot_retry_failed download_id={download_id}");
+            if !se.trim().is_empty() { last_stderr = se; }
+        }
+    }
+    if is_cancelled(&download_id) { return; }
+
+    // Extract the most useful error line from yt-dlp's stderr output.
+    let raw_err = last_stderr
+        .lines()
+        .rev()
+        .find(|l| l.contains("ERROR:"))
+        .map(|l| l.trim_start_matches("ERROR:").trim().to_string())
+        .unwrap_or_default();
+
+    // Surface the best possible error message.
+    // For Instagram/TikTok auth failures, explain the cookie situation clearly.
+    if !raw_err.is_empty() {
+        log::warn!(target: "Download", "ytdlp_error download_id={download_id} err={raw_err:?}");
+    }
+    let is_chrome_cookie_err = raw_err.contains("Could not copy Chrome cookie database");
+    let is_auth_err = is_chrome_cookie_err
+        || raw_err.to_lowercase().contains("login")
+        || raw_err.to_lowercase().contains("cookie")
+        || raw_err.to_lowercase().contains("auth")
+        || raw_err.to_lowercase().contains("not accessible")
+        || raw_err.contains("HTTP Error 401")
+        || raw_err.contains("HTTP Error 403")
+        || raw_err.contains("checkpoint")
+        || raw_err.contains("empty media response");
+    let msg = if timed_out.load(std::sync::atomic::Ordering::SeqCst) {
+        "Download timed out after 15 minutes — the source may be slow or unresponsive.".to_string()
+    } else if is_youtube && deno.is_none() {
+        "Couldn't set up YouTube support — check your internet connection and try again.".to_string()
+    } else if is_chrome_cookie_err {
+        "Chrome blocks cookie access on Windows. Open the link in Chrome and save it via the qooti extension — it sends your session automatically.".to_string()
+    } else if needs_auth && effective_cookie_path.is_none() && auto_cookie_browser.is_none() && (is_auth_err || raw_err.is_empty()) {
+        "Open the link in Chrome and save it with the qooti extension.".to_string()
+    } else if !raw_err.is_empty() {
+        raw_err
+    } else {
+        "Download failed — the URL may be private or unsupported.".to_string()
+    };
+    emit_download_error(&app, &download_id, &msg, eid);
 }
 
 fn pinterest_image_fallback(

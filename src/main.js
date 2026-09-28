@@ -18,7 +18,7 @@ import { init as initMilestones } from './modules/milestones.js'
 import { init as initExtension } from './modules/extension.js'
 import { openColorPicker, isColorPickerOpen, closeColorPicker } from './modules/color-picker.js'
 import { startTask } from './modules/progress-ring.js'
-import { initDownloader, checkUrl, handleSwatchClick } from './modules/downloader.js'
+import { initDownloader, checkUrl, handleSwatchClick, startDownloadFromInput, isUrl } from './modules/downloader.js'
 import { init as initCardDetail } from './modules/card-detail.js'
 import { init as initOcr, startIndexing as startOcr } from './modules/ocr.js'
 import { initAutoTag } from './modules/auto-tag.js'
@@ -129,8 +129,11 @@ function setupTopBar(settings) {
       if (!handled) searchInput.value = ''   // unknown blt_ command — clear, don't search
       return
     }
-    const handled = await handleSwatchClick()
-    if (!handled && value) emitSearch()
+    // A URL starts a download; anything else is a search. (Enter used to go through
+    // handleSwatchClick, which cancels the running download — so searching while a
+    // video downloaded silently killed it and threw the query away.)
+    if (isUrl(value)) { await startDownloadFromInput(); return }
+    if (value) emitSearch()
   }
 
   searchInput.addEventListener('keydown', async e => {
@@ -138,7 +141,12 @@ function setupTopBar(settings) {
   })
   searchSubmitBtn?.addEventListener('click', submitSearch)
 
-  document.addEventListener('contextmenu', e => e.preventDefault())
+  // No browser context menu on the app chrome — except in text fields, where people
+  // right-click → Paste (the usual way to drop a link into the search bar).
+  document.addEventListener('contextmenu', e => {
+    if (e.target.closest?.('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, [contenteditable="true"]')) return
+    e.preventDefault()
+  })
 
   document.addEventListener('keydown', e => {
     if (
@@ -387,7 +395,9 @@ function makeNavItem(view, iconName, labelKey) {
   const label = document.createElement('span')
   label.className = 'nav-label'
   label.dataset.i18n = labelKey
-  label.textContent = labelKey.split('.').pop()
+  // Real text now: the one-time data-i18n pass (initI18n) runs before the drawer is
+  // built, so the old placeholder ('home', 'activity'…) stayed until a language switch.
+  label.textContent = t(labelKey)
   btn.appendChild(label)
 
   btn.addEventListener('click', () => {
@@ -478,7 +488,7 @@ function bindStoreListeners() {
   store.on(events.SESSION_EXPIRED, () => {
     // User account was deleted on the server mid-session. Show the login
     // screen on top of whatever is currently visible.
-    initOnboarding(document.getElementById('onboarding-root'), { onboarding_state: 'pending_login' })
+    initOnboarding(document.getElementById('onboarding-root'), { onboarding_state: 'pending_login', returning: true })
   })
 }
 
@@ -492,11 +502,13 @@ async function boot() {
 
     if (appInfo.platform === 'windows') setupTitleBar()
 
-    initI18n()
+    // Language first — everything below renders with t(). This used to be a bare
+    // initI18n(), so a saved Uzbek choice was dropped on every restart.
+    const settings = await api.getSettings()
+    initI18n(settings.language)
     bindStoreListeners()
     buildDrawerNav()
 
-    const settings = await api.getSettings()
     applyVisualSettings(settings)
     setupTopBar(settings)
 

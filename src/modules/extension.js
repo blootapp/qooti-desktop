@@ -2,6 +2,7 @@ import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { makeLogger, createOp } from './logger.js'
+import { t } from './i18n.js'
 
 const log = makeLogger('ExtBridge')
 
@@ -11,7 +12,7 @@ export function init() {
   store.on(events.EXT_SAVE_QUEUED, ({ queued_count, used, limit }) => {
     store.emit(events.SYSTEM_TOAST, {
       type: 'info',
-      message: `Daily limit reached (${used}/${limit}). Link saved — downloads resume at midnight.`,
+      message: t('dl.ext_limit_queued', { used, limit }),
       duration: 6000,
     })
   })
@@ -130,7 +131,9 @@ async function handleAddToCollection({ inspiration_id, collection_id }) {
 async function getDefaultQuality() {
   try {
     const settings = await api.getSettings()
-    return settings.video_quality ?? 'best'
+    // The Settings toggle saves `download_quality`; `video_quality` was never written,
+    // so extension saves always ignored the user's choice.
+    return settings.download_quality ?? settings.video_quality ?? 'best'
   } catch {
     return 'best'
   }
