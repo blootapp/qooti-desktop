@@ -1,0 +1,46 @@
+# Signs the locally built Windows installer with the updater key held in the repo
+# secrets (the EEA7FDAA90E695B3 key — the same one release.yml uses for macOS), so
+# the private key never has to live on the build machine.
+#
+# Usage, after `npm run tauri build` on Windows:
+#   gh release upload v1.0.5 src-tauri/target/release/bundle/nsis/qooti_1.0.5_x64-setup.exe
+#   gh workflow run sign-windows.yml -f tag=v1.0.5
+# → attaches qooti_1.0.5_x64-setup.exe.sig to the (draft) release; its content goes
+#   into latest.json → platforms.windows-x86_64.signature.
+
+name: Sign Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v1.0.5 (the draft release must already hold qooti_<ver>_x64-setup.exe)'
+        required: true
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # download + upload release assets
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Download the installer from the release
+        run: |
+          VER="${TAG#v}"
+          echo "FILE=qooti_${VER}_x64-setup.exe" >> "$GITHUB_ENV"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p "qooti_${VER}_x64-setup.exe"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sign with the updater key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx --yes @tauri-apps/cli@2 signer sign "$FILE"
+
+      - name: Attach the signature to the release
+        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "$FILE.sig" --clobber
