@@ -2680,7 +2680,9 @@ pub async fn find_similar(app: AppHandle, id: String, limit: i64) -> Result<Vec<
         .map_err(|e| e.to_string())?
 }
 
-fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<SimilarResult>, String> {
+/// Fingerprint ranking (dHash + 16×16 grayscale) — near-duplicate detectors, blind to
+/// content and colour. Only the fallback now: used until CLIP embeddings exist (clip.rs).
+fn legacy_similar_order(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<(String, u8)>, String> {
     use tauri::Manager;
     use std::collections::{HashMap, HashSet};
     ensure_phashes(app);
@@ -2767,6 +2769,20 @@ fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<Simila
     let ordered: Vec<(String, u8)> = visual.into_iter().map(|(_, id)| (id, 0u8))
         .chain(related.into_iter().map(|(_, _, id)| (id, 1u8)))
         .collect();
+    Ok(ordered)
+}
+
+fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<SimilarResult>, String> {
+    use tauri::Manager;
+    use std::collections::HashMap;
+    let state = app.state::<AppState>();
+
+    // CLIP ranking (content + style + colour) once the library is indexed; the
+    // fingerprint ranking only until then.
+    let ordered: Vec<(String, u8)> = match crate::clip::rank_similar(app, id, limit.max(0) as usize) {
+        Some(o) => o,
+        None => legacy_similar_order(app, id, limit)?,
+    };
     if ordered.is_empty() { return Ok(vec![]); }
 
     // Fetch full rows, preserving order + tier.

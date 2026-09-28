@@ -119,7 +119,7 @@ fn install(app: &AppHandle, dest: &Path, progress: &dyn Fn(f64)) -> Result<(), S
     let mut fetched = false;
     for url in sources() {
         diag(app, format!("downloading deno {DENO_VERSION} from {url}"));
-        match fetch_verified(&url, &zip_path, progress) {
+        match fetch_verified(&url, &zip_path, ZIP_SHA256, progress) {
             Ok(bytes) => {
                 diag(app, format!("downloaded {} MB, checksum ok", bytes / 1_048_576));
                 fetched = true;
@@ -165,9 +165,9 @@ fn install(app: &AppHandle, dest: &Path, progress: &dyn Fn(f64)) -> Result<(), S
     Ok(())
 }
 
-/// Stream `url` to `out`, hashing as we go. Errors unless the SHA-256 matches the
-/// pinned release. Returns the byte count.
-fn fetch_verified(url: &str, out: &Path, progress: &dyn Fn(f64)) -> Result<u64, String> {
+/// Stream `url` to `out`, hashing as we go. Errors unless the SHA-256 equals
+/// `expected_sha256` (lowercase hex). Returns the byte count. Also used by clip.rs.
+pub(crate) fn fetch_verified(url: &str, out: &Path, expected_sha256: &str, progress: &dyn Fn(f64)) -> Result<u64, String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(15))
         .timeout_read(Duration::from_secs(60))   // per-read stall limit, not a total cap
@@ -191,7 +191,7 @@ fn fetch_verified(url: &str, out: &Path, progress: &dyn Fn(f64)) -> Result<u64, 
     file.flush().map_err(|e| e.to_string())?;
 
     let got = hex::encode(hasher.finalize());
-    if got != ZIP_SHA256 {
+    if got != expected_sha256 {
         return Err(format!("checksum mismatch (got {got}, {done} bytes)"));
     }
     Ok(done)
