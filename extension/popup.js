@@ -3,18 +3,56 @@
 const statusDot  = document.getElementById('status-dot')
 const statusText = document.getElementById('status-text')
 const versionEl  = document.getElementById('footer-version')
+const cardReady  = document.getElementById('card-ready')
+const cardClosed = document.getElementById('card-closed')
+const openBtn    = document.getElementById('btn-open')
+
+const EXT_VERSION = chrome.runtime.getManifest().version
 
 // ─── Connection status ───────────────────────────────────────────
 
-chrome.runtime.sendMessage({ action: 'get-status' }, res => {
+function renderStatus(res) {
+  statusDot.className = 'status-dot'
   if (res?.connected) {
     statusDot.classList.add('status-dot--on')
     statusText.textContent = 'Connected'
-    if (res.version) versionEl.textContent = `Desktop v${res.version}`
+  } else if (res?.running) {
+    statusDot.classList.add('status-dot--wait')
+    statusText.textContent = 'Connecting…'
   } else {
     statusDot.classList.add('status-dot--off')
-    statusText.textContent = 'qooti not running'
+    statusText.textContent = 'Not open'
   }
+  cardReady.hidden  = !res?.connected
+  cardClosed.hidden = !!res?.running
+  versionEl.textContent = `Extension ${EXT_VERSION}` + (res?.version ? ` · qooti ${res.version}` : '')
+}
+
+function checkStatus() {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage({ action: 'get-status' }, res => {
+      void chrome.runtime.lastError
+      renderStatus(res)
+      resolve(res)
+    })
+  })
+}
+
+checkStatus()
+
+// "Open qooti" launches the app via its qooti:// link, then waits for it to come up.
+openBtn.addEventListener('click', async () => {
+  openBtn.disabled = true
+  openBtn.textContent = 'Opening…'
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
+  chrome.runtime.sendMessage({ action: 'open-app', tab_id: tab?.id ?? null }, () => { void chrome.runtime.lastError })
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    const res = await checkStatus()
+    if (res?.running) return
+  }
+  openBtn.disabled = false
+  openBtn.textContent = 'Open qooti'
 })
 
 // Reflect state on both the visual switch and the ARIA role="switch" row.
@@ -59,18 +97,20 @@ panelRow.addEventListener('click', () => {
     action: 'set-pref',
     key: 'show_download_toast',
     value: panelEnabled ? 'true' : 'false',
-  })
+  }, () => { void chrome.runtime.lastError })
 })
 
-// ─── Blocked sites ───────────────────────────────────────────────
-// The qooti badge never appears on these sites. Entries are stored as bare
+// ─── Hidden-on sites ─────────────────────────────────────────────
+// The qooti button never appears on these sites. Entries are stored as bare
 // hosts; content.js matches the current page (www/scheme-insensitive).
 
 const DEFAULT_BANNED = ['flaticon.com', 'bloot.app']
-const banInput  = document.getElementById('ban-input')
-const banAddBtn = document.getElementById('ban-add-btn')
-const banList   = document.getElementById('ban-list')
+const banInput   = document.getElementById('ban-input')
+const banAddBtn  = document.getElementById('ban-add-btn')
+const banList    = document.getElementById('ban-list')
+const banCurrent = document.getElementById('btn-ban-current')
 let bannedSites = []
+let currentHost = null
 
 // "https://www.flaticon.com/x" and "flaticon.com" → "flaticon.com"
 function normHost(v) {
@@ -82,14 +122,28 @@ function normHost(v) {
     .replace(/^www\./, '')
 }
 
+// A plausible site name — stops "hello" or "a b" from being added by accident.
+const looksLikeHost = h => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)
+
+function isBanned(host) {
+  return bannedSites.some(s => host === s || host.endsWith('.' + s))
+}
+
+function renderCurrent() {
+  if (!currentHost) { banCurrent.hidden = true; return }
+  banCurrent.hidden = false
+  banCurrent.textContent = isBanned(currentHost)
+    ? `Show the button on ${currentHost} again`
+    : `Hide on ${currentHost}`
+}
+
 function renderBanList() {
   banList.innerHTML = ''
   if (!bannedSites.length) {
     const li = document.createElement('li')
     li.className = 'ban-empty'
-    li.textContent = 'No blocked sites'
+    li.textContent = 'The button shows on every site.'
     banList.appendChild(li)
-    return
   }
   for (const host of bannedSites) {
     const li = document.createElement('li')
@@ -100,20 +154,19 @@ function renderBanList() {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.className = 'ban-remove'
-    btn.setAttribute('aria-label', `Remove ${host}`)
+    btn.setAttribute('aria-label', `Show the button on ${host} again`)
+    btn.title = 'Show the button here again'
     btn.textContent = '×'
     btn.addEventListener('click', () => removeBan(host))
     li.append(span, btn)
     banList.appendChild(li)
   }
+  renderCurrent()
 }
 
 function saveBanned() { chrome.storage.sync.set({ bannedSites }) }
 
-function addBan() {
-  const host = normHost(banInput.value)
-  banInput.value = ''
-  banInput.focus()
+function addHost(host) {
   if (!host || bannedSites.includes(host)) return
   bannedSites.push(host)
   bannedSites.sort()
@@ -121,11 +174,33 @@ function addBan() {
   renderBanList()
 }
 
+function addBan() {
+  const host = normHost(banInput.value)
+  if (!looksLikeHost(host)) {
+    banInput.classList.add('ban-input--bad')
+    banInput.focus()
+    return
+  }
+  banInput.value = ''
+  banInput.classList.remove('ban-input--bad')
+  banInput.focus()
+  addHost(host)
+}
+
 function removeBan(host) {
   bannedSites = bannedSites.filter(h => h !== host)
   saveBanned()
   renderBanList()
 }
+
+banCurrent.addEventListener('click', () => {
+  if (!currentHost) return
+  if (isBanned(currentHost)) bannedSites = bannedSites.filter(s => !(currentHost === s || currentHost.endsWith('.' + s)))
+  else bannedSites.push(currentHost)
+  bannedSites.sort()
+  saveBanned()
+  renderBanList()
+})
 
 chrome.storage.sync.get('bannedSites', res => {
   if (Array.isArray(res.bannedSites)) {
@@ -137,18 +212,15 @@ chrome.storage.sync.get('bannedSites', res => {
   renderBanList()
 })
 
+// The site in the current tab, for the one-click "Hide on …" button (activeTab).
+chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+  try {
+    const u = new URL(tab?.url ?? '')
+    if (u.protocol === 'http:' || u.protocol === 'https:') currentHost = normHost(u.hostname)
+  } catch {}
+  renderCurrent()
+}).catch(() => {})
+
 banAddBtn.addEventListener('click', addBan)
 banInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addBan() } })
-
-// ─── Disconnect ──────────────────────────────────────────────────
-
-document.getElementById('btn-disconnect').addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'disconnect' }, () => {
-    statusDot.className = 'status-dot status-dot--off'
-    statusText.textContent = 'Disconnected'
-    document.getElementById('btn-disconnect').textContent = 'Reconnect'
-    document.getElementById('btn-disconnect').addEventListener('click', () => {
-      chrome.runtime.sendMessage({ action: 'get-status' }, () => window.close())
-    }, { once: true })
-  })
-})
+banInput.addEventListener('input', () => banInput.classList.remove('ban-input--bad'))

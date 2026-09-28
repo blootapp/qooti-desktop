@@ -627,3 +627,55 @@
   from { transform: scaleX(1); }
   to   { transform: scaleX(0); }
 }
+
+/* ── 1.1: labels, plain-language messages ─────────────────────── */
+
+/* Instant label for the YouTube pill options (set from content.js on hover). */
+.qooti-badge[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(10, 10, 10, 0.92);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.08);
+  color: #fff;
+  font: 500 11px/1.3 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.qooti-toast { max-width: min(460px, calc(100vw - 32px)); }
+.qooti-toast-msg {
+  white-space: normal;
+  font-size: 12px;
+  color: rgba(255,255,255,0.62);
+}
+.qooti-toast--error .qooti-toast-title { color: #fff; }
+.qooti-toast--info  { border-color: rgba(96,165,250,0.28); }
+
+.qooti-toast-action {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 12px;
+  margin-left: 6px;
+  border: 0;
+  border-radius: 7px;
+  background: #2563EB;
+  color: #fff;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.qooti-toast-action:hover { background: #1D4ED8; }
+.qooti-toast-action[hidden] { display: none; }
+
+/* Second line under the download toast's title (reassurance / what went wrong). */
+.qooti-toast-sub {
+  font: 12px/1.35 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgba(255,255,255,0.6);
+  white-space: normal;
+}
+.qooti-toast-sub:empty { display: none; }

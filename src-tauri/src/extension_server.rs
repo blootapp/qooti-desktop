@@ -4,6 +4,8 @@
 // Endpoints
 //   GET  /extension/ping            — returns version/platform, no auth required
 //   POST /extension/pair            — auto-generates connection key on first call, returns it
+//                                     (only to the browser extension on this computer — never
+//                                     to a web page or another device on the network)
 //   GET  /extension/collections     — returns [{id, name}] list    (requires X-Qooti-Key)
 //   POST /extension/save            — queues media for download     (requires X-Qooti-Key)
 //   POST /extension/add-to-collection — adds item to collection    (requires X-Qooti-Key)
@@ -54,13 +56,23 @@ pub fn start(app: AppHandle) {
             // ── Ping (no auth) ────────────────────────────────────
             ("GET", "/extension/ping") => {
                 respond_json(request, &serde_json::json!({
-                    "version": "2.0.0",
-                    "platform": "desktop"
+                    "app":      "qooti",
+                    "version":  app.package_info().version.to_string(),
+                    "platform": std::env::consts::OS,
                 }));
             }
 
             // ── Pair (no auth — generates key on first call) ──────
             ("POST", "/extension/pair") => {
+                // The key unlocks saving into the library, so only hand it to the browser
+                // extension on this machine: a web page could otherwise fetch it
+                // (Origin: https://…) and a LAN device could, since we listen on 0.0.0.0.
+                if !pair_allowed(&request) {
+                    log::warn!(target: "ExtServer", "pair_refused origin={:?} remote={:?}",
+                               header_value(&request, "origin"), request.remote_addr());
+                    respond_error(request, 403, "Forbidden");
+                    continue;
+                }
                 match do_pair(&app) {
                     Ok(key) => {
                         log::info!(target: "ExtServer", "paired");
@@ -168,10 +180,9 @@ pub fn start(app: AppHandle) {
                                             pct:            1.0,
                                             speed:          String::new(),
                                             status:         "error".to_string(),
-                                            message:        format!(
-                                                "Daily limit reached ({}/{}). Link saved — downloads resume at midnight.",
-                                                FREE_EXT_DAILY_LIMIT, FREE_EXT_DAILY_LIMIT
-                                            ),
+                                            // Old extensions show this under "Download failed",
+                                            // cut at 80 chars — keep it short and calm.
+                                            message:        "Free daily limit reached. qooti will download it at midnight.".to_string(),
                                             inspiration_id: None,
                                             updated_at:     std::time::Instant::now(),
                                         });
@@ -263,15 +274,16 @@ pub fn start(app: AppHandle) {
                     if prog.updated_at.elapsed() > budget {
                         let old = prog.status.clone();
                         prog.status     = "error".to_string();
-                        prog.message    = format!("timed out in {old} state");
+                        prog.message    = crate::commands::friendly_ext_error("timed out");
                         prog.updated_at = std::time::Instant::now();
                         log::warn!(target: "ExtServer", "watchdog_expired ext_id={ext_id} was={old}");
                     }
                     respond_json(request, &serde_json::json!({
                         "status":         prog.status,
                         "pct":            prog.pct,
-                        "speed":          prog.speed,
-                        "message":        prog.message,
+                        "speed":          prog.speed,          // stage label while pct is 0
+                        "message":        prog.message,        // already user-facing wording
+                        "friendly":       true,
                         "inspiration_id": prog.inspiration_id,
                     }));
                 } else {
@@ -572,6 +584,14 @@ fn check_auth(request: &tiny_http::Request, app: &AppHandle) -> bool {
 }
 
 // ── Pairing ──────────────────────────────────────────────────────
+
+/// Pairing is allowed from this computer only, and not from web pages: browsers
+/// always send the page's Origin, extensions send chrome-extension:// (or none).
+fn pair_allowed(request: &tiny_http::Request) -> bool {
+    let local = request.remote_addr().is_some_and(|a| a.ip().is_loopback());
+    let origin = header_value(request, "origin").unwrap_or_default().to_ascii_lowercase();
+    local && !(origin.starts_with("http://") || origin.starts_with("https://") || origin == "null")
+}
 
 fn do_pair(app: &AppHandle) -> Result<String, String> {
     let state = app.state::<AppState>();

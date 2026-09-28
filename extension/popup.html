@@ -13,23 +13,37 @@
     <span class="header-name">qooti</span>
     <span class="status">
       <span class="status-dot" id="status-dot"></span>
-      <span id="status-text">Connecting…</span>
+      <span id="status-text">Checking…</span>
     </span>
   </header>
+
+  <!-- Shown when qooti is open: how saving works -->
+  <div class="card" id="card-ready" hidden>
+    <p class="card-title">Ready to save</p>
+    <p class="card-text">Hover over any image or video and click the <img src="icons/logo-solo.png" alt="qooti" class="inline-logo" /> button. You can also right-click and choose <b>Save to qooti</b>.</p>
+  </div>
+
+  <!-- Shown when the app isn't running -->
+  <div class="card card--warn" id="card-closed" hidden>
+    <p class="card-title">qooti isn't open</p>
+    <p class="card-text">The extension saves into the qooti app on this computer. Open it to start saving.</p>
+    <button type="button" class="btn-primary" id="btn-open">Open qooti</button>
+    <p class="card-foot">Don't have qooti yet? <a href="https://bloot.app" target="_blank" rel="noopener" id="link-get">Get it free</a></p>
+  </div>
 
   <div class="section">
     <button type="button" class="toggle-row" id="picker-toggle-row" role="switch" aria-checked="false">
       <span class="toggle-label">
-        <span class="toggle-title">Collection picker</span>
-        <span class="toggle-sub">after saving</span>
+        <span class="toggle-title">Pick a collection after saving</span>
+        <span class="toggle-sub">A small list appears so you can file it right away</span>
       </span>
       <span class="toggle-switch" id="picker-toggle" aria-hidden="true"><span class="toggle-thumb"></span></span>
     </button>
 
     <button type="button" class="toggle-row" id="panel-toggle-row" role="switch" aria-checked="false">
       <span class="toggle-label">
-        <span class="toggle-title">Download panel</span>
-        <span class="toggle-sub">while downloading</span>
+        <span class="toggle-title">Show download progress</span>
+        <span class="toggle-sub">For videos, while qooti downloads them</span>
       </span>
       <span class="toggle-switch" id="panel-toggle" aria-hidden="true"><span class="toggle-thumb"></span></span>
     </button>
@@ -37,19 +51,18 @@
 
   <div class="section ban-section">
     <div class="ban-head">
-      <span class="ban-title">Blocked sites</span>
-      <span class="ban-sub">badge hidden here</span>
+      <span class="ban-title">Hide the save button on</span>
     </div>
+    <button type="button" class="btn-ghost" id="btn-ban-current" hidden></button>
     <div class="ban-add">
-      <input type="text" id="ban-input" class="ban-input" placeholder="example.com"
-             autocomplete="off" autocapitalize="off" spellcheck="false" />
-      <button type="button" class="ban-add-btn" id="ban-add-btn" aria-label="Add site">+</button>
+      <input type="text" id="ban-input" class="ban-input" placeholder="Add a website, e.g. example.com"
+             autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Website to hide the button on" />
+      <button type="button" class="ban-add-btn" id="ban-add-btn" aria-label="Add website">+</button>
     </div>
     <ul class="ban-list" id="ban-list"></ul>
   </div>
 
   <footer class="footer">
-    <button class="footer-btn" id="btn-disconnect">Disconnect</button>
     <span class="footer-version" id="footer-version"></span>
   </footer>
 

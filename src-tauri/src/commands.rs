@@ -148,7 +148,7 @@ fn emit_download_stage(app: &AppHandle, download_id: &str, stage: &str, label: &
         "speed": label,
         "stage": stage,
     }));
-    if let Some(eid) = ext_id { set_ext_progress(app, eid, pct, label, "downloading", ""); }
+    if let Some(eid) = ext_id { set_ext_progress(app, eid, 0.0, label, "downloading", ""); }
 }
 
 // ─── .qooti file open (double-click / "Open with") ────────────────
@@ -3651,8 +3651,36 @@ fn parse_video_wh(s: &str) -> Option<f64> {
     None
 }
 
+/// What the browser extension shows when a save fails: short, plain words (old
+/// extensions cut the text at 80 chars). The raw error stays in the log.
+pub(crate) fn friendly_ext_error(raw: &str) -> String {
+    let l = raw.to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| l.contains(n));
+    let msg = if has(&["free daily limit", "download_limit"]) { return raw.to_string() }
+        else if has(&["couldn't set up youtube"]) { "Couldn't set up YouTube. Check your internet and try again." }
+        else if has(&["couldn't read the video link"]) { "This link isn't a video. Open the video itself and try again." }
+        else if has(&["timed out", "timeout"]) { "This took too long. Please try again." }
+        else if has(&["private video", "video unavailable", "is unavailable", "has been removed", "members-only", "not available in your country"]) { "This video is private, removed or unavailable." }
+        else if has(&["sign in to confirm", "confirm your age", "age-restricted"]) { "YouTube blocked this one (age or bot check). Try again later." }
+        else if has(&["qooti extension", "browser session", "logged-in", "login required", "cookies"]) { "Sign in to this site in your browser, then try again." }
+        else if has(&["unsupported url", "private or unsupported"]) { "qooti can't save from this link." }
+        else if has(&["http error 403", "forbidden", "http error 429", "http error 503", "challenge"]) { "The site refused the download. Try again in a few minutes." }
+        else if has(&["unable to download webpage", "getaddrinfo", "failed to resolve", "connection", "network"]) { "Couldn't connect. Check your internet and try again." }
+        else if has(&["yt-dlp not found"]) { "qooti's downloader is missing. Reinstall qooti to fix it." }
+        else if has(&["no importable files", "no output files", "requested format is not available"]) { "No video or image found here." }
+        else if has(&["save failed", "couldn't add"]) { "Downloaded, but couldn't add it to your library." }
+        else if has(&["failed to save image", "failed to download image"]) { "Couldn't save this image." }
+        else { "Couldn't save this. Please try again." };
+    msg.to_string()
+}
+
 fn set_ext_progress(app: &AppHandle, ext_id: &str, pct: f64, speed: &str, status: &str, message: &str) {
     let state = app.state::<crate::AppState>();
+    let message = if status == "error" {
+        log::info!(target: "ExtServer", "ext_error ext_id={ext_id} raw={message:?}");
+        friendly_ext_error(message)
+    } else { message.to_string() };
+    let message = message.as_str();
     let mut map = state.ext_progress.lock().unwrap();
     // Preserve existing inspiration_id when updating status
     let existing_insp_id = map.get(ext_id).and_then(|p| p.inspiration_id.clone());
@@ -4865,7 +4893,7 @@ pub fn set_ext_progress_error(ext_id: String, state: State<AppState>) -> Result<
     let mut map = state.ext_progress.lock().unwrap();
     if let Some(prog) = map.get_mut(&ext_id) {
         prog.status     = "error".to_string();
-        prog.message    = "Save failed".to_string();
+        prog.message    = friendly_ext_error("save failed");
         prog.updated_at = std::time::Instant::now();
     }
     Ok(())
@@ -5738,3 +5766,27 @@ pub async fn reset_app(
     Ok(())
 }
 
+#[cfg(test)]
+mod ext_error_tests {
+    use super::friendly_ext_error;
+
+    #[test]
+    fn extension_errors_are_plain_and_short() {
+        let cases = [
+            "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot. Use --cookies-from-browser",
+            "ERROR: [youtube] abc: Private video. Sign in if you've been granted access",
+            "ERROR: unable to download webpage: <urlopen error [Errno 11001] getaddrinfo failed>",
+            "yt-dlp exited with code 1: HTTP Error 403: Forbidden",
+            "timed out in pending state",
+            "something nobody anticipated: panic at 0x0000",
+            "Free daily limit reached. qooti will download it at midnight.",
+        ];
+        for raw in cases {
+            let m = friendly_ext_error(raw);
+            assert!(m.len() <= 80, "{m}");
+            assert!(!m.contains("ERROR") && !m.contains("yt-dlp") && !m.contains("HTTP") && !m.contains("[youtube]"), "{m}");
+        }
+        assert_eq!(friendly_ext_error(cases[0]), "YouTube blocked this one (age or bot check). Try again later.");
+        assert_eq!(friendly_ext_error(cases[1]), "This video is private, removed or unavailable.");
+    }
+}

@@ -57,27 +57,64 @@
   let _toastEl    = null
   let _toastTimer = null
 
-  function showNotification(message) {
+  // A short message in plain words: { title, message, tone: 'error'|'info', action: { label, onClick } }.
+  function showMessage({ title, message = '', tone = 'error', action = null, duration = 6000 }) {
     if (_toastEl) { clearTimeout(_toastTimer); _toastEl.remove(); _toastEl = null }
 
     const toast = document.createElement('div')
-    toast.className = 'qooti-toast'
+    toast.className = `qooti-toast qooti-toast--${tone}`
     toast.setAttribute('data-qooti', '1')
+    toast.setAttribute('role', tone === 'error' ? 'alert' : 'status')
     toast.innerHTML = `
-      <img class="qooti-toast-logo" src="${logoUrl}" alt="qooti" />
+      <img class="qooti-toast-logo" src="${logoUrl}" alt="" />
       <div class="qooti-toast-body">
-        <span class="qooti-toast-title">qooti is not running</span>
-        <span class="qooti-toast-msg">${message}</span>
+        <span class="qooti-toast-title"></span>
+        <span class="qooti-toast-msg"></span>
       </div>
+      <button class="qooti-toast-action" hidden></button>
       <svg class="qooti-toast-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
         <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
       </svg>
     `
+    toast.querySelector('.qooti-toast-title').textContent = title
+    toast.querySelector('.qooti-toast-msg').textContent = message
+    if (!message) toast.querySelector('.qooti-toast-msg').remove()
+    if (action) {
+      const btn = toast.querySelector('.qooti-toast-action')
+      btn.hidden = false
+      btn.textContent = action.label
+      btn.addEventListener('click', () => { action.onClick(); dismissToast() })
+    }
     toast.querySelector('.qooti-toast-close').addEventListener('click', () => dismissToast())
+    toast.addEventListener('mouseenter', () => clearTimeout(_toastTimer))
+    toast.addEventListener('mouseleave', () => { _toastTimer = setTimeout(dismissToast, 2500) })
     document.body.appendChild(toast)
     _toastEl = toast
     requestAnimationFrame(() => toast.classList.add('qooti-toast--in'))
-    _toastTimer = setTimeout(dismissToast, 5000)
+    _toastTimer = setTimeout(dismissToast, duration)
+  }
+
+  function openApp() {
+    safeSend({ action: 'open-app' })
+  }
+
+  function showNotRunning() {
+    showMessage({
+      title: 'qooti isn\'t open',
+      message: 'Open qooti to save things from your browser.',
+      action: { label: 'Open qooti', onClick: openApp },
+      duration: 8000,
+    })
+  }
+
+  // chrome.runtime.sendMessage throws once the extension was updated/reloaded while
+  // this page stayed open ("Extension context invalidated") — never let that surface.
+  function extensionAlive() { try { return !!chrome.runtime?.id } catch { return false } }
+  function safeSend(msg, cb) {
+    if (!extensionAlive()) { cb?.(null); return }
+    try {
+      chrome.runtime.sendMessage(msg, res => { void chrome.runtime.lastError; cb?.(res ?? null) })
+    } catch { cb?.(null) }
   }
 
   function dismissToast() {
@@ -218,25 +255,19 @@
     const opts = []
     if (watchUrl) {
       opts.push({
-        icon: ICONS.video, label: 'Video',
+        icon: ICONS.video, label: 'Save video',
         payload: async () => ({ url: watchUrl, page_url: location.href, title, type: 'video', source_platform: 'youtube' })
       })
     }
     if (thumbUrl) {
       opts.push({
-        icon: ICONS.image, label: 'Thumbnail',
+        icon: ICONS.image, label: 'Save thumbnail',
         payload: async () => ({ url: thumbUrl, page_url: location.href, title, type: 'image', source_platform: 'youtube' })
-      })
-    }
-    if (watchUrl) {
-      opts.push({
-        icon: ICONS.link, label: 'Link',
-        payload: async () => ({ url: watchUrl, page_url: location.href, title, type: 'link', source_platform: 'youtube' })
       })
     }
     if (videoId) {
       opts.push({
-        icon: ICONS.camera, label: 'Frame',
+        icon: ICONS.camera, label: 'Capture this frame',
         action: badge => screenshotFrame(videoEl, badge)
       })
     }
@@ -348,8 +379,12 @@
       opts.forEach(opt => {
         const btn = document.createElement('button')
         btn.className = 'qooti-badge-opt'
-        btn.title = opt.label
+        btn.setAttribute('aria-label', opt.label)
         btn.innerHTML = opt.icon
+        // Instant label under the pill (the options strip clips its own overflow, so
+        // the tooltip lives on the badge — see .qooti-badge[data-tip] in content.css).
+        btn.addEventListener('mouseenter', () => { badge.dataset.tip = opt.label })
+        btn.addEventListener('mouseleave', () => { delete badge.dataset.tip })
         btn.addEventListener('click', e => {
           e.preventDefault(); e.stopPropagation()
           if (opt.action) opt.action(badge)
@@ -384,7 +419,7 @@
     // Pre-warm the service worker now so it's awake by the time the user clicks.
     // MV3 SWs are suspended after ~30s of inactivity; waking takes 1-2s, making
     // the first save feel sluggish. This no-op message wakes it while user hovers.
-    chrome.runtime.sendMessage({ action: 'wake' }, () => { void chrome.runtime.lastError })
+    safeSend({ action: 'wake' })
 
     const logoBtn = badge.querySelector('.qooti-badge-logo-btn')
 
@@ -581,26 +616,38 @@
     await handleSaveWithPayload(badge, async () => getMediaPayload(mediaEl))
   }
 
+  // `badge` is null for right-click saves (no on-page button involved).
   async function handleSaveWithPayload(badge, getPayload) {
-    badge.classList.add('qooti-badge--saving')
+    const setBadge = state => {
+      if (!badge) return
+      badge.classList.remove('qooti-badge--saving', 'qooti-badge--done', 'qooti-badge--error')
+      if (state) badge.classList.add(`qooti-badge--${state}`)
+      if (state === 'done' || state === 'error') setTimeout(() => removeBadge(), state === 'done' ? 900 : 1200)
+    }
+    setBadge('saving')
     try {
       // Pre-flight: fast reachability check resolves in ~5 ms (ECONNREFUSED) or
-      // ≤300 ms worst-case — far better than the 2-3 s save timeout would give us.
+      // ≤400 ms worst-case, so "qooti isn't open" shows at once.
       const running = await checkRunning()
       if (!running) {
-        badge.classList.remove('qooti-badge--saving')
-        badge.classList.add('qooti-badge--error')
-        showNotification('Start qooti to save media from your browser.')
-        setTimeout(() => removeBadge(), 1200)
+        setBadge('error')
+        showNotRunning()
         return
       }
       const payload = await getPayload()
       const result  = await sendSave(payload)
-      badge.classList.remove('qooti-badge--saving')
-      badge.classList.add('qooti-badge--done')
-      setTimeout(() => removeBadge(), 900)
+      setBadge('done')
       if (result.already_exists) {
         showAlreadyExistsToast(result.inspiration_id)
+        return
+      }
+      if (result.queued) {
+        showMessage({
+          tone: 'info',
+          title: 'Saved for later',
+          message: 'You\'ve reached today\'s free limit. qooti will download it at midnight.',
+          duration: 7000,
+        })
         return
       }
       // For real downloads (not instant frame captures) show a progress toast;
@@ -611,16 +658,9 @@
         showCollectionPicker(result.collections, result.inspiration_id)
       }
     } catch (err) {
-      badge.classList.remove('qooti-badge--saving')
-      badge.classList.add('qooti-badge--error')
-      const isOffline = err.message?.toLowerCase().includes('not running')
-        || err.message?.toLowerCase().includes('failed to fetch')
-        || err.message?.toLowerCase().includes('networkerror')
-      if (isOffline) {
-        showNotification('Start qooti to save media from your browser.')
-      }
-      console.error('[qooti] save failed:', err.message)
-      setTimeout(() => removeBadge(), 1200)
+      setBadge('error')
+      if (err.kind === 'offline') showNotRunning()
+      else showMessage({ title: 'Couldn\'t save this', message: err.message || 'Please try again.' })
     }
   }
 
@@ -638,6 +678,7 @@
       badge.classList.remove('qooti-badge--saving')
       badge.classList.add('qooti-badge--error')
       setTimeout(() => removeBadge(), 1200)
+      showMessage({ title: 'Couldn\'t capture this frame', message: 'This video doesn\'t allow it. Try saving the video instead.' })
     }
   }
 
@@ -654,7 +695,7 @@
       <img class="qooti-toast-logo" src="${logoUrl}" alt="qooti" />
       <div class="qooti-toast-dl-content">
         <div class="qooti-toast-dl-top">
-          <span class="qooti-toast-title">Fetching media info…</span>
+          <span class="qooti-toast-title">Getting ready…</span>
           <span class="qooti-toast-pct"></span>
         </div>
         <div class="qooti-toast-track">
@@ -681,7 +722,9 @@
 
     let done      = false
     let pollCount = 0
-    const MAX_POLLS = 400  // 400 × 450 ms ≈ 3 min client-side hard stop
+    // Long videos can legitimately take a while; qooti's own watchdog ends stuck
+    // downloads, this only stops watching (≈ 30 min) — never reports a false failure.
+    const MAX_POLLS = 3600
 
     toast.querySelector('.qooti-toast-dl-hide').addEventListener('click', () => {
       done = true
@@ -690,7 +733,7 @@
 
     toast.querySelector('.qooti-toast-dl-cancel').addEventListener('click', () => {
       done = true
-      chrome.runtime.sendMessage({ action: 'cancel-download', ext_id: extId })
+      safeSend({ action: 'cancel-download', ext_id: extId })
       dismissDlToast()
     })
 
@@ -698,65 +741,82 @@
     _dlToast = toast
     requestAnimationFrame(() => toast.classList.add('qooti-toast--in'))
 
-    const PENDING_MSGS = [
-      'Fetching media info…',
-      'Analyzing the URL…',
-      'Resolving source…',
-      'Checking availability…',
-      'Talking to the server…',
-      'Almost ready to go…',
+    // Real steps reported by qooti (the stage label arrives in `speed` while pct is 0).
+    const STAGES = [
+      [/preparing youtube/i, 'Setting up YouTube (one time)…'],
+      [/setting up youtube/i, 'Setting up YouTube…'],
+      [/reading/i,           'Reading video info…'],
+      [/unlocking/i,         'Unlocking the video…'],
+      [/starting/i,          'Starting download…'],
+      [/finishing/i,         'Finishing up…'],
+      [/720p/i,              'Trying a lower quality…'],
+      [/retrying/i,          'Trying another way…'],
     ]
-    const STARTING_MSGS = [
-      'Connecting to source…',
-      'Negotiating stream…',
-      'Spinning up the download…',
-      'Locking in quality…',
-      'Hold tight…',
-    ]
+    const stageText = label => STAGES.find(([re]) => re.test(label || ''))?.[1] ?? null
+    const subEl = document.createElement('span')
+    subEl.className = 'qooti-toast-sub'
+    toast.querySelector('.qooti-toast-dl-content').appendChild(subEl)
+
+    let lastTitle = '', sameSince = Date.now()
+    const setTitle = text => {
+      if (text !== lastTitle) { lastTitle = text; sameSince = Date.now(); subEl.textContent = '' }
+      titleEl.textContent = text
+      // Honest reassurance instead of fake progress when a step takes a while.
+      if (Date.now() - sameSince > 20000 && !subEl.textContent) subEl.textContent = 'Longer videos can take a minute.'
+    }
 
     ;(async () => {
+      let misses = 0
       while (!done) {
-        await new Promise(r => setTimeout(r, 450))
+        await new Promise(r => setTimeout(r, 500))
         if (!_dlToast || done) break
-        const prog = await new Promise(r =>
-          chrome.runtime.sendMessage({ action: 'get-progress', ext_id: extId }, r)
-        ).catch(() => null)
-        if (!prog || !_dlToast) break
+        const prog = await new Promise(r => safeSend({ action: 'get-progress', ext_id: extId }, r))
+        if (!_dlToast || done) break
+        if (!prog) {
+          // qooti closed or the extension reloaded mid-download: say so once, calmly.
+          if (++misses >= 6) {
+            done = true
+            setTitle('Lost touch with qooti')
+            subEl.textContent = 'If it keeps downloading, it will appear in your library.'
+            setTimeout(dismissDlToast, 5000)
+          }
+          continue
+        }
+        misses = 0
         pollCount++
 
         if (pollCount > MAX_POLLS) {
-          fillEl.classList.remove('qooti-toast-fill--pending')
-          fillEl.style.width      = '100%'
-          fillEl.style.background = 'rgba(239,68,68,0.75)'
-          titleEl.textContent     = 'Download timed out'
-          pctEl.textContent       = ''
-          setTimeout(dismissDlToast, 4000)
+          done = true
+          setTitle('Still working on it')
+          subEl.textContent = 'It will appear in qooti when it\'s done.'
+          setTimeout(dismissDlToast, 5000)
           break
         }
 
         if (prog.status === 'queued') {
-          titleEl.textContent = 'Waiting in queue…'
-          pctEl.textContent   = ''
+          setTitle('Waiting for another download…')
+          pctEl.textContent = ''
 
         } else if (prog.status === 'pending') {
-          titleEl.textContent = PENDING_MSGS[Math.floor(pollCount / 2) % PENDING_MSGS.length]
-          pctEl.textContent   = ''
+          setTitle('Getting ready…')
+          pctEl.textContent = ''
 
         } else if (prog.status === 'downloading') {
           const pct = Math.round(prog.pct * 100)
           if (pct > 0) {
-            titleEl.textContent = 'Downloading…'
+            setTitle('Downloading…')
             pctEl.textContent   = `${pct}%`
             fillEl.classList.remove('qooti-toast-fill--pending')
             fillEl.style.width  = `${pct}%`
           } else {
-            titleEl.textContent = STARTING_MSGS[Math.floor(pollCount / 2) % STARTING_MSGS.length]
+            setTitle(stageText(prog.speed) ?? 'Getting ready…')
             pctEl.textContent   = ''
           }
 
         } else if (prog.status === 'finalizing') {
+          fillEl.classList.remove('qooti-toast-fill--pending')
           fillEl.style.width  = '99%'
-          titleEl.textContent = 'Saving to library…'
+          setTitle('Adding to your library…')
           pctEl.textContent   = ''
 
         } else if (prog.status === 'complete') {
@@ -764,7 +824,7 @@
           fillEl.classList.remove('qooti-toast-fill--pending')
           fillEl.style.width = '100%'
           fillEl.style.background = 'rgba(255,255,255,0.9)'
-          titleEl.textContent = 'Saved to qooti'
+          setTitle('Saved to qooti')
           pctEl.textContent   = ''
           const finalInspId = prog.inspiration_id
           if (finalInspId) {
@@ -772,7 +832,7 @@
             viewBtn.className   = 'qooti-toast-view-btn'
             viewBtn.textContent = 'View'
             viewBtn.addEventListener('click', () => {
-              chrome.runtime.sendMessage({ action: 'open-item', inspiration_id: finalInspId })
+              safeSend({ action: 'open-item', inspiration_id: finalInspId })
               dismissDlToast()
             })
             toast.querySelector('.qooti-toast-dl-top').appendChild(viewBtn)
@@ -784,20 +844,37 @@
             }
           }, finalInspId ? 2500 : 1400)
 
+        } else if (prog.status === 'cancelled') {
+          done = true
+          dismissDlToast()
+
         } else if (prog.status === 'error') {
           done = true
           fillEl.classList.remove('qooti-toast-fill--pending')
           fillEl.style.width      = '100%'
           fillEl.style.background = 'rgba(239,68,68,0.75)'
-          titleEl.textContent = 'Download failed'
-          const errMsg = typeof prog.message === 'string' && prog.message.trim()
-            ? prog.message.trim().replace(/^ERROR:\s*/i, '').slice(0, 80)
-            : ''
-          pctEl.textContent = errMsg
-          setTimeout(dismissDlToast, errMsg ? 6000 : 4000)
+          setTitle('Couldn\'t save this')
+          pctEl.textContent = ''
+          subEl.textContent = friendlyMessage(prog)
+          setTimeout(dismissDlToast, 7000)
         }
       }
     })()
+  }
+
+  // qooti 1.0.6+ sends plain wording (`friendly`); older versions send raw errors,
+  // which never reach the page — they get a generic line instead.
+  function friendlyMessage(prog) {
+    const m = typeof prog?.message === 'string' ? prog.message.trim() : ''
+    if (prog?.friendly && m) return m
+    const l = m.toLowerCase()
+    if (l.includes('daily limit')) return 'You\'ve reached today\'s free limit. qooti will download it at midnight.'
+    if (l.includes('private') || l.includes('unavailable') || l.includes('removed')) return 'This video is private, removed or unavailable.'
+    if (l.includes('not a bot') || l.includes('confirm your age') || l.includes('age-restricted')) return 'YouTube blocked this one (age or bot check). Try again later.'
+    if (l.includes('sign in') || l.includes('login') || l.includes('cookies')) return 'Sign in to this site in your browser, then try again.'
+    if (l.includes('timed out')) return 'This took too long. Please try again.'
+    if (l.includes('network') || l.includes('connect')) return 'Couldn\'t connect. Check your internet and try again.'
+    return 'Please try again. If it keeps happening, send feedback from qooti.'
   }
 
   function dismissDlToast() {
@@ -828,7 +905,7 @@
     `
     if (inspirationId) {
       toast.querySelector('.qooti-toast-view-btn').addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'open-item', inspiration_id: inspirationId })
+        safeSend({ action: 'open-item', inspiration_id: inspirationId })
         dismissDlToast()
       })
     }
@@ -894,7 +971,7 @@
         const running = await checkRunning()
         if (!running) {
           dismissDlToast()
-          showNotification('Start qooti to save media from your browser.')
+          showNotRunning()
           return
         }
         const result = await sendSave({
@@ -904,8 +981,10 @@
         titleEl.textContent = result.already_exists ? 'Already in your library' : 'Saved to qooti'
         rowEl.remove()
         setTimeout(dismissDlToast, 2000)
-      } catch {
+      } catch (err) {
         dismissDlToast()
+        if (err.kind === 'offline') showNotRunning()
+        else showMessage({ title: 'Couldn\'t save this', message: err.message || 'Please try again.' })
       }
     })
 
@@ -915,24 +994,28 @@
     autoTimer = setTimeout(dismiss, 5000)
   }
 
+  // Rejects with an Error whose message is already user-facing (background.js).
   function sendSave(payload) {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: 'save', payload }, res => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message))
-        if (!res?.ok) return reject(new Error(res?.error ?? 'Save failed'))
-        resolve(res)
+      if (!extensionAlive()) {
+        const e = new Error('qooti was updated. Reload this page, then try again.'); e.kind = 'failed'
+        return reject(e)
+      }
+      safeSend({ action: 'save', payload }, res => {
+        if (res?.ok) return resolve(res)
+        const e = new Error(res?.error ?? 'Please try again.')
+        e.kind = res?.kind ?? 'failed'
+        reject(e)
       })
     })
   }
 
-  // Asks the SW to ping the desktop with a 300 ms timeout.
+  // Asks the SW to ping the desktop with a 400 ms timeout.
   // Returns false in ~5 ms when ECONNREFUSED (app not running).
   function checkRunning() {
     return new Promise(resolve => {
-      chrome.runtime.sendMessage({ action: 'check-running' }, res => {
-        if (chrome.runtime.lastError) { resolve(false); return }
-        resolve(res?.running ?? false)
-      })
+      if (!extensionAlive()) { resolve(true); return }   // let sendSave explain
+      safeSend({ action: 'check-running' }, res => resolve(res?.running ?? false))
     })
   }
 
@@ -999,15 +1082,16 @@
       <svg class="qooti-picker-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
       </svg>
-      <span class="qooti-picker-btn-label">${label}</span>
+      <span class="qooti-picker-btn-label"></span>
       <svg class="qooti-picker-btn-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="3 8 6.5 11.5 13 4"/>
       </svg>
     `
+    btn.querySelector('.qooti-picker-btn-label').textContent = label
     btn.addEventListener('click', () => {
       dismissPicker()
       if (collectionId && inspirationId) {
-        chrome.runtime.sendMessage({ action: 'add-to-collection', inspiration_id: inspirationId, collection_id: collectionId })
+        safeSend({ action: 'add-to-collection', inspiration_id: inspirationId, collection_id: collectionId })
       }
     })
     return btn
@@ -1022,11 +1106,37 @@
   }
 
   // ─── Messages from background (context-menu save) ────────────────
-  chrome.runtime.onMessage.addListener(msg => {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.action === 'show-picker' && showPicker && msg.collections?.length) {
       showCollectionPicker(msg.collections, msg.inspiration_id)
     }
+    if (msg.action === 'context-save') {
+      let payload = msg.payload
+      if (payload?.type === 'page') {
+        // Not a video page: save the page's preview image, if it has one.
+        const img = pagePreviewImage()
+        if (!img) {
+          showMessage({ tone: 'info', title: 'Nothing to save on this page', message: 'Right-click an image or video to save it to qooti.' })
+          sendResponse({ ok: true })
+          return
+        }
+        payload = { ...payload, url: img, type: 'image' }
+      }
+      handleSaveWithPayload(null, async () => payload)
+      sendResponse({ ok: true })
+    }
   })
+
+  // The picture a page shares as its preview (og/twitter image), made absolute.
+  function pagePreviewImage() {
+    const sel = 'meta[property="og:image:secure_url"], meta[property="og:image"], meta[name="twitter:image"], meta[name="twitter:image:src"]'
+    for (const m of document.querySelectorAll(sel)) {
+      const v = m.getAttribute('content')
+      if (!v) continue
+      try { return new URL(v, location.href).href } catch {}
+    }
+    return null
+  }
 
   // ─── Right-click dismiss ─────────────────────────────────────────
   // Right-clicking a media element suppresses its hover badge for the rest of
@@ -1088,7 +1198,11 @@
   // The app queues a URL when yt-dlp fails due to missing auth cookies (e.g. Instagram).
   // Content scripts never go dormant, so this heartbeat reliably wakes the background
   // service worker to poll for pending work every 3 seconds.
-  setInterval(() => {
-    chrome.runtime.sendMessage({ action: 'check-pending' }).catch(() => {})
+  // Only the visible tab asks (it used to be every open tab, every 3 s), and it
+  // stops for good once the extension is reloaded/updated under this page.
+  const _pendingTimer = setInterval(() => {
+    if (!extensionAlive()) { clearInterval(_pendingTimer); return }
+    if (document.visibilityState !== 'visible') return
+    safeSend({ action: 'check-pending' })
   }, 3000)
 })()

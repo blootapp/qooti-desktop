@@ -6,6 +6,19 @@ const STORAGE_KEY  = 'qooti_key'
 const COLLECTIONS_KEY  = 'qooti_collections'
 const COLLECTIONS_TTL  = 5 * 60 * 1000  // 5 minutes
 
+// What users see when something goes wrong — never raw error text.
+const MSG = {
+  notRunning: 'qooti isn\'t open. Open qooti, then try again.',
+  busy:       'qooti is busy right now. Please try again in a moment.',
+  noConnect:  'Couldn\'t connect to qooti. Open qooti and try again.',
+  failed:     'Couldn\'t save this. Please try again.',
+}
+
+// An error whose message is safe to show as-is.
+class UserError extends Error {
+  constructor(message, kind = 'failed') { super(message); this.kind = kind }
+}
+
 // ─── Connection ──────────────────────────────────────────────────
 
 async function getKey() {
@@ -17,12 +30,12 @@ async function setKey(key) {
   await chrome.storage.local.set({ [STORAGE_KEY]: key })
 }
 
-// Ping the desktop. Returns { version, platform } or null if offline.
-async function ping() {
+// Ping the desktop. Returns { version, platform } or null if it isn't running.
+async function ping(timeout = 1500) {
   try {
     const r = await fetch(`${DESKTOP}/extension/ping`, {
       method: 'GET',
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(timeout),
     })
     if (!r.ok) return null
     return await r.json()
@@ -32,17 +45,9 @@ async function ping() {
 }
 
 // Ultra-fast reachability check — used before save to detect "not running" quickly.
-// ECONNREFUSED from the OS is near-instant; the 300 ms cap handles slow networks/firewalls.
+// ECONNREFUSED from the OS is near-instant; the 400 ms cap handles slow networks/firewalls.
 async function quickPing() {
-  try {
-    const r = await fetch(`${DESKTOP}/extension/ping`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(300),
-    })
-    return r.ok
-  } catch {
-    return false
-  }
+  return !!(await ping(400))
 }
 
 // Auto-pair on first install. Desktop generates and returns the key.
@@ -52,7 +57,7 @@ async function pair() {
     const r = await fetch(`${DESKTOP}/extension/pair`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(800),
+      signal: AbortSignal.timeout(1500),
     })
     if (!r.ok) return null
     const data = await r.json()
@@ -93,7 +98,7 @@ async function getCollections() {
   if (data && Date.now() - ts < COLLECTIONS_TTL) return data
 
   const key = await ensurePaired()
-  if (!key) return []
+  if (!key) return data ?? []
   try {
     const r = await fetch(`${DESKTOP}/extension/collections`, {
       headers: { 'X-Qooti-Key': key },
@@ -119,23 +124,36 @@ function invalidateCollectionsCache() {
 
 async function saveItem(payload) {
   const key = await ensurePaired()
-  if (!key) throw new Error('qooti is not running')
+  if (!key) {
+    const running = await quickPing()
+    throw new UserError(running ? MSG.noConnect : MSG.notRunning, running ? 'failed' : 'offline')
+  }
   const post = k => fetch(`${DESKTOP}/extension/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Qooti-Key': k },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(3000),
+    // Generous: the desktop answers in milliseconds, but a big frame capture or a
+    // busy library can take a few seconds — a short cap turned those into failures.
+    signal: AbortSignal.timeout(10000),
   })
-  let r = await post(key)
-  // Stale key (desktop was reinstalled/reset) → re-pair once and retry, so saving
-  // keeps working without the user having to manually reconnect the extension.
-  if (r.status === 401) {
-    const fresh = await repair()
-    if (fresh) r = await post(fresh)
+  let r
+  try {
+    r = await post(key)
+    // Stale key (desktop was reinstalled/reset) → re-pair once and retry, so saving
+    // keeps working without the user having to manually reconnect.
+    if (r.status === 401) {
+      const fresh = await repair()
+      if (fresh) r = await post(fresh)
+    }
+  } catch (e) {
+    if (e?.name === 'TimeoutError') throw new UserError(MSG.busy)
+    const running = await quickPing()
+    throw new UserError(running ? MSG.failed : MSG.notRunning, running ? 'failed' : 'offline')
   }
+  if (r.status === 401 || r.status === 403) throw new UserError(MSG.noConnect)
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(text || `HTTP ${r.status}`)
+    console.warn('[qooti] save rejected', r.status, await r.text().catch(() => ''))
+    throw new UserError(MSG.failed)
   }
   return await r.json()
 }
@@ -154,42 +172,88 @@ async function addToCollection(inspirationId, collectionId) {
   })
 }
 
+// Attach browser cookies for sites that block unauthenticated downloads. The desktop
+// writes these to a temp file and passes --cookies to yt-dlp.
+async function withCookies(payload) {
+  const domain = needsCookies(payload?.url || '') || needsCookies(payload?.page_url || '')
+  if (!domain) return payload
+  const cookies = await getCookiesAsNetscape(COOKIE_DOMAINS[domain][0])
+  return cookies ? { ...payload, _cookies: cookies } : payload
+}
+
+// Save + collections in parallel (they don't depend on each other), shaped for the
+// content script.
+async function saveAndDescribe(payload) {
+  const [result, cols] = await Promise.all([saveItem(await withCookies(payload)), getCollections()])
+  return {
+    ok:             true,
+    already_exists: result.already_exists  ?? false,
+    queued:         result.queued          ?? false,
+    collections:    cols,
+    inspiration_id: result.inspiration_id  ?? null,
+    ext_id:         result.ext_id          ?? null,
+    is_frame:       result.is_frame        ?? false,
+  }
+}
+
 // ─── Context menu ────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'qooti-save',
-    title: 'Save to qooti',
-    contexts: ['image', 'video', 'page'],
+  // removeAll first: onInstalled also fires on updates, and re-creating an existing
+  // id throws.
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'qooti-save',
+      title: 'Save to qooti',
+      contexts: ['image', 'video', 'page'],
+    })
   })
   // Auto-pair on install (fire and forget)
   ensurePaired()
 })
 
+// Right-click → Save to qooti. The page's own script shows the same progress and
+// messages as the on-page button; on pages it can't run on (browser pages, the
+// Web Store), the toolbar icon shows ✓ or ! instead.
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== 'qooti-save') return
-  const url      = info.srcUrl ?? info.pageUrl ?? tab?.url ?? ''
-  const pageUrl  = tab?.url ?? ''
-  const title    = tab?.title ?? ''
-  const type     = info.mediaType === 'image' ? 'image' : 'video'
-  const platform = detectPlatform(pageUrl)
+  const pageUrl = tab?.url ?? info.pageUrl ?? ''
+  let payload
+  if (info.mediaType === 'image' && info.srcUrl && !/^(data|blob):/.test(info.srcUrl)) {
+    payload = { url: info.srcUrl, page_url: pageUrl, title: tab?.title ?? '', type: 'image' }
+  } else {
+    // A video element, or the page itself: video pages download the video; any other
+    // page saves its preview image (the content script finds it — type 'page').
+    const src = info.mediaType === 'video' && info.srcUrl && !info.srcUrl.startsWith('blob:') ? info.srcUrl : null
+    const url = src ?? pageUrl
+    payload = { url, page_url: pageUrl, title: tab?.title ?? '', type: (src || isVideoPage(url)) ? 'video' : 'page' }
+  }
+  payload.source_platform = detectPlatform(payload.url) ?? detectPlatform(pageUrl)
+
+  if (tab?.id != null) {
+    try {
+      const handled = await chrome.tabs.sendMessage(tab.id, { action: 'context-save', payload })
+      if (handled?.ok) return
+    } catch { /* no content script on this page */ }
+  }
+  if (payload.type === 'page') { flashIcon(tab?.id, false); return }   // needs the page's script
   try {
-    const result = await saveItem({ url, page_url: pageUrl, title, type, source_platform: platform })
-    // Notify content script to show picker
-    if (tab?.id) {
-      const cols = await getCollections()
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'show-picker',
-        collections: cols,
-        inspiration_id: result.inspiration_id ?? null,
-      }).catch(() => {})
-    }
+    await saveAndDescribe(payload)
+    flashIcon(tab?.id, true)
   } catch (e) {
-    console.error('[qooti] context menu save failed:', e)
+    flashIcon(tab?.id, false)
+    console.warn('[qooti] context menu save failed:', e?.message)
   }
 })
 
-// ─── Message handler (from content.js) ──────────────────────────
+function flashIcon(tabId, ok) {
+  if (tabId == null) return
+  chrome.action.setBadgeBackgroundColor({ tabId, color: ok ? '#16A34A' : '#DC2626' })
+  chrome.action.setBadgeText({ tabId, text: ok ? '✓' : '!' })
+  setTimeout(() => chrome.action.setBadgeText({ tabId, text: '' }), 4000)
+}
+
+// ─── Message handler (from content.js / popup.js) ────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // No-op wake message — content script sends this on badge hover to pre-warm
@@ -197,8 +261,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'wake') { sendResponse({ ok: true }); return }
 
   // Fast reachability check called by content.js before every save.
-  // Resolves in ~5ms (ECONNREFUSED) or ~300ms worst-case, so the UI can
-  // show "not running" almost instantly instead of waiting out a 2-3 s timeout.
   if (msg.action === 'check-running') {
     ;(async () => {
       const running = await quickPing()
@@ -210,31 +272,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'save') {
     ;(async () => {
       try {
-        // Attach browser cookies for sites that block unauthenticated downloads.
-        // The desktop writes these to a temp file and passes --cookies to yt-dlp,
-        // avoiding the locked-SQLite-database error from --cookies-from-browser.
-        let payload = msg.payload
-        const cookieDomain = needsCookies(payload?.url || payload?.page_url || '')
-        if (cookieDomain) {
-          const cookieKey = Object.keys(COOKIE_DOMAINS).find(k =>
-            (payload?.url || '').includes(k) || (payload?.page_url || '').includes(k)
-          )
-          const domain = cookieKey ? COOKIE_DOMAINS[cookieKey][0] : cookieDomain
-          const cookies = await getCookiesAsNetscape(domain)
-          if (cookies) payload = { ...payload, _cookies: cookies }
-        }
-        const result = await saveItem(payload)
-        const cols   = await getCollections()
-        sendResponse({
-          ok:             true,
-          already_exists: result.already_exists  ?? false,
-          collections:    cols,
-          inspiration_id: result.inspiration_id  ?? null,
-          ext_id:         result.ext_id           ?? null,
-          is_frame:       result.is_frame          ?? false,
-        })
+        sendResponse(await saveAndDescribe(msg.payload))
       } catch (e) {
-        sendResponse({ ok: false, error: e.message })
+        sendResponse({ ok: false, error: e instanceof UserError ? e.message : MSG.failed, kind: e?.kind ?? 'failed' })
       }
     })()
     return true
@@ -247,7 +287,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!key) { sendResponse(null); return }
         const r = await fetch(`${DESKTOP}/extension/download-progress/${msg.ext_id}`, {
           headers: { 'X-Qooti-Key': key },
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.timeout(2500),
         })
         sendResponse(r.ok ? await r.json() : null)
       } catch {
@@ -294,6 +334,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true
   }
 
+  // Launch (or bring forward) the desktop app through its qooti:// link. Chrome asks
+  // once whether to allow opening qooti; the current page stays where it is.
+  if (msg.action === 'open-app') {
+    ;(async () => {
+      try {
+        const tabId = msg.tab_id ?? sender?.tab?.id
+        if (tabId != null) await chrome.tabs.update(tabId, { url: 'qooti://open' })
+        else await chrome.tabs.create({ url: 'qooti://open' })
+        sendResponse({ ok: true })
+      } catch {
+        sendResponse({ ok: false })
+      }
+    })()
+    return true
+  }
+
   if (msg.action === 'add-to-collection') {
     ;(async () => {
       try {
@@ -308,12 +364,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.action === 'check-pending') {
-    // Called by content.js every 3 s to wake the service worker and check whether
-    // the app has queued a URL that needs extension cookies to download.
+    // Called by the visible tab's content script every few seconds: the app queues a
+    // URL here when it needs this browser's sign-in to download it (e.g. Instagram).
     ;(async () => {
-      // ensurePaired() re-attempts pairing if the key is missing — handles the case
-      // where the extension was installed while the desktop app was not running.
-      const key = await ensurePaired()
+      // Don't try to pair while the desktop isn't running.
+      const key = (await getKey()) ?? ((await quickPing()) ? await pair() : null)
       if (!key) { sendResponse(null); return }
       try {
         const r = await fetch(`${DESKTOP}/extension/pending-download`, {
@@ -324,28 +379,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const data = await r.json()
         if (!data.url) { sendResponse({ pending: false }); return }
 
-        // Run the same save flow used for user-initiated saves.
         const url = data.url
-        let payload = {
+        await saveItem(await withCookies({
           url,
           page_url: url,
           type: 'video',
           source_platform: detectPlatform(url),
-        }
-        const cookieDomain = needsCookies(url)
-        if (cookieDomain) {
-          const domainKey = Object.keys(COOKIE_DOMAINS).find(k =>
-            url.includes(k)
-          )
-          const domain = domainKey ? COOKIE_DOMAINS[domainKey][0] : cookieDomain
-          const cookies = await getCookiesAsNetscape(domain)
-          if (cookies) payload = { ...payload, _cookies: cookies }
-        }
-        await saveItem(payload)
+        }))
         sendResponse({ pending: true, ok: true })
       } catch (e) {
-        console.error('[qooti] check-pending failed:', e)
-        sendResponse({ pending: false, error: e.message })
+        console.warn('[qooti] check-pending failed:', e?.message)
+        sendResponse({ pending: false })
       }
     })()
     return true
@@ -354,8 +398,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'get-status') {
     ;(async () => {
       const info = await ping()
-      const key  = await getKey()
-      sendResponse({ connected: !!info && !!key, version: info?.version ?? null })
+      const key  = info ? await ensurePaired() : await getKey()
+      sendResponse({
+        running:   !!info,
+        connected: !!info && !!key,
+        version:   info?.version ?? null,
+      })
     })()
     return true
   }
@@ -384,12 +432,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: false })
       }
     })()
-    return true
-  }
-
-  if (msg.action === 'disconnect') {
-    chrome.storage.local.remove([STORAGE_KEY, COLLECTIONS_KEY, COLLECTIONS_KEY + '_ts'])
-    sendResponse({ ok: true })
     return true
   }
 })
@@ -444,4 +486,19 @@ function detectPlatform(url) {
     if (h.includes('vimeo.com'))      return 'vimeo'
   } catch {}
   return null
+}
+
+// Pages whose URL is itself a video the desktop can download.
+function isVideoPage(url) {
+  try {
+    const u = new URL(url)
+    const h = u.hostname.replace(/^www\.|^m\./, '')
+    if (h === 'youtu.be') return true
+    if (h.endsWith('youtube.com')) return u.pathname === '/watch' || /^\/(shorts|live)\//.test(u.pathname)
+    if (h.endsWith('instagram.com')) return /^\/(p|reel|reels|tv)\//.test(u.pathname)
+    if (h.endsWith('tiktok.com')) return u.pathname.includes('/video/')
+    if (h.endsWith('vimeo.com')) return /^\/\d+/.test(u.pathname)
+    if (h === 'x.com' || h.endsWith('twitter.com')) return u.pathname.includes('/status/')
+  } catch {}
+  return false
 }

@@ -4,6 +4,7 @@
 
 import { mockApi } from './mock.js'
 import { makeLogger } from './logger.js'
+import { t } from './i18n.js'
 
 const log = makeLogger('IPC')
 
@@ -59,8 +60,8 @@ export async function initTauriApi() {
 
   await _listen('extension-server-failed', () => {
     store.emit(events.SYSTEM_TOAST, {
-      type: 'error',
-      message: 'Port 1420 is in use — the browser extension won\'t work. Restart qooti to fix.',
+      type: 'warning',
+      message: t('ext.server_failed'),
       duration: 10000,
     })
   })
