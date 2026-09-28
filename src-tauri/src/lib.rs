@@ -44,7 +44,7 @@ pub struct AppState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init();
-    log::info!(target: "Boot", "qooti starting version=1.0.0");
+    log::info!(target: "Boot", "qooti starting version={}", env!("CARGO_PKG_VERSION"));
 
     // Capture a .qooti file passed on the command line (double-click / "Open With")
     // on the FIRST launch; the frontend pulls it via take_launch_file() once ready.

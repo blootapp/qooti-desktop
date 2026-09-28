@@ -3899,13 +3899,14 @@ fn with_format(args: &[String], format: &str) -> Vec<String> {
     out
 }
 
-/// Copy of `args` with any YouTube player-client override replaced by `clients`.
+/// Copy of `args` whose YouTube extractor args are replaced by just `player_client=clients`
+/// (the PO-token retry takes whatever formats those clients offer, HLS included).
 fn with_youtube_clients(args: &[String], clients: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::with_capacity(args.len() + 2);
     let mut i = 0;
     while i < args.len() {
         if args[i] == "--extractor-args"
-            && args.get(i + 1).is_some_and(|v| v.starts_with("youtube:player_client"))
+            && args.get(i + 1).is_some_and(|v| v.starts_with("youtube:"))
         {
             i += 2;
             continue;
@@ -3916,6 +3917,40 @@ fn with_youtube_clients(args: &[String], clients: &str) -> Vec<String> {
     out.push("--extractor-args".into());
     out.push(format!("youtube:player_client={clients}"));
     out
+}
+
+/// "Title.f137.mp4" → "Title.mp4": yt-dlp names split video/audio streams with a
+/// `.f<format id>` suffix until they're merged; the UI should show the final name.
+fn strip_format_suffix(name: &str) -> String {
+    if let Some(dot) = name.rfind('.') {
+        let stem = &name[..dot];
+        if let Some(f) = stem.rfind(".f") {
+            if stem[f + 2..].chars().all(|c| c.is_ascii_digit()) && f + 2 < stem.len() {
+                return format!("{}{}", &stem[..f], &name[dot..]);
+            }
+        }
+    }
+    name.to_string()
+}
+
+/// yt-dlp's extraction steps (stdout, when not --quiet) → a UI stage + English label, so
+/// the few seconds before the first byte show what's happening instead of a silent
+/// "Fetching info…". Ranked so the label only ever moves forward.
+fn extraction_stage(line: &str) -> Option<(u8, &'static str, &'static str)> {
+    if line.starts_with("[download]") { return None; }
+    if line.starts_with("[Merger]") || line.starts_with("[VideoConvertor]") || line.starts_with("[FixupM") {
+        return Some((4, "finishing", "finishing…"));
+    }
+    if line.starts_with("[info]") && line.contains("format(s)") {
+        return Some((3, "starting", "starting download…"));
+    }
+    if line.contains("Solving JS challenges") || line.contains(": Downloading player ") {
+        return Some((2, "unlocking", "unlocking video…"));
+    }
+    if line.starts_with('[') && (line.contains("Extracting URL") || line.contains(": Downloading")) {
+        return Some((1, "reading", "reading video info…"));
+    }
+    None
 }
 
 fn run_ytdlp(
@@ -4160,18 +4195,17 @@ fn run_ytdlp(
     // used when deno couldn't be installed (e.g. offline on first use). With a runtime,
     // yt-dlp's default clients are the right choice: tuned upstream against YouTube's
     // current gating, and our yt-dlp copy self-updates daily (update_ytdlp_once).
-    let yt_legacy_clients = format!("youtube:player_client={}",
-        if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "tv,android_vr,web_embedded,ios" });
+    let yt_legacy_clients = if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "tv,android_vr,web_embedded,ios" };
     // Web-based clients are the ones that consume a GVS PO token — used for the retry
     // once the PO-token provider is running (see the 403 fallback below).
     const YT_POT_CLIENTS: &str = "web,web_embedded";
 
-    // PO-token provider: if a previous 403 already pulled it into app-data, make sure
-    // its server is up so yt-dlp's bgutil plugin can attach tokens to this run too.
-    let pot_ready = is_youtube
-        && deno.is_some()
-        && crate::pot_provider::is_downloaded(&app)
-        && crate::pot_provider::ensure_running(&app);
+    // The PO-token provider is only for the 403 fallback below. It used to be started up
+    // front on every install that had ever hit a 403 — 2–9 s to boot plus ~3 s for the
+    // first token, on the first YouTube save of every session — and its yt-dlp plugin
+    // (installed in yt-dlp's config dir) cost ~2 s on every run even with the server
+    // down. Normal runs therefore pass --no-plugin-dirs; only the retry loads it.
+    let pot_installed = is_youtube && crate::pot_provider::is_downloaded(&app);
 
     if is_youtube {
         args.extend(crate::js_runtime::ytdlp_args(deno.as_deref()));
@@ -4184,9 +4218,14 @@ fn run_ytdlp(
             "--format".to_string(), format!("bv*[height<={cap}]+ba/b[height<={cap}]/b"),
             "--format-sort".to_string(), format!("res:{cap},vcodec:h264,fps,acodec:aac"),
         ]);
-        args.extend(["--print", "before_dl:%(format_id)s %(height)s %(vcodec)s"].map(String::from));
-        if deno.is_none() {
-            args.extend(["--extractor-args".to_string(), yt_legacy_clients.clone()]);
+        // One combined value: repeated `--extractor-args youtube:…` flags don't merge.
+        let mut yt_extractor: Vec<String> = Vec::new();
+        // HLS manifests cost an extra request (~0.5 s) and we always end up on DASH /
+        // progressive formats — except for a stream that's live right now (HLS only).
+        if !url.contains("/live/") { yt_extractor.push("skip=hls".into()); }
+        if deno.is_none() { yt_extractor.push(format!("player_client={yt_legacy_clients}")); }
+        if !yt_extractor.is_empty() {
+            args.extend(["--extractor-args".to_string(), format!("youtube:{}", yt_extractor.join(";"))]);
         }
     } else if quality == "medium" {
         args.extend([
@@ -4223,19 +4262,25 @@ fn run_ytdlp(
     }
 
     let with_url = |mut a: Vec<String>| -> Vec<String> { a.push(url.clone()); a };
+    // Normal runs never load yt-dlp plugins (see pot_installed above).
+    let plugins_off = |a: Vec<String>| -> Vec<String> {
+        let mut v = vec!["--no-plugin-dirs".to_string()];
+        v.extend(a);
+        v
+    };
 
     // Snapshot tmp_dir BEFORE spawning so the diff after exit is accurate.
     let pre_files = snapshot_dir(&tmp_dir);
 
     dl_diag(&app, format!(
-        "start id={download_id} youtube={is_youtube} quality={quality} js_runtime={} pot_ready={pot_ready} bin={}{}",
+        "start id={download_id} youtube={is_youtube} quality={quality} js_runtime={} pot_installed={pot_installed} bin={}{}",
         if deno.is_some() { "deno" } else { "none" },
         binary.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
         if is_youtube && deno.is_none() { format!(" clients={yt_legacy_clients}") } else { String::new() }
     ));
 
     let mut child = match ytdlp_command(&binary)
-        .args(with_url(args.clone()))
+        .args(with_url(plugins_off(args.clone())))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -4322,8 +4367,17 @@ fn run_ytdlp(
     let did_out = download_id.clone();
     let stdout  = child.stdout.take().unwrap();
 
+    let mut stage_rank = 0u8;
+    let mut named = false;   // name the download after its first stream (video), not the audio that follows
     for line in BufReader::new(stdout).lines().flatten() {
         log::debug!(target: "Download", "stdout={:?}", line);
+        if let Some((rank, stage, label)) = extraction_stage(&line) {
+            if rank > stage_rank {
+                stage_rank = rank;
+                emit_download_stage(&app_out, &did_out, stage, label, 0.0, eid);
+            }
+            if rank == 3 { dl_diag(&app_out, format!("formats id={did_out} {}", line.trim())); }
+        }
         if line.starts_with("[download] Destination:") {
             // Emit the real filename as soon as yt-dlp chooses it — before any bytes download.
             let filename = line
@@ -4333,10 +4387,11 @@ fn run_ytdlp(
                 .next()
                 .unwrap_or("")
                 .to_string();
-            if !filename.is_empty() {
+            if !filename.is_empty() && !named {
+                named = true;
                 let _ = app_out.emit("download:filename", serde_json::json!({
                     "download_id": did_out,
-                    "filename":    filename,
+                    "filename":    strip_format_suffix(&filename),
                 }));
             }
         }
@@ -4421,7 +4476,7 @@ fn run_ytdlp(
         if !sleep_unless_cancelled(&download_id, std::time::Duration::from_secs(12)) { return; }
 
         let pre = snapshot_dir(&tmp_dir);
-        let fb_args = with_url(with_format(&args, "bv*[height<=720]+ba/b[height<=720]/b"));
+        let fb_args = with_url(plugins_off(with_format(&args, "bv*[height<=720]+ba/b[height<=720]/b")));
         let (ok, se) = run_tracked(&app, &binary, &fb_args, &download_id,
             std::time::Duration::from_secs(10 * 60));
         let paths = new_download_files(&tmp_dir, &pre);
@@ -4444,7 +4499,7 @@ fn run_ytdlp(
         s.contains("http error 403") || s.contains("po token") || s.contains("sabr")
     };
     if looks_pot {
-        log::warn!(target: "Download", "youtube_pot_403 download_id={download_id} pot_ready={pot_ready}");
+        log::warn!(target: "Download", "youtube_pot_403 download_id={download_id} pot_installed={pot_installed}");
         emit_download_stage(&app, &download_id, "setting_up_youtube", "setting up YouTube…", 0.3, eid);
 
         // Downloads the provider (once), installs the bgutil plugin into yt-dlp's
