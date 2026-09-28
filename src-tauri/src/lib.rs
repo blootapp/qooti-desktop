@@ -7,6 +7,7 @@ pub mod pot_provider;
 pub mod js_runtime;
 pub mod clip;
 pub mod reco;
+pub mod diagnostics;
 pub mod enhancer;
 pub mod db;
 pub mod logger;
@@ -83,6 +84,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            // Persistent log file (+ previous run's log, crash marker) — see logger.rs.
+            if let Ok(dir) = app.path().app_log_dir() {
+                logger::attach_file(&dir, &app.package_info().version.to_string());
+            }
+            log::info!(target: "Boot", "os={} arch={} webview={}", std::env::consts::OS, std::env::consts::ARCH,
+                       tauri::webview_version().unwrap_or_default());
+
             let conn = db::init(app.handle())?;
 
             // Enable autostart by default on first install.
@@ -137,7 +145,9 @@ pub fn run() {
                     commands::update_ytdlp_once(&yt_handle);
                     let binary = commands::ytdlp_binary_path(&yt_handle);
                     if let Ok(out) = commands::hidden_command(&binary).arg("--version").output() {
-                        log::info!(target: "Boot", "ytdlp_version={}", String::from_utf8_lossy(&out.stdout).trim());
+                        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                        log::info!(target: "Boot", "ytdlp_version={v}");
+                        diagnostics::set_tool_version("yt-dlp", &v);
                     } else {
                         log::warn!(target: "Boot", "ytdlp_missing path={:?}", binary);
                     }
@@ -343,6 +353,8 @@ pub fn run() {
             commands::find_similar,
             reco::taste_order,
             reco::more_to_explore,
+            diagnostics::diagnostics_snapshot,
+            diagnostics::log_frontend,
             commands::finalize_download,
             commands::cancel_download,
             commands::list_tag_vocab,
@@ -388,6 +400,7 @@ pub fn run() {
             // it doesn't linger as an orphan process holding port 4416.
             if let tauri::RunEvent::Exit = _event {
                 pot_provider::shutdown(_app);
+                logger::mark_clean_exit("app closed");
             }
 
             // On macOS a .qooti file opened while the app runs arrives as an Opened

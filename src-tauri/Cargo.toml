@@ -44,8 +44,7 @@ arboard    = { version = "3", features = ["image-data"] }
 # so nothing extra ships as a loose file. GPU execution providers are added per-OS
 # below (CoreML / DirectML); both fall back to CPU automatically.
 ort        = { version = "=2.0.0-rc.10", features = ["download-binaries"] }
-log        = "0.4"
-env_logger = "0.11"
+log        = { version = "0.4", features = ["std"] }
 zip        = "0.6"
 infer      = "0.15"
 qrcode       = { version = "0.14", default-features = false }
@@ -53,7 +52,7 @@ urlencoding  = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg     = "0.52"
-windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_SystemInformation"] }
 ort        = { version = "=2.0.0-rc.10", features = ["directml"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

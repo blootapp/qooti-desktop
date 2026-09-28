@@ -1,7 +1,7 @@
 // In-app feedback modal. Collects a message + a diagnostics snapshot and posts it
 // to the worker, which forwards it to the maintainer's Telegram. Reuses the shared
 // .dlg-* modal styling.
-import { gatherDiagnostics } from './diagnostics.js'
+import { gatherDiagnostics, buildActivityTrail } from './diagnostics.js'
 import { t } from './i18n.js'
 
 const API = 'https://api.bloot.app/public/feedback'
@@ -27,7 +27,9 @@ export function openFeedbackModal() {
       <div class="dlg-message">${esc(t('feedback.sub'))}</div>
       <textarea class="dlg-input fb-textarea" id="_fb-msg" rows="5"
         placeholder="${esc(t('feedback.placeholder'))}" maxlength="4000" spellcheck="true"></textarea>
-      <div class="fb-note">${icon('info', 14)}<span>${esc(t('feedback.note'))}</span></div>
+      <div class="fb-note">${icon('info', 14)}<span>${esc(t('feedback.note'))}
+        <button type="button" class="fb-details-toggle" id="_fb-details">${esc(t('feedback.details'))}</button></span></div>
+      <pre class="fb-details" id="_fb-details-pre" hidden></pre>
       <div class="dlg-actions">
         <button class="dlg-btn dlg-btn--ghost"   id="_fb-cancel">${esc(t('feedback.cancel'))}</button>
         <button class="dlg-btn dlg-btn--primary" id="_fb-send">${esc(t('feedback.send'))}</button>
@@ -96,6 +98,17 @@ export function openFeedbackModal() {
       ta.after(errEl)
     }
   }
+
+  // Show exactly what gets attached (the same report that is sent).
+  const detailsBtn = overlay.querySelector('#_fb-details')
+  const detailsPre = overlay.querySelector('#_fb-details-pre')
+  detailsBtn.addEventListener('click', async () => {
+    if (!detailsPre.hidden) { detailsPre.hidden = true; return }
+    detailsPre.hidden = false
+    detailsPre.textContent = t('feedback.details_loading')
+    try { detailsPre.textContent = await buildActivityTrail() }
+    catch { detailsPre.textContent = '—' }
+  })
 
   sendBtn.addEventListener('click', submit)
   cancel.addEventListener('click', close)

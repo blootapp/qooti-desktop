@@ -56,10 +56,16 @@ pub async fn apply_update(app: AppHandle) -> Result<(), String> {
     let Some(update) = update else {
         return Err("No update available".into());
     };
+    log::info!(target: "Update", "installing {} (from {})", update.version, update.current_version);
     update
         .download_and_install(|_chunk, _total| {}, || {})
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!(target: "Update", "install failed: {e}");
+            e.to_string()
+        })?;
+    // restart() doesn't go through RunEvent::Exit — close the session log cleanly here.
+    crate::logger::mark_clean_exit("restarting to finish the update");
     app.restart();
     #[allow(unreachable_code)]
     Ok(())

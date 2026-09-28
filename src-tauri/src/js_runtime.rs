@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// Pinned deno release. yt-dlp needs deno ≥ 2.3.0. Bumping this means updating the
 /// SHA-256 constants below (dl.deno.land/release/v{VER}/deno-{TARGET}.zip.sha256sum).
-const DENO_VERSION: &str = "2.9.7";
+pub(crate) const DENO_VERSION: &str = "2.9.7";
 
 #[cfg(target_os = "windows")] const TARGET: &str = "x86_64-pc-windows-msvc";
 #[cfg(target_os = "macos")]   const TARGET: &str = "aarch64-apple-darwin";

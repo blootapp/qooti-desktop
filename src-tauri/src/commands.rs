@@ -3518,7 +3518,7 @@ pub fn update_ytdlp_once(app: &AppHandle) {
     }
 }
 
-fn ffmpeg_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
+pub(crate) fn ffmpeg_binary(app: &AppHandle) -> Option<std::path::PathBuf> {
     #[cfg(windows)]     let name         = "ffmpeg.exe";
     #[cfg(not(windows))]let name         = "ffmpeg";
 

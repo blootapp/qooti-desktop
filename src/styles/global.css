@@ -5364,6 +5364,33 @@ html.theme-light .dlg-check-row { background: rgba(0,0,0,0.04); border-color: rg
   color: var(--text-muted);
 }
 .fb-note .icon { flex-shrink: 0; margin-top: 1px; opacity: 0.7; }
+.fb-details-toggle {
+  display: inline;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.fb-details-toggle:hover { color: var(--text-primary); }
+.fb-details {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(var(--fg-rgb), 0.04);
+  color: var(--text-secondary);
+  font: 10.5px/1.45 'Geist Mono', ui-monospace, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
 .fb-error {
   margin-top: 8px;
   font-size: 12px;

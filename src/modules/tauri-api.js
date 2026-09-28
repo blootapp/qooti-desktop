@@ -11,6 +11,8 @@ const log = makeLogger('IPC')
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 
 let _invoke  = null
+// Long-running by design — not worth flagging as slow.
+const SLOW_OK = new Set(['download_url', 'import_files', 'enhance_image', 'apply_update', 'export_all', 'diagnostics_snapshot'])
 let _listen  = null
 
 // Lazy-load Tauri modules so the bundle doesn't error in browser
@@ -22,8 +24,14 @@ async function loadTauri() {
     const t0 = performance.now()
     log.debug('call', { cmd })
     return raw(cmd, args).then(
-      r  => { log.debug('ok', { cmd, ms: Math.round(performance.now() - t0) }); return r },
-      e  => { log.warn('fail', { cmd, error: String(e) }); throw e }
+      r  => {
+        const ms = Math.round(performance.now() - t0)
+        log.debug('ok', { cmd, ms })
+        // Slow backend calls end up in feedback reports ("the app is slow" → which call).
+        if (ms > 3000 && !SLOW_OK.has(cmd)) log.info('slow call', { cmd, ms })
+        return r
+      },
+      e  => { log.warn('fail', { cmd, ms: Math.round(performance.now() - t0), error: String(e) }); throw e }
     )
   }
   _listen = event.listen
@@ -200,6 +208,10 @@ const tauriApi = {
   listHaventSeen:               (limit = 20) => _invoke('list_havent_seen', { limit }),
   // Taste-aware home feed order + "More to explore" shelves (reco.rs), both over the given ids.
   tasteOrder:                   ids  => _invoke('taste_order', { ids }),
+  // Feedback diagnostics (diagnostics.rs): system/library snapshot + both sessions' logs,
+  // and the webview's own lines forwarded into the backend log file.
+  diagnosticsSnapshot:          ()    => _invoke('diagnostics_snapshot'),
+  logFrontend:                  lines => _invoke('log_frontend', { lines }),
   moreToExplore:                ids  => _invoke('more_to_explore', { ids }),
 
   checkUrlExists: url => _invoke('check_url_exists', { url }),

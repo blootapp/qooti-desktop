@@ -254,6 +254,8 @@ export const mockApi = {
   listBecauseYouViewed:          ()   => Promise.resolve([]),
   listHaventSeen:                ()   => Promise.resolve([]),
   tasteOrder:                    ids  => Promise.resolve(ids),
+  diagnosticsSnapshot:           ()   => Promise.reject(new Error('no backend in browser mode')),
+  logFrontend:                   ()   => Promise.resolve(),
   // One "because you opened" shelf and one "forgotten gems" shelf from the mock library.
   moreToExplore: ids => {
     const pool = ids.map(id => _inspirations.find(i => i.id === id)).filter(Boolean)

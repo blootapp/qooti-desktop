@@ -12,6 +12,11 @@ export default defineConfig({
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
   },
+  // Keep function/class names through minification so stack traces in feedback
+  // reports say "at renderExplore" instead of "at Wr".
+  esbuild: {
+    keepNames: true,
+  },
   optimizeDeps: {
     // Exclude only the wasm runtimes — esbuild pre-bundling mangles their wasm
     // loading. The OCR lib (@gutenye/ocr-browser) MUST stay pre-bundled so its
