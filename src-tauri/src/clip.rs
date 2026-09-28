@@ -170,7 +170,7 @@ pub fn embed_file(app: &AppHandle, path: &str) -> Result<Vec<f32>, String> {
 
 fn to_blob(v: &[f32]) -> Vec<u8> { v.iter().flat_map(|x| x.to_le_bytes()).collect() }
 
-fn from_blob(b: &[u8]) -> Option<Vec<f32>> {
+pub(crate) fn from_blob(b: &[u8]) -> Option<Vec<f32>> {
     if b.len() != DIM * 4 { return None; }
     Some(b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
 }
@@ -188,14 +188,18 @@ fn store(app: &AppHandle, id: &str, result: Result<Vec<f32>, String>) {
     );
 }
 
-/// Images/GIFs that don't have a current embedding yet (newest first).
+/// Items that don't have a current embedding yet (newest first): images/GIFs, and videos
+/// once their thumbnail exists (embedded from the thumbnail — used by recommendations;
+/// Find similar stays images-only).
 fn pending(app: &AppHandle, n: i64) -> Vec<(String, String)> {
     let state = app.state::<AppState>();
     let Ok(db) = state.db.lock() else { return vec![] };
     let Ok(mut stmt) = db.prepare(
-        "SELECT i.id, i.stored_path FROM inspirations i
+        "SELECT i.id, CASE WHEN i.type = 'video' THEN i.thumbnail_path ELSE i.stored_path END
+         FROM inspirations i
          LEFT JOIN clip_embeddings e ON e.id = i.id AND e.model IN (?1, ?2)
-         WHERE e.id IS NULL AND i.type IN ('image', 'gif')
+         WHERE e.id IS NULL
+           AND (i.type IN ('image', 'gif') OR (i.type = 'video' AND i.thumbnail_path IS NOT NULL))
          ORDER BY i.created_at DESC LIMIT ?3"
     ) else { return vec![] };
     stmt.query_map(params![MODEL_TAG, FAILED_TAG, n], |r| Ok((r.get(0)?, r.get(1)?)))

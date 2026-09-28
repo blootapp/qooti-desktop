@@ -292,6 +292,12 @@ const strings = {
     'update.toast_fail':    'Update failed: {error}',
 
     // Grid / cards / collections (imperatively rendered)
+    'explore.title':             'More to explore',
+    'explore.because':           'Because you opened',
+    'explore.forgotten':         'Forgotten gems',
+    'explore.see_all':           'See all',
+    'explore.collapse':          'Hide',
+    'explore.expand':            'Show',
     'grid.scroll_left':          'Scroll left',
     'grid.scroll_right':         'Scroll right',
     'grid.could_not_load':       'Could not load',
@@ -762,6 +768,12 @@ const strings = {
     'update.toast_fail':    'Yangilash muvaffaqiyatsiz: {error}',
 
     // Grid / cards / collections (imperatively rendered)
+    'explore.title':             "Ko'proq kashf eting",
+    'explore.because':           'Siz ochganingiz uchun',
+    'explore.forgotten':         'Unutilgan durdonalar',
+    'explore.see_all':           'Hammasi',
+    'explore.collapse':          'Yashirish',
+    'explore.expand':            "Ko'rsatish",
     'grid.scroll_left':          'Chapga aylantirish',
     'grid.scroll_right':         "O'ngga aylantirish",
     'grid.could_not_load':       "Yuklab bo'lmadi",

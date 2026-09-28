@@ -303,7 +303,7 @@ pub struct AppInfo {
     pub version: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Inspiration {
     pub id: String,
     pub r#type: String,
@@ -5380,6 +5380,21 @@ const INSP_SELECT: &str =
              JOIN collections c ON c.id = ci.collection_id
              WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
      FROM inspirations";
+
+/// Full rows for the given ids (any order), keyed by id. Used by reco.rs.
+pub(crate) fn inspirations_by_ids(db: &rusqlite::Connection, ids: &[String]) -> HashMap<String, Inspiration> {
+    let mut out = HashMap::new();
+    for chunk in ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("{INSP_SELECT} WHERE id IN ({placeholders})");
+        if let Ok(mut stmt) = db.prepare(&sql) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), row_to_inspiration) {
+                for r in rows.flatten() { out.insert(r.id.clone(), r); }
+            }
+        }
+    }
+    out
+}
 
 // Items saved 60–180 days ago, least recently viewed first.
 #[tauri::command]

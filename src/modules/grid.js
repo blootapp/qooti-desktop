@@ -4,6 +4,7 @@ import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
 import { open as openDetail } from './card-detail.js'
+import { openSimilarCanvas } from './similar-canvas.js'
 import { isOpen as isImporterOpen } from './importer.js'
 import { getTagLabel } from './auto-tag.js'
 import { showPrompt } from './dialog.js'
@@ -603,8 +604,32 @@ async function reload() {
     }
 
     let visibleItems = items.slice(0, totalSnap)
-    // Qootify: pool is the fixed set of most-recent items; shuffle their order client-side
-    if (isFree && filter.sort === null) {
+
+    // Qootify home: a taste-aware shuffle (reco.rs — items that look like what you've been
+    // opening/saving lately come up more, look-alikes kept apart, fresh order every launch)
+    // plus the "More to explore" shelves. Both are computed over the visible pool only.
+    const isHome = !isFilteredView && filter.sort === null
+    let explore = []
+    let ordered = null
+    if (isHome && visibleItems.length) {
+      const ids = visibleItems.map(i => i.id)
+      const [order, sections] = await Promise.all([
+        api.tasteOrder(ids).catch(err => { log.warn('tasteOrder failed:', String(err)); return null }),
+        api.moreToExplore(ids).catch(err => { log.warn('moreToExplore failed:', String(err)); return [] }),
+      ])
+      if (gen !== _reloadGen) return
+      if (order?.length) {
+        const byId = new Map(visibleItems.map(i => [i.id, i]))
+        ordered = order.map(id => byId.get(id)).filter(Boolean)
+        const placed = new Set(order)
+        for (const i of visibleItems) if (!placed.has(i.id)) ordered.push(i)
+      }
+      explore = (sections ?? []).filter(s => s.items?.length)
+    }
+    if (ordered) {
+      visibleItems = ordered
+    } else if (isFree && filter.sort === null) {
+      // Free plan: pool is the fixed set of most-recent items; shuffle their order client-side
       visibleItems = visibleItems.slice().sort(() => Math.random() - 0.5)
     }
 
@@ -614,25 +639,14 @@ async function reload() {
     const extraCount = planInfo ? Math.max(0, planInfo.item_total - totalSnap) : 0
 
     render(visibleItems, colCount, applyFreeSnap)
-
-    // Await recommendations first so teaser is always the final element —
-    // nothing gets appended after it, preventing the banner from disappearing
-    // when a stale reco resolve races against a fresh render.
-    let recoExtra = []
-    if (!filter.collectionId && !filter.query && !filter.color && !filter.tagIds.length && !filter.mediaTypes) {
-      recoExtra = await loadRecommendations(visibleItems, gen) ?? []
-    } else {
-      container?.querySelector('#grid-scroll')?.querySelectorAll('.reco-grid').forEach(s => s.remove())
-    }
-
-    if (gen !== _reloadGen) return  // superseded during reco load
+    if (explore.length) renderExplore(explore)
 
     const showTeaser = teaserItems.length > 0 && planInfo && planInfo.item_total > FREE_ITEM_LIMIT
     if (showTeaser) renderFreeTeaser(teaserItems, extraCount, colCount)
 
     // Cache the fully-resolved view so a resize can re-lay-out from it without
     // re-querying or re-shuffling. Order is preserved exactly as rendered.
-    _lastView = { visibleItems, recoExtra, isFree, teaserItems, extraCount, showTeaser }
+    _lastView = { visibleItems, explore, isFree, teaserItems, extraCount, showTeaser }
   } catch (err) {
     console.error('[grid] reload failed:', err)
   }
@@ -644,11 +658,11 @@ async function reload() {
 function relayout() {
   if (!_lastView) { reload(); return }
   const colCount = calcColCount()
-  const { visibleItems, recoExtra, isFree, teaserItems, extraCount, showTeaser } = _lastView
+  const { visibleItems, explore, isFree, teaserItems, extraCount, showTeaser } = _lastView
   _animateCards = false
   try {
     render(visibleItems, colCount, isFree)
-    if (recoExtra.length) renderReco(recoExtra, visibleItems)
+    if (explore.length) renderExplore(explore)
     if (showTeaser) renderFreeTeaser(teaserItems, extraCount, colCount)
   } finally {
     _animateCards = true
@@ -660,11 +674,13 @@ function relayout() {
 function _lastViewRemove(id) {
   if (!_lastView) return
   _lastView.visibleItems = _lastView.visibleItems.filter(i => i.id !== id)
-  _lastView.recoExtra    = _lastView.recoExtra.filter(i => i.id !== id)
+  _lastView.explore = _lastView.explore
+    .map(s => s.pivot?.id === id ? null : { ...s, items: s.items.filter(i => i.id !== id) })
+    .filter(s => s && s.items.length)
 }
 function _lastViewPatch(insp) {
   if (!_lastView) return
-  for (const arr of [_lastView.visibleItems, _lastView.recoExtra]) {
+  for (const arr of [_lastView.visibleItems, ..._lastView.explore.map(s => s.items)]) {
     const i = arr.findIndex(x => x.id === insp.id)
     if (i !== -1) arr[i] = { ...arr[i], ...insp }
   }
@@ -1264,51 +1280,175 @@ function videoSrc(item) {
   return IS_TAURI ? convertFileSrc(item.stored_path) : item.stored_path
 }
 
-// ─── Recommendation shelves ──────────────────────────────────────
+// ─── "More to explore" band ──────────────────────────────────────
+// A compact strip above the qootify feed: one tab per shelf from reco.rs
+// ("Because you opened …" / "Forgotten gems"), a horizontally scrolling row of cards
+// and a collapse toggle. Rebuilt on every reload/relayout from the cached sections;
+// the active tab survives a relayout, the collapsed state survives restarts.
+const EXPLORE_COLLAPSED_KEY = 'qooti.explore.collapsed'
+let _exploreTab = 0
 
-async function loadRecommendations(allItems, gen = _reloadGen) {
+function exploreCollapsed() {
+  try { return localStorage.getItem(EXPLORE_COLLAPSED_KEY) === '1' } catch { return false }
+}
+function setExploreCollapsed(v) {
+  try { localStorage.setItem(EXPLORE_COLLAPSED_KEY, v ? '1' : '0') } catch {}
+}
+
+function renderExplore(sections) {
   const scrollEl = container?.querySelector('#grid-scroll')
-  if (!scrollEl) return []
+  if (!scrollEl || !sections.length) return
+  scrollEl.querySelector('.explore')?.remove()
+  if (_exploreTab >= sections.length) _exploreTab = 0
 
-  scrollEl.querySelectorAll('.reco-grid').forEach(s => s.remove())
+  const band = document.createElement('section')
+  band.className = 'explore'
+  band.classList.toggle('is-collapsed', exploreCollapsed())
 
-  try {
-    const [rediscover, becauseYou, haventSeen] = await Promise.all([
-      api.listRediscover(20),
-      api.listBecauseYouViewed(20),
-      api.listHaventSeen(20),
-    ])
+  const head = document.createElement('div')
+  head.className = 'explore-head'
 
-    if (gen !== _reloadGen) return []  // superseded while awaiting reco APIs
-
-    // Merge all three lists, skip anything already visible in the main grid
-    const seen = new Set(allItems.map(i => i.id))
-    const extra = []
-    for (const item of [...rediscover, ...becauseYou, ...haventSeen]) {
-      if (!seen.has(item.id)) { seen.add(item.id); extra.push(item) }
-    }
-    if (!extra.length) return []
-
-    renderReco(extra, allItems)
-    return extra
-  } catch (err) {
-    console.error('[grid] loadRecommendations failed:', err)
-    return []
+  const toggle = document.createElement('button')
+  toggle.className = 'explore-toggle'
+  toggle.innerHTML = `${I('sparkle', 14)}<span class="explore-title">${t('explore.title')}</span><span class="explore-caret">${I('caret-down', 14)}</span>`
+  const syncToggle = () => {
+    const collapsed = band.classList.contains('is-collapsed')
+    toggle.setAttribute('aria-expanded', String(!collapsed))
+    toggle.title = collapsed ? t('explore.expand') : t('explore.collapse')
   }
+  toggle.addEventListener('click', () => {
+    band.classList.toggle('is-collapsed')
+    setExploreCollapsed(band.classList.contains('is-collapsed'))
+    syncToggle()
+    updateNav()
+  })
+
+  const tabs = document.createElement('div')
+  tabs.className = 'explore-tabs'
+  tabs.setAttribute('role', 'tablist')
+
+  const actions = document.createElement('div')
+  actions.className = 'explore-actions'
+  const seeAll = document.createElement('button')
+  seeAll.className = 'explore-see-all'
+  seeAll.innerHTML = `<span class="label">${t('explore.see_all')}</span>${I('arrow-right', 14)}`
+  seeAll.title = t('explore.see_all')
+  const prevBtn = document.createElement('button')
+  prevBtn.className = 'shelf-nav-btn'
+  prevBtn.title = t('grid.scroll_left')
+  prevBtn.innerHTML = I('caret-left', 14)
+  const nextBtn = document.createElement('button')
+  nextBtn.className = 'shelf-nav-btn'
+  nextBtn.title = t('grid.scroll_right')
+  nextBtn.innerHTML = I('caret-right', 14)
+  actions.append(seeAll, prevBtn, nextBtn)
+
+  head.append(toggle, tabs, actions)
+
+  const track = document.createElement('div')
+  track.className = 'explore-track'
+  track.setAttribute('role', 'tabpanel')
+
+  function updateNav() {
+    prevBtn.disabled = track.scrollLeft <= 0
+    nextBtn.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1
+  }
+
+  function show(k) {
+    _exploreTab = k
+    const sec = sections[k]
+    tabs.querySelectorAll('.explore-tab').forEach((b, j) => {
+      b.classList.toggle('active', j === k)
+      b.setAttribute('aria-selected', String(j === k))
+    })
+    seeAll.hidden = !(sec.kind === 'because' && sec.pivot)
+    track.innerHTML = ''
+    sec.items.forEach((item, i) => track.appendChild(makeExploreCard(item, sec.items, i)))
+    track.scrollLeft = 0
+    requestAnimationFrame(updateNav)
+  }
+
+  sections.forEach((sec, k) => {
+    const tab = document.createElement('button')
+    tab.className = 'explore-tab'
+    tab.setAttribute('role', 'tab')
+    if (sec.kind === 'because' && sec.pivot) {
+      const thumb = document.createElement('img')
+      thumb.className = 'explore-tab-thumb'
+      thumb.src = itemSrc(sec.pivot)
+      thumb.alt = ''
+      thumb.draggable = false
+      const label = document.createElement('span')
+      label.textContent = t('explore.because')
+      tab.append(thumb, label)
+      tab.title = displayTitle(sec.pivot) || t('explore.because')
+    } else {
+      tab.innerHTML = `${I('clock-counter-clockwise', 14)}<span>${t('explore.forgotten')}</span>`
+    }
+    tab.addEventListener('click', () => { if (_exploreTab !== k) show(k) })
+    tabs.appendChild(tab)
+  })
+
+  seeAll.addEventListener('click', () => {
+    const sec = sections[_exploreTab]
+    if (!sec?.pivot) return
+    const rect = tabs.querySelectorAll('.explore-tab')[_exploreTab]?.querySelector('img')?.getBoundingClientRect()
+    openSimilarCanvas(sec.pivot, rect, { onOpen: it => openDetail(it) })
+  })
+
+  const STEP = () => Math.max(240, track.clientWidth * 0.8)
+  prevBtn.addEventListener('click', () => track.scrollBy({ left: -STEP(), behavior: 'smooth' }))
+  nextBtn.addEventListener('click', () => track.scrollBy({ left:  STEP(), behavior: 'smooth' }))
+  track.addEventListener('scroll', updateNav, { passive: true })
+
+  band.append(head, track)
+  scrollEl.prepend(band)
+  syncToggle()
+  show(_exploreTab)
 }
 
-// Build and append the recommendation grid from an already-resolved `extra`
-// list. Split out of loadRecommendations so relayout() can re-render reco cards
-// on resize without re-fetching. Respects the _animateCards flag.
-function renderReco(extra, allItems) {
-  // Continue the SAME masonry columns with the reco items → one continuous
-  // waterfall, so there's no empty band between the main grid and the reco
-  // (card indices continue after allItems so card-detail nav covers reco too).
-  if (!_masonryState || !extra.length) return
-  fillMasonryCols(_masonryState, extra, allItems.length)
-  renderedItems = [...allItems, ...extra]
-}
+function makeExploreCard(item, list, idx) {
+  const card = document.createElement('button')
+  card.className = 'explore-card'
+  card.dataset.id = item.id
+  card.dataset.type = item.type
+  // Fixed row height; width follows the item's shape (clamped so panoramas and tall
+  // phone shots don't dominate the row).
+  const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
+  card.style.setProperty('--ar', String(Math.min(1.9, Math.max(0.56, ar))))
+  card.title = displayTitle(item) || ''
 
+  if (item.type === 'video' && !item.thumbnail_path) {
+    const vid = document.createElement('video')
+    vid.src = `${videoSrc(item)}#t=1`
+    vid.muted = true
+    vid.preload = 'metadata'
+    vid.playsInline = true
+    card.appendChild(vid)
+  } else {
+    const img = document.createElement('img')
+    img.loading = 'lazy'
+    img.decoding = 'async'
+    img.draggable = false
+    img.alt = item.title ?? ''
+    img.src = itemSrc(item)
+    img.addEventListener('load',  () => img.classList.add('loaded'), { once: true })
+    img.addEventListener('error', () => img.classList.add('loaded'), { once: true })
+    card.appendChild(img)
+  }
+  if (item.type === 'video' && item.duration_secs != null) {
+    const badge = document.createElement('span')
+    badge.className = 'card-duration'
+    badge.textContent = formatDuration(item.duration_secs)
+    card.appendChild(badge)
+  }
+  if (_animateCards) {
+    card.classList.add('deal-in')
+    card.style.animationDelay = `${Math.min(idx, 12) * 22}ms`
+  }
+  card.addEventListener('click', () => openDetail(item, list, idx))
+  return card
+}
 
 // ─── Video thumbnail generation (one-time per item) ──────────────
 // Generates a JPEG from the video frame at 10% duration using an off-screen
@@ -1730,6 +1870,12 @@ function removeCard(id) {
 
   // Remove from short-form shelves (shelf cards don't participate in cascade)
   scrollEl.querySelectorAll(`.short-form-shelf [data-id="${id}"]`).forEach(el => el.remove())
+  // …and from the "More to explore" band (re-rendered, so tabs/empty shelves stay right)
+  if (scrollEl.querySelector(`.explore [data-id="${id}"]`)) {
+    _lastViewRemove(id)
+    scrollEl.querySelector('.explore')?.remove()
+    if (_lastView?.explore.length) renderExplore(_lastView.explore)
+  }
 
   // Find and remove the card from whichever grid segment holds it
   let fromIdx = -1

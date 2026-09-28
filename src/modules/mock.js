@@ -253,6 +253,17 @@ export const mockApi = {
   listRediscover:                ()   => Promise.resolve([]),
   listBecauseYouViewed:          ()   => Promise.resolve([]),
   listHaventSeen:                ()   => Promise.resolve([]),
+  tasteOrder:                    ids  => Promise.resolve(ids),
+  // One "because you opened" shelf and one "forgotten gems" shelf from the mock library.
+  moreToExplore: ids => {
+    const pool = ids.map(id => _inspirations.find(i => i.id === id)).filter(Boolean)
+    if (pool.length < 8) return Promise.resolve([])
+    const [pivot, ...rest] = pool
+    return Promise.resolve([
+      { kind: 'because',   pivot, items: rest.slice(0, 12) },
+      { kind: 'forgotten', pivot: null, items: rest.slice(12, 24) },
+    ].filter(s => s.items.length >= 3))
+  },
   checkUrlExists:                _url => Promise.resolve(null),
   openUrl:                       _url => Promise.resolve(),
 

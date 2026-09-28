@@ -198,6 +198,9 @@ const tauriApi = {
   listRediscover:               (limit = 20) => _invoke('list_rediscover', { limit }),
   listBecauseYouViewed:         (limit = 20) => _invoke('list_because_you_viewed', { limit }),
   listHaventSeen:               (limit = 20) => _invoke('list_havent_seen', { limit }),
+  // Taste-aware home feed order + "More to explore" shelves (reco.rs), both over the given ids.
+  tasteOrder:                   ids  => _invoke('taste_order', { ids }),
+  moreToExplore:                ids  => _invoke('more_to_explore', { ids }),
 
   checkUrlExists: url => _invoke('check_url_exists', { url }),
   saveThumbnail:  (id, bytes) => _invoke('save_thumbnail', { id, bytes }),

@@ -6,6 +6,7 @@ pub mod commands;
 pub mod pot_provider;
 pub mod js_runtime;
 pub mod clip;
+pub mod reco;
 pub mod enhancer;
 pub mod db;
 pub mod logger;
@@ -340,6 +341,8 @@ pub fn run() {
             enhancer::delete_enhanced,
             commands::mark_not_duplicates,
             commands::find_similar,
+            reco::taste_order,
+            reco::more_to_explore,
             commands::finalize_download,
             commands::cancel_download,
             commands::list_tag_vocab,
