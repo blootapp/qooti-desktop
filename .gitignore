@@ -51,3 +51,7 @@ worker/
 MD/
 Sample/
 design/
+
+# bloot apps bundled into the build — fetched by scripts/fetch-bloot-apps.mjs
+src-tauri/bloot-apps/
+src-tauri/windows/bloot-apps-version.nsh

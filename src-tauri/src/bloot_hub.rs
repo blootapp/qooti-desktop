@@ -186,10 +186,67 @@ fn open_link(url: &str) -> Result<(), String> {
 
 // ── commands ─────────────────────────────────────────────────────────────────
 
+// ── bloot apps inside qooti (macOS) ──────────────────────────────────────────
+// A DMG install can't run an installer, so qooti carries "bloot apps.app" in its
+// resources (scripts/fetch-bloot-apps.mjs) and puts it into Applications on launch
+// when it's missing or older (§13.2). Windows: qooti's installer does it (nsis-hooks.nsh).
+
+#[cfg(target_os = "macos")]
+fn bundle_version(app: &std::path::Path) -> String {
+    std::process::Command::new("plutil")
+        .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+        .arg(app.join("Contents/Info.plist"))
+        .output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn newer(a: &str, b: &str) -> bool {
+    let parse = |s: &str| s.split(['.', '-']).map(|x| x.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    parse(a) > parse(b)
+}
+
+#[cfg(target_os = "macos")]
+fn install_bundled_hub(app: &AppHandle) {
+    let Ok(res) = app.path().resource_dir() else { return };
+    let bundled = res.join("bloot-apps").join("bloot apps.app");
+    if !bundled.exists() { return; }
+    let installed = hub_exe();
+    if let Some(i) = &installed {
+        if !newer(&bundle_version(&bundled), &bundle_version(i)) { return; }
+    }
+    // Where it already is (an update), else /Applications, else ~/Applications.
+    let mut dirs = vec![PathBuf::from("/Applications"), home().join("Applications")];
+    if let Some(dir) = installed.as_ref().and_then(|i| i.parent()) {
+        dirs.retain(|d| d != dir);
+        dirs.insert(0, dir.to_path_buf());
+    }
+    for dir in dirs {
+        let _ = std::fs::create_dir_all(&dir);
+        let dest = dir.join("bloot apps.app");
+        let fresh = dir.join(".bloot apps.app.qooti-new");
+        let old = dir.join(".bloot apps.app.qooti-old");
+        let _ = std::fs::remove_dir_all(&fresh);
+        // --noqtn: qooti.app carries the "downloaded" mark from its DMG; bloot apps,
+        // started by qooti, must not inherit it.
+        let copied = std::process::Command::new("ditto").arg("--noqtn").arg(&bundled).arg(&fresh)
+            .status().map(|s| s.success()).unwrap_or(false);
+        if !copied { let _ = std::fs::remove_dir_all(&fresh); continue; }
+        let _ = std::fs::remove_dir_all(&old);
+        if dest.exists() && std::fs::rename(&dest, &old).is_err() { let _ = std::fs::remove_dir_all(&fresh); return; }
+        if std::fs::rename(&fresh, &dest).is_err() { let _ = std::fs::rename(&old, &dest); let _ = std::fs::remove_dir_all(&fresh); return; }
+        let _ = std::fs::remove_dir_all(&old);
+        log::info!(target: "bloot-apps", "installed bloot apps {} into {}", bundle_version(&dest), dir.display());
+        return;
+    }
+}
+
 /// Once per launch: share qooti's device id with bloot apps if it has none yet, so this
-/// computer keeps counting as one device (§16), and start bloot apps if it isn't running.
+/// computer keeps counting as one device (§16); on macOS put the bundled bloot apps into
+/// Applications if needed; then start bloot apps if it isn't running.
 #[tauri::command]
-pub fn hub_prepare(state: State<AppState>) {
+pub fn hub_prepare(app: AppHandle, state: State<AppState>) {
     let device = shared("device.json");
     if !device.exists() {
         if let Ok(id) = commands::get_device_id(state) {
@@ -201,7 +258,13 @@ pub fn hub_prepare(state: State<AppState>) {
             }
         }
     }
-    std::thread::spawn(|| { if !hub_running() { start_hub_in_background(); } });
+    std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        install_bundled_hub(&app);
+        #[cfg(not(target_os = "macos"))]
+        let _ = &app;
+        if !hub_running() { start_hub_in_background(); }
+    });
 }
 
 #[tauri::command]
