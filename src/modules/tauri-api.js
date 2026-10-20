@@ -165,6 +165,12 @@ const tauriApi = {
   clearLicenseCache:  () => _invoke('clear_license_cache'),
   updateLicensePlan:  planType => _invoke('update_license_plan', { planType }),
   touchLicenseValidated: () => _invoke('touch_license_validated'),
+
+  // bloot apps: the account (bloot_hub.rs)
+  hubPrepare: ()     => _invoke('hub_prepare'),
+  hubAccount: ()     => _invoke('hub_account'),
+  hubOpen:    screen => _invoke('hub_open', { screen }),
+  hubRefresh: ()     => _invoke('hub_refresh'),
   listMilestones:  () => _invoke('list_milestones'),
 
   getNotifications:      ()  => _invoke('get_notifications'),

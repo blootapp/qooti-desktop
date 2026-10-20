@@ -87,4 +87,5 @@ export const EXT_SAVE_QUEUED = 'ext:save-queued' // { queued_count, used, limit 
 // ─── System ──────────────────────────────────────────────────────
 export const SYSTEM_TOAST    = 'system:toast'    // { type: 'info'|'warning'|'error', message: string, duration?: number }
 export const UPDATE_AVAILABLE = 'update:available' // { version: string, notes: string }
-export const SESSION_EXPIRED = 'session:expired'  // user deleted on server — must re-login
+export const SESSION_EXPIRED = 'session:expired'  // bloot apps signed out (or the ticket ran out) — sign-in screen
+export const HUB_SIGNED_IN   = 'session:hub-signed-in'  // bloot apps is signed in — leave the sign-in screen
