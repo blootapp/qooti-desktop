@@ -13,6 +13,7 @@ pub fn init(app: &AppHandle) -> Result<Connection> {
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
 
     migrate(&conn)?;
+    repair_ocr_text(&conn);
 
     // Reset any items that were mid-processing when the app last exited.
     let _ = conn.execute_batch(
@@ -47,6 +48,27 @@ fn migrate(conn: &Connection) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// OCR text saved by builds whose dict.txt had CRLF endings carries a CR after every
+/// character ("c<CR>u<CR>r..."), so text-in-image search never matched those items.
+/// Strip it on every start: cheap (only rows still containing a CR are touched), needs
+/// no schema bump (so it can't collide with other migrations), and the FTS update
+/// trigger re-indexes each repaired row. Returns how many rows were fixed.
+fn repair_ocr_text(conn: &Connection) -> usize {
+    match conn.execute(
+        "UPDATE inspirations SET ocr_text = REPLACE(ocr_text, char(13), '') WHERE instr(ocr_text, char(13)) > 0",
+        [],
+    ) {
+        Ok(n) => {
+            if n > 0 { log::info!(target: "DB", "repaired OCR text of {n} items (stray CRs)"); }
+            n
+        }
+        Err(e) => {
+            log::warn!(target: "DB", "OCR text repair failed: {e}");
+            0
+        }
+    }
 }
 
 fn create_schema(conn: &Connection) -> Result<()> {
@@ -367,3 +389,62 @@ CREATE TABLE IF NOT EXISTS ext_download_queue (
     queued_at       INTEGER NOT NULL
 );
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// OCR text saved with a CR after every character (CRLF dict.txt) becomes
+    /// searchable by whole words once repaired on start.
+    #[test]
+    fn repair_strips_crs_from_ocr_text_and_reindexes() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let polluted: String = "curious travel".chars().map(|c| format!("{c}\r")).collect();
+        conn.execute(
+            "INSERT INTO inspirations (id, type, stored_path, ocr_text, created_at, updated_at) VALUES ('a', 'image', 'x.jpg', ?1, 0, 0)",
+            params![polluted],
+        ).unwrap();
+        let hits = |w: &str| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM inspirations_fts WHERE inspirations_fts MATCH ?1",
+                params![format!("\"{w}\"*")],
+                |r| r.get(0),
+            ).unwrap()
+        };
+        assert_eq!(hits("curious"), 0, "the bug: words aren't found");
+
+        assert_eq!(repair_ocr_text(&conn), 1);
+        assert_eq!(repair_ocr_text(&conn), 0, "nothing left to fix on the next start");
+
+        let text: String = conn.query_row("SELECT ocr_text FROM inspirations WHERE id = 'a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(text, "curious travel");
+        assert_eq!(hits("curious"), 1);
+        assert_eq!(hits("travel"), 1);
+    }
+}
+
+#[cfg(test)]
+mod real_library {
+    /// The start-up OCR repair on a COPY of a real library (never the live file):
+    /// QOOTI_DB_COPY=<copy of qooti.db> cargo test real_library_upgrade -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn real_library_upgrade() {
+        let conn = rusqlite::Connection::open(std::env::var("QOOTI_DB_COPY").unwrap()).unwrap();
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        let words = ["curious", "travel", "cherry", "clarity", "attention"];
+        let hits = |w: &str| -> i64 {
+            conn.query_row("SELECT COUNT(*) FROM inspirations_fts WHERE inspirations_fts MATCH ?1",
+                rusqlite::params![format!("\"{w}\"*")], |r| r.get(0)).unwrap()
+        };
+        println!("before: {} items with CRs; hits {:?}", count("SELECT COUNT(*) FROM inspirations WHERE instr(ocr_text, char(13)) > 0"),
+            words.iter().map(|w| (w, hits(w))).collect::<Vec<_>>());
+        super::migrate(&conn).unwrap();
+        println!("repaired {} items", super::repair_ocr_text(&conn));
+        println!("after:  {} items with CRs; hits {:?}; schema {}", count("SELECT COUNT(*) FROM inspirations WHERE instr(ocr_text, char(13)) > 0"),
+            words.iter().map(|w| (w, hits(w))).collect::<Vec<_>>(),
+            conn.query_row("SELECT value FROM schema_meta WHERE key='version'", [], |r| r.get::<_, String>(0)).unwrap());
+        assert_eq!(count("SELECT COUNT(*) FROM inspirations WHERE instr(ocr_text, char(13)) > 0"), 0);
+    }
+}
