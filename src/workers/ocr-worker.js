@@ -65,7 +65,9 @@ self.onmessage = async ({ data }) => {
     const ocr     = await ensureOcr()
     const dataUrl = `data:${mimeType};base64,${base64}`
     const lines   = await ocr.detect(dataUrl)          // [{ text, score, frame }]
-    const text    = lines.map(l => l.text).join('\n').trim()
+    // Strip stray CRs: a CRLF copy of dict.txt makes every character "<char>\r",
+    // which breaks search (see .gitattributes). Belt and braces for old checkouts.
+    const text    = lines.map(l => l.text.replace(/\r/g, '')).join('\n').trim()
     self.postMessage({ type: 'result', reqId, text, language: detectLanguage(text) })
   } catch (err) {
     self.postMessage({ type: 'error', reqId, message: err?.message ?? String(err) })

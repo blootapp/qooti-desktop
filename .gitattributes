@@ -1,0 +1,7 @@
+# The OCR character dictionary is split on "\n" by @gutenye/ocr-common. A CRLF
+# checkout (core.autocrlf=true on Windows) turns every entry into "<char>\r", so all
+# recognised text gets a \r after each character and text-in-image search finds
+# nothing. Always check it out with LF endings.
+public/models/ocr/dict.txt text eol=lf
+# Models are binary.
+*.onnx binary
