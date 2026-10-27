@@ -269,6 +269,17 @@ export const mockApi = {
   checkUrlExists:                _url => Promise.resolve(null),
   openUrl:                       _url => Promise.resolve(),
 
+  listBoards:            ()   => Promise.resolve([]),
+  createBoard:           name => Promise.resolve({ id: `board-${Date.now()}`, name: name || 'Untitled board', doc: '{}', created_at: Date.now(), updated_at: Date.now(), thumb: null, element_count: 0 }),
+  renameBoard:           ()   => Promise.resolve(),
+  deleteBoard:           ()   => Promise.resolve(),
+  getBoard:              id   => Promise.resolve({ id, name: 'Untitled board', doc: '{}', created_at: Date.now(), updated_at: Date.now(), assets_dir: '' }),
+  saveBoard:             ()   => Promise.resolve(),
+  addBoardAssetFromPath: ()   => Promise.resolve({ asset: 'mock.png', abs: '/mock/mock.png' }),
+  addBoardAssetFromData: ()   => Promise.resolve({ asset: 'mock.png', abs: '/mock/mock.png' }),
+  exportBoard:           ()   => Promise.resolve(),
+  importBoard:           ()   => Promise.resolve({ id: `board-${Date.now()}`, name: 'Imported board', created_at: Date.now(), updated_at: Date.now(), thumb: null, element_count: 0 }),
+
   getVaultInfo:    () => Promise.resolve({
     path: 'C:\\Users\\Dev\\AppData\\Roaming\\qooti\\vault',
     default_path: 'C:\\Users\\Dev\\AppData\\Roaming\\qooti\\vault',

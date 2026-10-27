@@ -8,6 +8,7 @@ import { initTauriApi, initDownloadListeners, api } from './modules/tauri-api.js
 import { initI18n, t } from './modules/i18n.js'
 import { init as initGrid } from './modules/grid.js'
 import { init as initCollections } from './modules/collections.js'
+import { init as initBoards } from './modules/boards.js'
 import { init as initTags } from './modules/tags.js'
 import { init as initSearch } from './modules/search.js'
 import { init as initSettings, showTab, applyVisualSettings, syncAccountIfStale } from './modules/settings.js'
@@ -42,6 +43,8 @@ window.__progressRing = { startTask }
 const PRIMARY_NAV = [
   { view: 'grid',        icon: 'house',            labelKey: 'nav.home' },
   { view: 'collections', icon: 'folder',           labelKey: 'nav.collections' },
+  // Boards is intentionally hidden from the drawer — reachable only via the
+  // secret search-bar command `blt_boards` (see developer.js → runDevCommand).
 ]
 
 const SECONDARY_NAV = [
@@ -90,6 +93,13 @@ function setupTopBar(settings) {
   importBtn.appendChild(makeIcon('plus', 18))
   importBtn.title = 'Import'
   importBtn.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
+
+  // Quick access to Collections from the top bar
+  const collectionsBtn = document.getElementById('top-bar-collections-btn')
+  if (collectionsBtn) {
+    collectionsBtn.appendChild(makeIcon('folders', 18))
+    collectionsBtn.addEventListener('click', () => navigate('collections'))
+  }
 
   // Download indicator icon (SVG injected here so it picks up currentColor)
   const dlIndicatorIcon = document.querySelector('.dl-indicator-icon')
@@ -554,6 +564,7 @@ async function boot() {
     initCardDetail()
     initGrid(document.getElementById('view-grid'), settings)
     initCollections(document.getElementById('view-collections'), settings)
+    initBoards(document.getElementById('view-boards'), settings)
     initTags()
     initSearch(document.getElementById('view-search'), settings)
     initNotifications(document.getElementById('view-notifications'))

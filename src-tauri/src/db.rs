@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use tauri::{AppHandle, Manager};
 
-const SCHEMA_VERSION: i64 = 34;
+const SCHEMA_VERSION: i64 = 35;
 
 pub fn init(app: &AppHandle) -> Result<Connection> {
     let data_dir = app.path().app_data_dir()?;
@@ -248,6 +248,19 @@ CREATE TABLE IF NOT EXISTS collection_items (
 -- inspiration_id used by the collection_names correlated subquery in
 -- list_inspirations / get_inspiration (runs once per returned row).
 CREATE INDEX IF NOT EXISTS idx_ci_inspiration ON collection_items(inspiration_id);
+
+-- Boards (v35): Miro/Milanote-style storyboards. The whole board is one JSON
+-- document (`doc`); `thumb` is a relative asset filename for the list-card cover
+-- and `element_count` is denormalised so the list view never parses `doc`.
+CREATE TABLE IF NOT EXISTS boards (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    doc           TEXT NOT NULL DEFAULT '{}',
+    thumb         TEXT,
+    element_count INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS tags (
     id         TEXT PRIMARY KEY,

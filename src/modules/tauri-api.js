@@ -150,6 +150,17 @@ const tauriApi = {
   addToCollection:                 (collectionId, inspirationId) => _invoke('add_to_collection', { collectionId, inspirationId }),
   removeFromCollection:            (collectionId, inspirationId) => _invoke('remove_from_collection', { collectionId, inspirationId }),
 
+  listBoards:            ()                          => _invoke('list_boards'),
+  createBoard:           name                        => _invoke('create_board', { name }),
+  renameBoard:           (id, name)                  => _invoke('rename_board', { id, name }),
+  deleteBoard:           id                          => _invoke('delete_board', { id }),
+  getBoard:              id                          => _invoke('get_board', { id }),
+  saveBoard:             (id, doc, thumb, elementCount) => _invoke('save_board', { id, doc, thumb: thumb ?? null, elementCount }),
+  addBoardAssetFromPath: (boardId, srcPath)          => _invoke('add_board_asset_from_path', { boardId, srcPath }),
+  addBoardAssetFromData: (boardId, bytes, ext)       => _invoke('add_board_asset_from_data', { boardId, bytes: Array.from(bytes), ext }),
+  exportBoard:           (id, savePath)              => _invoke('export_board', { id, savePath }),
+  importBoard:           srcPath                     => _invoke('import_board', { srcPath }),
+
   listTags:               ()                      => _invoke('list_tags'),
   getTagsForInspiration:  id                      => _invoke('get_tags_for_inspiration', { inspirationId: id }),
   createTag:              (name, source)           => _invoke('create_tag', { name, source: source ?? null }),

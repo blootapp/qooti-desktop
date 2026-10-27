@@ -492,6 +492,13 @@ export async function runDevCommand(cmd) {
     return true
   }
 
+  // Boards (storyboarding) — hidden from the nav drawer; reachable only via this command.
+  if (cmd === 'blt_boards') {
+    clear()
+    store.emit(events.NAVIGATE, { view: 'boards' })
+    return true
+  }
+
   // Dev preview: fake an available update so the update bar (grid.js →
   // renderUpdateBar) renders under the tag pills, without a real release.
   if (cmd === 'blt_update') {

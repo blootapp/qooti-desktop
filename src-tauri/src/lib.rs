@@ -18,6 +18,7 @@ pub mod local_stats_server;
 pub mod updater;
 pub mod pack;
 pub mod palette;
+pub mod boards;
 
 pub struct ExtProgress {
     pub pct:            f64,
@@ -355,6 +356,16 @@ pub fn run() {
             reco::more_to_explore,
             diagnostics::diagnostics_snapshot,
             diagnostics::log_frontend,
+            boards::list_boards,
+            boards::create_board,
+            boards::rename_board,
+            boards::delete_board,
+            boards::get_board,
+            boards::save_board,
+            boards::add_board_asset_from_path,
+            boards::add_board_asset_from_data,
+            boards::export_board,
+            boards::import_board,
             commands::finalize_download,
             commands::cancel_download,
             commands::list_tag_vocab,
