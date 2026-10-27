@@ -5,6 +5,7 @@ import { t as tr, setLang } from './i18n.js'
 import { openImageCropper } from './image-cropper.js'
 import { sfx } from './sfx.js'
 import { getLocalVocabVersion, getLatestVocabVersion, checkForVocabUpdate, forceSyncTagVocab } from './tag-sync.js'
+import { openHub } from './licensing.js'
 
 let container = null
 let settings = {}
@@ -147,7 +148,14 @@ async function render() {
               </div>
               <div class="settings-row-control" style="gap:8px">
                 <span class="settings-row-value" id="s-displayname-val">${escHtml(settings.display_name ?? '—')}</span>
-                <button class="settings-save-btn" id="s-displayname-edit">${tr('settings.edit')}</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <span class="settings-row-name">${tr('settings.bloot_id')}</span>
+              </div>
+              <div class="settings-row-control" style="gap:8px">
+                <span class="settings-row-value" style="font-family:var(--font-mono, ui-monospace, monospace);letter-spacing:0.02em">${escHtml(settings.bloot_id)}</span>
               </div>
             </div>
             <div class="settings-row">
@@ -166,7 +174,7 @@ async function render() {
                 <span class="settings-row-sub">${tr('settings.not_signed_in.sub')}</span>
               </div>
               <div class="settings-row-control">
-                <button class="settings-save-btn" id="s-account-signin">${tr('settings.signin')}</button>
+                <button class="settings-save-btn" id="s-account-signin">${tr('onboarding.hub.continue')}</button>
               </div>
             </div>
           `}
@@ -569,20 +577,9 @@ async function render() {
   })
 
   // ── General tab bindings ──────────────────────────────────────
-  container.querySelector('#s-account-signin')?.addEventListener('click', () => {
-    openExternal('https://account.bloot.app/login/')
-  })
-
-  container.querySelector('#s-displayname-edit')?.addEventListener('click', () => {
-    openExternal('https://account.bloot.app')
-  })
-
-  container.querySelector('#s-upgrade-btn')?.addEventListener('click', () => {
-    openExternal('https://account.bloot.app/')
-  })
-  container.querySelector('#s-manage-btn')?.addEventListener('click', () => {
-    openExternal('https://account.bloot.app/')
-  })
+  // Account lives in bloot apps: sign-in, name, plan and sign-out are all managed there.
+  container.querySelector('#s-account-signin')?.addEventListener('click', () => openHub('signin'))
+  container.querySelector('#s-hub-manage')?.addEventListener('click', () => openHub('account'))
 
   bindPlanRefreshBtn()
 
@@ -979,41 +976,6 @@ function showVaultMigrationOverlay(newPath, migrate) {
   })
 }
 
-// ── Account sync (called from main.js boot, throttled to once per 5 days) ───
-const ACCOUNT_SYNC_INTERVAL = 5 * 24 * 60 * 60 * 1000
-
-export async function syncAccountIfStale(s = settings) {
-  const blootId = s.bloot_id
-  if (!blootId) return
-
-  const lastSync = parseInt(s.last_account_sync_at, 10) || 0
-  if (Date.now() - lastSync < ACCOUNT_SYNC_INTERVAL) return
-
-  try {
-    const res = await fetch(`https://api.bloot.app/public/user/${encodeURIComponent(blootId)}`)
-    if (!res.ok) return
-    const data = await res.json()
-
-    // Stamp first so we don't retry on network errors until the next 5-day window
-    await setSetting('last_account_sync_at', String(Date.now()))
-    if (data.display_name && data.display_name !== s.display_name) {
-      await setSetting('display_name', data.display_name)
-    }
-    if (data.plan && data.plan !== s.plan) {
-      await setSetting('plan', data.plan)
-    }
-  } catch {}
-}
-
-async function openExternal(url) {
-  if ('__TAURI_INTERNALS__' in window) {
-    const { open } = await import('@tauri-apps/plugin-shell')
-    await open(url)
-  } else {
-    window.open(url, '_blank', 'noopener')
-  }
-}
-
 function bindPlanRefreshBtn() {
   const btn = container?.querySelector('#s-plan-refresh')
   if (!btn) return
@@ -1048,18 +1010,16 @@ function bindPlanRefreshBtn() {
 
 function updatePlanBadgeLive(plan) {
   if (!container) return
-  const ctrl = (container.querySelector('#s-upgrade-btn') ?? container.querySelector('#s-manage-btn') ?? container.querySelector('#s-plan-refresh') ?? container.querySelector('.s-plan-badge'))?.closest('.settings-row-control')
+  const ctrl = (container.querySelector('#s-hub-manage') ?? container.querySelector('#s-plan-refresh') ?? container.querySelector('.s-plan-badge'))?.closest('.settings-row-control')
   if (!ctrl) return
   ctrl.innerHTML = buildPlanBadge(plan) + buildPlanAction(plan)
-  ctrl.querySelector('#s-upgrade-btn')?.addEventListener('click', () => openExternal('https://account.bloot.app/'))
-  ctrl.querySelector('#s-manage-btn')?.addEventListener('click', () => openExternal('https://account.bloot.app/'))
+  ctrl.querySelector('#s-hub-manage')?.addEventListener('click', () => openHub('account'))
   bindPlanRefreshBtn()
 }
 
 function buildPlanBadge(plan) {
   if (!plan || plan === 'free') return `<span class="s-plan-badge s-plan-free">${tr('plan.free')}</span>`
-  if (plan === 'pro_yearly')   return `<span class="s-plan-badge s-plan-pro">${tr('plan.pro_yearly')}</span>`
-  return `<span class="s-plan-badge s-plan-pro">${tr('plan.pro_monthly')}</span>`
+  return `<span class="s-plan-badge s-plan-pro">${tr('plan.pro')}</span>`
 }
 
 function buildPlanAction(plan) {
@@ -1067,10 +1027,7 @@ function buildPlanAction(plan) {
   const refreshDisabled = cooldownLeft > 0 ? 'disabled' : ''
   const refreshBtn = `<button class="settings-save-btn" id="s-plan-refresh" ${refreshDisabled} title="Check subscription status">↻</button>`
 
-  if (!plan || plan === 'free') {
-    return `<button class="settings-save-btn s-upgrade-btn" id="s-upgrade-btn">${tr('plan.upgrade')}</button>${refreshBtn}`
-  }
-  return `<button class="settings-save-btn" id="s-manage-btn">${tr('plan.manage')}</button>${refreshBtn}`
+  return `<button class="settings-save-btn" id="s-hub-manage">${tr('settings.account.manage')}</button>${refreshBtn}`
 }
 
 function buildConnectionPill(ts) {

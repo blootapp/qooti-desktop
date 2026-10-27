@@ -77,6 +77,11 @@ jobs:
           chmod +x src-tauri/binaries/* || true
           ls -la src-tauri/binaries/
 
+      # qooti's account comes from bloot apps, so every build carries it (the
+      # latest signed bloot apps release, checked against the bloot release keys).
+      - name: Bundle bloot apps
+        run: node scripts/fetch-bloot-apps.mjs
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:

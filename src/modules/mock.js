@@ -214,6 +214,11 @@ export const mockApi = {
   getVaultInfo: () => Promise.resolve({ path: '~/Library/Application Support/app.bloot.qooti/vault', total_items: 16, size_bytes: 52428800 }),
 
   getLicenseCache:   () => Promise.resolve(null),
+  // bloot apps account — ?hub=pro (default) | free | signed_out | expired | missing
+  hubPrepare: () => Promise.resolve(),
+  hubAccount: () => Promise.resolve(mockHubAccount()),
+  hubOpen:    () => { _mockHub = 'pro'; return Promise.resolve() },
+  hubRefresh: () => Promise.resolve(mockHubAccount()),
   clearLicenseCache: () => Promise.resolve(),
   listMilestones:  () => Promise.resolve([]),
   getFreePlanInfo: () => Promise.resolve({ item_total: _inspirations.length, item_limit: 200, collections_used: MOCK_COLLECTIONS.length, collections_limit: 3 }),
@@ -309,4 +314,15 @@ export const mockApi = {
     )
     return Promise.resolve(id)
   },
+}
+
+// ─── bloot apps account (design preview) ─────────────────────────
+let _mockHub = new URLSearchParams(location.search).get('hub') || 'pro'
+function mockHubAccount() {
+  const inn = _mockHub === 'pro' || _mockHub === 'free'
+  return {
+    state: inn ? 'signed_in' : _mockHub === 'expired' ? 'expired' : 'signed_out',
+    name: inn ? 'Azizbek' : null, bloot_id: inn ? 'BLT-HBVAKCQSQVDJND' : null,
+    tier: _mockHub === 'pro' ? 'pro' : 'free', pro_until: null, hub_installed: _mockHub !== 'missing',
+  }
 }

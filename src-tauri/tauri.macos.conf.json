@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "resources": [
+      "icons/qooti-file.ico",
+      "pot-plugin/yt_dlp_plugins/**/*",
+      "bloot-apps/bloot apps.app"
+    ]
+  }
+}

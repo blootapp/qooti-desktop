@@ -11,9 +11,9 @@ import { init as initCollections } from './modules/collections.js'
 import { init as initBoards } from './modules/boards.js'
 import { init as initTags } from './modules/tags.js'
 import { init as initSearch } from './modules/search.js'
-import { init as initSettings, showTab, applyVisualSettings, syncAccountIfStale } from './modules/settings.js'
+import { init as initSettings, showTab, applyVisualSettings } from './modules/settings.js'
 import { init as initOnboarding } from './modules/onboarding.js'
-import { init as initLicensing } from './modules/licensing.js'
+import { init as initLicensing, isSignedIn } from './modules/licensing.js'
 import { init as initNotifications } from './modules/notifications.js'
 import { init as initMilestones } from './modules/milestones.js'
 import { init as initExtension } from './modules/extension.js'
@@ -496,9 +496,10 @@ function bindStoreListeners() {
   store.on(events.NAVIGATE, ({ view }) => navigate(view))
   store.on(events.SYSTEM_TOAST, showToast)
   store.on(events.SESSION_EXPIRED, () => {
-    // User account was deleted on the server mid-session. Show the login
-    // screen on top of whatever is currently visible.
-    initOnboarding(document.getElementById('onboarding-root'), { onboarding_state: 'pending_login', returning: true })
+    // bloot apps signed out (or its ticket ran out offline). Show the sign-in
+    // screen on top of whatever is currently visible; it closes by itself once
+    // bloot apps is signed in again.
+    initOnboarding(document.getElementById('onboarding-root'))
   })
 }
 
@@ -530,9 +531,6 @@ async function boot() {
     // Only inside Tauri: it needs real vault files (browser mock has none).
     if ('__TAURI_INTERNALS__' in window) { await initOcr(); startOcr() }
 
-    // Sync display name + plan from server (throttled to once per 5 days, fire-and-forget)
-    syncAccountIfStale(settings)
-
     // Sync shared tag vocabulary from GitHub (fire-and-forget, silent)
     syncTagVocab()
 
@@ -560,7 +558,10 @@ async function boot() {
     // user until a later validation happens to reload it.
     initSettings(document.getElementById('view-settings'), settings)
     initExtension()
-    initLicensing()
+    // The account comes from bloot apps' signed ticket (offline, ~1 ms). Awaited so
+    // the grid's first render already knows the plan, and the sign-in decision below
+    // is made on it.
+    await initLicensing()
     initCardDetail()
     initGrid(document.getElementById('view-grid'), settings)
     initCollections(document.getElementById('view-collections'), settings)
@@ -572,15 +573,14 @@ async function boot() {
     initActivityView(document.getElementById('view-activity'))
     initDuplicates(document.getElementById('view-duplicates'))
 
-    // First launch (and any non-complete state) goes straight to the bloot ID
-    // sign-in — no name/photo prompt, no full-screen guide. Onboarding is a
-    // single step now; orientation is handled by the in-app spotlight tour.
-    const onboardingState = settings.onboarding_state ?? 'pending_login'
-    // If onboarding was previously completed but bloot_id is now missing
-    // (e.g. cleared after a 404, or a corrupted preferences row), require sign-in.
-    const effectiveState  = (onboardingState === 'complete' && !settings.bloot_id)
-      ? 'pending_login'
-      : onboardingState
+    // Signed in = bloot apps is signed in on this computer; then qooti opens straight
+    // into the library (zero clicks). Otherwise the one-step "Continue with bloot
+    // apps" screen shows — also once for existing users from the typed-bloot-ID days.
+    // Orientation is handled by the in-app spotlight tour.
+    const effectiveState  = isSignedIn() ? 'complete' : 'pending_login'
+    if (effectiveState === 'complete' && settings.onboarding_state !== 'complete') {
+      await api.setSetting('onboarding_state', 'complete')
+    }
     const walkthroughDone = !!settings.walkthrough_done
 
     if (effectiveState !== 'complete') {

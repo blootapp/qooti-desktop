@@ -3,6 +3,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 pub mod commands;
+pub mod bloot_hub;
 pub mod pot_provider;
 pub mod js_runtime;
 pub mod clip;
@@ -298,6 +299,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            bloot_hub::hub_prepare,
+            bloot_hub::hub_account,
+            bloot_hub::hub_open,
+            bloot_hub::hub_refresh,
             commands::import_files,
             commands::get_app_info,
             commands::get_settings,

@@ -3,132 +3,69 @@ import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { getSetting, setSetting } from './settings.js'
 
-let cache = null
-let _lastValidated = 0
+// qooti's account comes from bloot apps (MD/bloot-apps-licensing.md §9): bloot apps
+// signs in and keeps a signed licence ticket in the shared Bloot Apps folder; the
+// Rust side (bloot_hub.rs) verifies it offline. qooti never asks for a bloot ID.
+//
+// The verified account is mirrored into the existing preferences (bloot_id,
+// display_name, plan = 'pro' | 'free'), so the avatar, the free-plan limits and
+// Settings keep reading what they always read.
+
+let account = null          // { state, name, bloot_id, tier, pro_until, hub_installed }
+let polling = null
+const POLL_MS = 15_000      // the ticket file is tiny; re-checked often so sign-out / Pro land quickly
 
 export async function init() {
-  cache = await api.getLicenseCache()
+  try { await api.hubPrepare() } catch {}   // share the device id, start bloot apps in the background
+  await check()
+  clearInterval(polling)
+  polling = setInterval(check, POLL_MS)
+  window.addEventListener('focus', () => check())
 
-  // Always schedule — backgroundValidate() guards itself with bloot_id check.
-  // initLicensing() runs before initSettings(), so getSetting() is empty here;
-  // by the time 10 s elapse, settings is fully populated.
-  setTimeout(backgroundValidate, 10_000)
-
-  // Deep link (qooti://plan-sync) fires this event after a successful upgrade.
-  // Debounced to 60 s so rapid re-triggers (e.g. user clicks the link twice) don't pile up.
-  store.on(events.LICENSE_PUSH_RECEIVED, () => {
-    const now = Date.now()
-    if (now - _lastValidated < 60_000) return
-    backgroundValidate()
-  })
-
-  // Manual refresh button in Settings — rate limit enforced by settings.js before emitting.
-  store.on(events.LICENSE_MANUAL_REFRESH, () => {
-    backgroundValidate()
-  })
+  // qooti://plan-sync (old payment flow) and the refresh button: ask bloot apps to
+  // refresh the licence now, then re-read it.
+  store.on(events.LICENSE_PUSH_RECEIVED, refreshNow)
+  store.on(events.LICENSE_MANUAL_REFRESH, refreshNow)
 }
 
-export function isActive() {
-  if (!cache) return false
-  return isValid(cache) && cache.plan_type !== null && !cache.revoked_at
+export const getAccount = () => account
+export const isSignedIn = () => account?.state === 'signed_in'
+export function isActive()     { return isSignedIn() }
+export function getPlan()      { return isSignedIn() && account.tier === 'pro' ? 'pro' : 'free' }
+export function getExpiresAt() { return isSignedIn() ? account.pro_until ?? null : null }
+
+/** Open bloot apps on its sign-in screen (it brings qooti back when done) or account page. */
+export async function openHub(screen) {
+  try { await api.hubOpen(screen); return true } catch { return false }
 }
 
-function isValid(c) {
-  if (!c.last_validated_at) return false
-  const gracePeriod = 7 * 24 * 60 * 60 * 1000 // 7 days
-  return (Date.now() - c.last_validated_at) < gracePeriod
+async function refreshNow() {
+  try { await apply(await api.hubRefresh()) } catch {}
 }
 
-/**
- * Register (or heartbeat) this install against the bloot ID and read back the
- * plan + admin-reset epoch in one call. The device_id is a random per-install
- * UUID from the Rust side (no hardware data). Returns the parsed payload, the
- * string 'not_found' when the account no longer exists (404), or null on any
- * network / native error (caller keeps the cached license under the grace window).
- */
-export async function registerDevice(blootId) {
-  if (!blootId) return null
-  try {
-    const deviceId = await api.getDeviceId()
-    const label    = await api.deviceLabel()
-    const res = await fetch('https://api.bloot.app/public/device', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ public_id: blootId, device_id: deviceId, label }),
-    })
-    if (res.status === 404) return 'not_found'
-    if (!res.ok) return null
-    return await res.json()   // { plan, device_count, over_limit, devices_reset_at }
-  } catch {
-    return null
+/** Re-read the ticket; returns the account. Cheap enough to call any time. */
+export async function check() {
+  try { await apply(await api.hubAccount()) } catch {}
+  return account
+}
+
+const same = (a, b) => !!a && !!b && ['state', 'name', 'bloot_id', 'tier', 'pro_until', 'hub_installed'].every(k => a[k] === b[k])
+
+async function apply(next) {
+  if (!next || same(account, next)) return
+  const wasIn = isSignedIn()
+  account = next
+  const nowIn = isSignedIn()
+
+  if (nowIn) {
+    // Mirror into preferences — only what changed (each write emits SETTINGS_CHANGED).
+    const want = { bloot_id: account.bloot_id, display_name: account.name || account.bloot_id, plan: getPlan() }
+    for (const [k, v] of Object.entries(want)) if (getSetting(k) !== v) await setSetting(k, v)
+  } else if (getSetting('plan') !== 'free') {
+    await setSetting('plan', 'free')
   }
+
+  store.emit(events.LICENSE_STATUS_CHANGED, { plan: getPlan(), expiresAt: getExpiresAt(), account })
+  if (wasIn && !nowIn) store.emit(events.SESSION_EXPIRED)   // signed out in bloot apps → sign-in screen
+  if (!wasIn && nowIn) store.emit(events.HUB_SIGNED_IN)
 }
-
-async function backgroundValidate() {
-  _lastValidated = Date.now()
-  try {
-    const blootId = getSetting('bloot_id')
-    if (!blootId) return
-
-    const result = await registerDevice(blootId)
-
-    if (result === 'not_found') {
-      // Account deleted on the server (or ID no longer valid) — force re-login.
-      await setSetting('bloot_id', '')
-      await api.clearLicenseCache()
-      cache = null
-      store.emit(events.SESSION_EXPIRED)
-      return
-    }
-
-    if (!result) return  // offline / native error — keep existing cache, grace window covers it
-
-    // Grandfather logins that predate device-binding: seed logged_in_at now so
-    // only an admin reset that happens AFTER this moment logs the user out.
-    let loggedInAt = Number(getSetting('logged_in_at') || 0)
-    if (!loggedInAt) {
-      loggedInAt = Date.now()
-      await setSetting('logged_in_at', String(loggedInAt))
-    }
-
-    if (result.devices_reset_at && result.devices_reset_at > loggedInAt) {
-      // An admin reset this account's devices after we logged in → force re-login.
-      await setSetting('bloot_id', '')
-      await setSetting('logged_in_at', '0')
-      await api.clearLicenseCache()
-      cache = null
-      store.emit(events.SESSION_EXPIRED)
-      return
-    }
-
-    if (result.plan) {
-      // License cache: only rewrite the plan value when the server actually
-      // differs from what's cached; otherwise just refresh last_validated_at so
-      // the 7-day offline grace window stays alive without a redundant write.
-      // Wrapped so a cache-write hiccup never aborts the plan sync + notify below.
-      try {
-        if (result.plan !== cache?.plan_type) await api.updateLicensePlan(result.plan)
-        else                                  await api.touchLicenseValidated()
-      } catch (err) {
-        console.warn('[licensing] license cache write failed:', err)
-      }
-      // Preferences (drives the UI): update only when it differs — avoids a
-      // redundant DB write + SETTINGS_CHANGED event (and grid re-check) on
-      // launches where nothing changed.
-      if (result.plan !== getSetting('plan')) {
-        await setSetting('plan', result.plan)
-      }
-    }
-
-    const updated = await api.getLicenseCache()
-    if (updated) {
-      cache = updated
-      store.emit(events.LICENSE_STATUS_CHANGED, cache)
-    }
-  } catch {
-    // Offline — keep existing cache, grace window applies
-  }
-}
-
-export function getPlan()      { return cache?.plan_type ?? null }
-export function getExpiresAt() { return cache?.expires_at ?? null }
