@@ -310,18 +310,18 @@ export async function startDownloadFromInput() {
     return true
   }
 
-  const existing = await api.checkUrlExists(url)
+  // Saved from this link before (also as a share link, youtu.be, …): no download, just say so
+  const existing = await api.checkUrlExists(url).catch(() => null)
   if (existing) {
-    const { showDuplicateDialog } = await import('./dialog.js')
-    const action = await showDuplicateDialog({
-      title: t('dl.dup.title'),
-      message: t('dl.dup.message', { title: existing.title ?? t('dl.dup.this_item') }),
+    _searchInput.value = ''
+    _searchInput.dispatchEvent(new Event('input', { bubbles: true }))   // back to a plain search bar
+    store.emit(events.SYSTEM_TOAST, {
+      type: 'info',
+      message: t('import.already_one'),
+      key: 'import-already',
+      action: { label: t('import.show'), onClick: () => store.emit(events.CARD_OPEN, { item: existing }) },
     })
-    if (action === 'view') {
-      store.emit(events.CARD_OPEN, { item: existing })
-      return true
-    }
-    if (action !== 'download') return true
+    return true
   }
 
   const quality = getSetting('download_quality', 'best')

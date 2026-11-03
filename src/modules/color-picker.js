@@ -1,5 +1,7 @@
 // Canvas-based HSV color picker popover.
-// Usage: openColorPicker(anchorEl, { initialColor, onSearch, onClear })
+// Usage: openColorPicker(anchorEl, { initialColor, initialTolerance, onSearch, onClear })
+
+import { t } from './i18n.js'
 
 const RECENT_KEY = 'qooti-recent-colors'
 let activePopover = null
@@ -55,6 +57,7 @@ function addRecent(hex) {
 }
 
 // ─── Public API ───────────────────────────────────────────────────
+// Opens under the search bar at its full width (anchor = the colour button inside it).
 export function openColorPicker(anchor, { initialColor = null, initialTolerance = 'normal', onSearch, onClear } = {}) {
   if (activePopover) { activePopover._close(); activePopover = null }
 
@@ -65,10 +68,9 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
     if (rgb) hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
   }
 
-  // Color-match tolerance (Strict / Normal / Broad) — lives in the picker so it
-  // travels with the color on Search, instead of as separate filter-bar chips.
-  const TOLERANCES = ['strict', 'normal', 'broad']
-  let tolerance = TOLERANCES.includes(initialTolerance) ? initialTolerance : 'normal'
+  // Colour-match tolerance has no control in this layout; the current one is kept
+  // and travels with the colour on Search.
+  const tolerance = ['strict', 'normal', 'broad'].includes(initialTolerance) ? initialTolerance : 'normal'
 
   // ── Build DOM ──
   const el = document.createElement('div')
@@ -78,33 +80,19 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
       <canvas class="cp-canvas"></canvas>
       <div class="cp-cursor"></div>
     </div>
-    <div class="cp-controls">
-      <div class="cp-hue-wrap">
-        <input type="range" class="cp-hue" min="0" max="360" step="1" />
-      </div>
-      <div class="cp-hex-row">
-        <div class="cp-preview"></div>
-        <input class="cp-hex" maxlength="7" spellcheck="false" />
-        <button class="cp-copy" title="Copy hex">
-          <span class="icon icon-14" style="mask-image:url('/icons/copy.svg');-webkit-mask-image:url('/icons/copy.svg')"></span>
-        </button>
-      </div>
-      <div class="cp-recents-row">
-        <div class="cp-recents"></div>
-        <button class="cp-add" title="Save current color">+</button>
-      </div>
-      <div class="cp-tol-wrap">
-        <span class="cp-tol-label">Color match</span>
-        <div class="cp-tol-seg">
-          <button class="cp-tol" data-tol="strict">Strict</button>
-          <button class="cp-tol" data-tol="normal">Normal</button>
-          <button class="cp-tol" data-tol="broad">Broad</button>
-        </div>
-      </div>
-      <div class="cp-actions">
-        <button class="cp-clear">Clear</button>
-        <button class="cp-search">Search</button>
-      </div>
+    <input type="range" class="cp-hue" min="0" max="360" step="1" aria-label="${t('cp.hue')}" />
+    <div class="cp-bar">
+      <label class="cp-hex-pill">
+        <span class="cp-preview"></span>
+        <input class="cp-hex" maxlength="7" spellcheck="false" aria-label="${t('cp.hex')}" />
+      </label>
+      <button class="cp-add" title="${t('cp.save_colour')}" aria-label="${t('cp.save_colour')}">
+        <span class="icon icon-14" style="mask-image:url('/icons/plus.svg');-webkit-mask-image:url('/icons/plus.svg')" aria-hidden="true"></span>
+      </button>
+      <div class="cp-recents"></div>
+      <span class="cp-spacer"></span>
+      ${initialColor ? `<button class="cp-clear">${t('cp.clear')}</button>` : ''}
+      <button class="cp-search">${t('cp.search')}</button>
     </div>
   `
 
@@ -112,6 +100,7 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
   activePopover = el
 
   // ── Element refs ──
+  const wrap      = el.querySelector('.cp-canvas-wrap')
   const canvas    = el.querySelector('.cp-canvas')
   const cursorEl  = el.querySelector('.cp-cursor')
   const hueSlider = el.querySelector('.cp-hue')
@@ -119,20 +108,25 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
   const preview   = el.querySelector('.cp-preview')
   const recentsEl = el.querySelector('.cp-recents')
 
-  // Set canvas size after append so getBoundingClientRect works
-  canvas.width  = 248
-  canvas.height = 160
+  // ── Position: under the search bar, same left edge and width ──
+  const bar = (anchor.closest('.top-bar-search-wrap') ?? anchor).getBoundingClientRect()
+  const width = Math.max(320, bar.width)
+  el.style.width = `${width}px`
+  el.style.left  = `${Math.max(8, Math.min(bar.left, window.innerWidth - width - 8))}px`
+  el.style.top   = `${bar.bottom + 6}px`
+
+  // Colour field: wide, about 0.38 of its width tall; drawn at device resolution.
+  const fieldW = width - 18   // popover padding 8 × 2 + border
+  const fieldH = Math.round(Math.min(220, Math.max(150, fieldW * 0.38)))
+  wrap.style.height = `${fieldH}px`
+  const dpr = window.devicePixelRatio || 1
+  canvas.width  = Math.round(fieldW * dpr)
+  canvas.height = Math.round(fieldH * dpr)
   const ctx = canvas.getContext('2d')
 
-  // ── Position: top-right corner of popover nearest to anchor ──
-  const anchorRect = anchor.getBoundingClientRect()
-  el.style.top   = `${anchorRect.bottom + 8}px`
-  el.style.right = `${window.innerWidth - anchorRect.right}px`
-  el.style.left  = 'auto'
   requestAnimationFrame(() => {
     const r = el.getBoundingClientRect()
-    if (r.bottom > window.innerHeight - 8) el.style.top  = `${anchorRect.top - r.height - 8}px`
-    if (r.left   < 8)                      { el.style.right = 'auto'; el.style.left = '8px' }
+    if (r.bottom > window.innerHeight - 8) el.style.top = `${Math.max(8, bar.top - r.height - 8)}px`
   })
 
   // ── Draw canvas ──
@@ -154,16 +148,15 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
     ctx.fillStyle = gV
     ctx.fillRect(0, 0, W, H)
 
-    // Cursor
-    const cx = (hsv.s / 100) * W
-    const cy = (1 - hsv.v / 100) * H
-    cursorEl.style.left = `${cx}px`
-    cursorEl.style.top  = `${cy}px`
+    // Cursor (CSS px), kept inside the rounded field
+    const inset = 6
+    cursorEl.style.left = `${inset + (hsv.s / 100) * (fieldW - inset * 2)}px`
+    cursorEl.style.top  = `${inset + (1 - hsv.v / 100) * (fieldH - inset * 2)}px`
 
-    // Sync controls
+    // Sync controls (don't overwrite the hex while it's being typed)
     const hex = toHex(hsvToRgb(hsv.h, hsv.s, hsv.v))
     preview.style.background = hex
-    hexInput.value = hex
+    if (document.activeElement !== hexInput) hexInput.value = hex
   }
 
   // ── Canvas drag ──
@@ -177,7 +170,7 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
   function onMouseMove(e) { if (dragging) pickAt(e.clientX, e.clientY) }
   function onMouseUp()    { dragging = false }
 
-  canvas.addEventListener('mousedown', e => { dragging = true; pickAt(e.clientX, e.clientY) })
+  wrap.addEventListener('mousedown', e => { dragging = true; pickAt(e.clientX, e.clientY) })
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup',   onMouseUp)
 
@@ -192,35 +185,26 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
       const rgb = fromHex(val)
       hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
       hueSlider.value = Math.round(hsv.h)
-      preview.style.background = val
       draw()
     }
   })
+  hexInput.addEventListener('blur', draw)
+  hexInput.addEventListener('keydown', e => { if (e.key === 'Enter') el.querySelector('.cp-search').click() })
 
-  // ── Copy hex ──
-  el.querySelector('.cp-copy').addEventListener('click', () => {
-    navigator.clipboard.writeText(hexInput.value).catch(() => {})
-  })
-
-  // ── Recent swatches ──
+  // ── Saved colours (+ saves the current one; they appear next to it) ──
   function renderRecents() {
     recentsEl.innerHTML = ''
-    const colors = getRecents()
-    for (let i = 0; i < 5; i++) {
+    for (const c of getRecents().slice(0, 5)) {
       const btn = document.createElement('button')
-      btn.className = 'cp-recent-swatch' + (colors[i] ? '' : ' empty')
-      if (colors[i]) {
-        btn.style.background = colors[i]
-        btn.title = colors[i]
-        btn.addEventListener('click', () => {
-          const rgb = fromHex(colors[i])
-          hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
-          hueSlider.value = Math.round(hsv.h)
-          draw()
-        })
-      } else {
-        btn.disabled = true
-      }
+      btn.className = 'cp-recent-swatch'
+      btn.style.background = c
+      btn.title = c
+      btn.addEventListener('click', () => {
+        const rgb = fromHex(c)
+        hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
+        hueSlider.value = Math.round(hsv.h)
+        draw()
+      })
       recentsEl.appendChild(btn)
     }
   }
@@ -229,16 +213,6 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
     addRecent(toHex(hsvToRgb(hsv.h, hsv.s, hsv.v)))
     renderRecents()
   })
-
-  // ── Tolerance segmented control ──
-  const tolSeg = el.querySelector('.cp-tol-seg')
-  function renderTol() {
-    tolSeg.querySelectorAll('.cp-tol').forEach(b => b.classList.toggle('active', b.dataset.tol === tolerance))
-  }
-  tolSeg.querySelectorAll('.cp-tol').forEach(btn => {
-    btn.addEventListener('click', () => { tolerance = btn.dataset.tol; renderTol() })
-  })
-  renderTol()
 
   // ── Close ──
   function close() {
@@ -251,7 +225,7 @@ export function openColorPicker(anchor, { initialColor = null, initialTolerance 
   el._close = close
 
   // ── Actions ──
-  el.querySelector('.cp-clear').addEventListener('click', () => { close(); onClear?.() })
+  el.querySelector('.cp-clear')?.addEventListener('click', () => { close(); onClear?.() })
   el.querySelector('.cp-search').addEventListener('click', () => {
     const hex = toHex(hsvToRgb(hsv.h, hsv.s, hsv.v))
     addRecent(hex)

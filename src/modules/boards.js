@@ -43,13 +43,16 @@ const I = (name, size = 16) =>
 function render(boards) {
   if (!container) return
   container.innerHTML = `
-    <div class="boards-page">
-      <div class="boards-header">
-        <h1 class="boards-title">${t('boards.title')}</h1>
-        <div class="boards-header-actions">
-          <button class="btn btn-ghost" id="boards-import">${I('upload-simple')}${t('boards.import')}</button>
-          <button class="btn btn-accent" id="boards-new">${I('plus')}${t('boards.new')}</button>
+    <div class="boards-page${boards.length ? '' : ' is-empty'}">
+      <div class="page-header">
+        <div class="page-header-title">
+          <h1>${t('boards.title')}</h1>
+          ${boards.length ? `<span class="page-header-count">${boards.length === 1 ? t('boards.count_one') : t('boards.count_many', { n: boards.length })}</span>` : ''}
         </div>
+        ${boards.length ? `<div class="page-header-actions">
+          <button class="btn btn-secondary page-header-btn" id="boards-import">${t('boards.import')}</button>
+          <button class="btn btn-primary page-header-btn" id="boards-new">${t('boards.new')}</button>
+        </div>` : ''}
       </div>
       <div class="boards-grid" id="boards-grid"></div>
     </div>
@@ -59,9 +62,10 @@ function render(boards) {
   if (!boards.length) {
     grid.innerHTML = `
       <div class="empty-state">
-        <span class="icon icon-32" style="mask-image:url('/icons/squares-four.svg');-webkit-mask-image:url('/icons/squares-four.svg');opacity:0.2" aria-hidden="true"></span>
+        <span class="empty-state-icon">${I('squares-four', 20)}</span>
         <span class="empty-state-title">${t('boards.empty_title')}</span>
         <p class="empty-state-body">${t('boards.empty_body')}</p>
+        <button class="empty-state-btn" id="boards-new">${t('boards.new')}</button>
       </div>
     `
   } else {
@@ -69,7 +73,7 @@ function render(boards) {
   }
 
   container.querySelector('#boards-new').addEventListener('click', promptCreate)
-  container.querySelector('#boards-import').addEventListener('click', importBoard)
+  container.querySelector('#boards-import')?.addEventListener('click', importBoard)
 }
 
 function makeCard(board) {
@@ -78,7 +82,7 @@ function makeCard(board) {
   const cover = board.thumb
     ? `<img src="${escHtml(toSrc(board.thumb))}" alt="" loading="lazy" decoding="async" />`
     : `<span class="board-card-icon icon icon-28" style="mask-image:url('/icons/squares-four.svg');-webkit-mask-image:url('/icons/squares-four.svg')" aria-hidden="true"></span>`
-  const coverAttrs = board.thumb ? '' : ` style="background:${coverGradient(board.name)}"`
+  const coverAttrs = ''
   const n = board.element_count ?? 0
   const countLabel = n === 1 ? t('boards.one_item') : t('boards.n_items').replace('{n}', n)
 
@@ -221,17 +225,6 @@ function toSrc(path) { return IS_TAURI ? convertFileSrc(path) : path }
 function escHtml(s) {
   if (!s) return ''
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
-function coverGradient(name) {
-  const palettes = [
-    ['#1a1a2e', '#16213e'], ['#0d1b2a', '#1b2838'], ['#1a0a2e', '#2d1b69'],
-    ['#0a1628', '#0f2d4a'], ['#1c1c1c', '#2d2d2d'], ['#0d2137', '#1a3a52'], ['#200a0a', '#3d1515'],
-  ]
-  let h = 0
-  for (const c of name || 'b') h = (h * 31 + c.charCodeAt(0)) & 0xFFFF
-  const [a, b] = palettes[h % palettes.length]
-  return `linear-gradient(135deg, ${a}, ${b})`
 }
 
 function relativeDate(ts) {

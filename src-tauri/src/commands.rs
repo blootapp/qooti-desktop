@@ -431,7 +431,10 @@ pub struct RelocateResult {
 #[derive(Serialize)]
 pub struct ImportResult {
     pub imported: Vec<Inspiration>,
-    pub skipped:  Vec<String>,
+    pub skipped:  Vec<String>,     // couldn't be imported (unsupported, unreadable, copy failed)
+    /// Already in the library (same file bytes): the id of the item that's there, so the
+    /// UI can say so and open it instead of looking like the import silently failed.
+    pub existing: Vec<String>,
 }
 
 #[tauri::command]
@@ -448,6 +451,7 @@ pub fn import_files(
 
     let mut imported = Vec::new();
     let mut skipped  = Vec::new();
+    let mut existing = Vec::new();
 
     for path_str in paths {
         let src = std::path::Path::new(&path_str);
@@ -473,15 +477,19 @@ pub fn import_files(
             hex::encode(h.finalize())
         };
 
-        // Skip exact duplicates
+        // Exact duplicate: not imported again — reported as `existing` with the item's id
         {
             let db = state.db.lock().unwrap();
-            let count: i64 = db.query_row(
-                "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1",
+            let have: Option<String> = db.query_row(
+                "SELECT id FROM inspirations WHERE file_hash = ?1 LIMIT 1",
                 params![hash],
                 |r| r.get(0),
-            ).unwrap_or(0);
-            if count > 0 { skipped.push(path_str); continue; }
+            ).ok();
+            if let Some(id) = have {
+                log::info!(target: "Import", "already_in_library path={path_str:?} id={id}");
+                existing.push(id);
+                continue;
+            }
         }
 
         let id = Uuid::new_v4().to_string();
@@ -552,7 +560,7 @@ pub fn import_files(
     }
 
     log::info!(target: "Import", "done imported={} skipped={}", imported.len(), skipped.len());
-    Ok(ImportResult { imported, skipped })
+    Ok(ImportResult { imported, skipped, existing })
 }
 
 // ─── App ─────────────────────────────────────────────────────────
@@ -680,7 +688,9 @@ fn macos_launch_agent_path() -> Option<std::path::PathBuf> {
 
 // ─── Settings ────────────────────────────────────────────────────
 
-const SETTINGS_BLACKLIST: &[&str] = &["extension_connection_key", "device_id"];
+const SETTINGS_BLACKLIST: &[&str] = &["extension_connection_key", "extension_clients", "device_id"];
+/// Readable but owned by the backend: `plan` comes from the verified licence ticket.
+const SETTINGS_READ_ONLY: &[&str] = &["plan"];
 
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> Result<HashMap<String, String>, String> {
@@ -700,8 +710,8 @@ pub fn get_settings(state: State<AppState>) -> Result<HashMap<String, String>, S
 }
 
 #[tauri::command]
-pub fn set_setting(key: String, value: String, state: State<AppState>) -> Result<(), String> {
-    if SETTINGS_BLACKLIST.contains(&key.as_str()) {
+pub fn set_setting(key: String, value: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
+    if SETTINGS_BLACKLIST.contains(&key.as_str()) || SETTINGS_READ_ONLY.contains(&key.as_str()) {
         return Err(format!("key '{key}' is not settable via this command"));
     }
     let db = state.db.lock().unwrap();
@@ -710,6 +720,14 @@ pub fn set_setting(key: String, value: String, state: State<AppState>) -> Result
         params![key, value],
     )
     .map_err(|e| e.to_string())?;
+    // The tray menu follows the app's language at once
+    if key == "language" {
+        if let Some(tray) = app.try_state::<crate::TrayMenu>() {
+            let (show, quit) = crate::tray_words(&value);
+            let _ = tray.show.set_text(show);
+            let _ = tray.quit.set_text(quit);
+        }
+    }
     Ok(())
 }
 
@@ -765,6 +783,8 @@ pub struct ListInspirationsOpts {
     pub sort:           Option<String>,  // "recent" → created_at DESC; None + no filters → RANDOM()
     pub page:           Option<u32>,
     pub limit:          Option<u32>,
+    /// Only items that aren't in any collection (Collections page, "Not in a collection").
+    pub uncollected:    Option<bool>,
 }
 
 /// Turn a raw user query into a safe FTS5 MATCH expression.
@@ -818,6 +838,9 @@ pub fn list_inspirations(
     if let Some(col_id) = &opts.collection_id {
         wheres.push("id IN (SELECT inspiration_id FROM collection_items WHERE collection_id = ?)".into());
         args.push(col_id.clone());
+    }
+    if opts.uncollected == Some(true) {
+        wheres.push("id NOT IN (SELECT inspiration_id FROM collection_items)".into());
     }
 
     // Tag filter (AND: item must have ALL specified tags)
@@ -1134,7 +1157,11 @@ fn row_to_inspiration(row: &rusqlite::Row) -> rusqlite::Result<Inspiration> {
 }
 
 #[tauri::command]
-pub fn read_image_as_base64(path: String) -> Result<String, String> {
+pub fn read_image_as_base64(path: String, app: AppHandle) -> Result<String, String> {
+    // Same folders the window may load files from — never an arbitrary file.
+    if !app.asset_protocol_scope().is_allowed(&path) {
+        return Err("not allowed".into());
+    }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes))
 }
@@ -1739,7 +1766,7 @@ pub fn export_collection(
     use zip::CompressionMethod;
 
     // Phase 1: gather all data (hold DB lock only during queries)
-    let (col_name, items, tags_map) = {
+    let (col_name, items, tags_map, extras) = {
         let db = state.db.lock().unwrap();
 
         let col_name: String = db.query_row(
@@ -1790,7 +1817,11 @@ pub fn export_collection(
             map
         };
 
-        (col_name, items, tags_map)
+        let extras: HashMap<String, PackExtras> = items.iter()
+            .filter_map(|it| pack_extras(&db, &it.0).map(|ex| (it.0.clone(), ex)))
+            .collect();
+
+        (col_name, items, tags_map, extras)
     }; // DB lock released
 
     // Phase 2: build manifest JSON
@@ -1819,12 +1850,13 @@ pub fn export_collection(
         if let Some(v) = source_platform{ entry["source_platform"]  = serde_json::json!(v); }
         if let Some(v) = ocr_text       { entry["ocr_text"]         = serde_json::json!(v); }
 
-        manifest_items.push(entry);
         media_entries.push((file_in_zip, stored_path.clone()));
+        if let Some(ex) = extras.get(id) { pack_attach_extras(&mut entry, id, ex, &mut media_entries); }
+        manifest_items.push(entry);
     }
 
     let manifest = serde_json::json!({
-        "version": 1,
+        "version": PACK_MANIFEST_VERSION,
         "type": "qooti-collection-pack",
         "collection": { "name": col_name, "exported_at": exported_at },
         "items": manifest_items,
@@ -1873,6 +1905,174 @@ const QOOTI_PACK_MAGIC: &[u8] = b"QOOTIPACK\x01\x00\x00";
 /// Rolling XOR key applied to the ZIP payload after the magic header.
 const QOOTI_PACK_KEY: &[u8] = b"Qo0t!P4ck_S3cr3t_K3y_2024#XOR$";
 
+// ─── Pack metadata (manifest v2) ─────────────────────────────────
+// A pack carries everything qooti already worked out for each item — OCR text, colours,
+// fingerprint, CLIP embedding, auto-tags (with where each tag came from), video length and
+// shape, the video thumbnail and the AI-enhanced copy — so the computer that imports it
+// doesn't redo OCR, tagging, palette extraction, hashing, embedding or thumbnails.
+// v1 packs (no "meta") still import: those items are analysed as before.
+const PACK_MANIFEST_VERSION: u32 = 2;
+
+struct PackExtras {
+    meta:        serde_json::Value,
+    tag_sources: serde_json::Map<String, serde_json::Value>,
+    thumb:       Option<String>,   // file on disk
+    enhanced:    Option<String>,   // file on disk
+}
+
+fn pack_extras(db: &rusqlite::Connection, id: &str) -> Option<PackExtras> {
+    use base64::Engine;
+    let mut ex = db.query_row(
+        "SELECT aspect_ratio, palette, ocr_status, ocr_language, phash, phash_source,
+                auto_tag_status, auto_tag_confidence, auto_tag_model, object_tags, object_status,
+                duration_secs, thumbnail_path, enhanced_path
+         FROM inspirations WHERE id = ?1",
+        params![id],
+        |r| {
+            let mut m = serde_json::Map::new();
+            let mut put = |k: &str, v: Option<serde_json::Value>| { if let Some(v) = v { m.insert(k.into(), v); } };
+            put("aspect_ratio",        r.get::<_, Option<f64>>(0)?.map(|v| v.into()));
+            put("palette",             r.get::<_, Option<String>>(1)?.map(|v| v.into()));
+            put("ocr_status",          r.get::<_, Option<String>>(2)?.map(|v| v.into()));
+            put("ocr_language",        r.get::<_, Option<String>>(3)?.map(|v| v.into()));
+            put("phash",               r.get::<_, Option<String>>(4)?.map(|v| v.into()));
+            put("phash_source",        r.get::<_, Option<String>>(5)?.map(|v| v.into()));
+            put("auto_tag_status",     r.get::<_, Option<String>>(6)?.map(|v| v.into()));
+            put("auto_tag_confidence", r.get::<_, Option<String>>(7)?.map(|v| v.into()));
+            put("auto_tag_model",      r.get::<_, Option<String>>(8)?.map(|v| v.into()));
+            put("object_tags",         r.get::<_, Option<String>>(9)?.map(|v| v.into()));
+            put("object_status",       r.get::<_, Option<String>>(10)?.map(|v| v.into()));
+            put("duration_secs",       r.get::<_, Option<f64>>(11)?.map(|v| v.into()));
+            Ok(PackExtras {
+                meta: serde_json::Value::Object(m),
+                tag_sources: serde_json::Map::new(),
+                thumb:    r.get::<_, Option<String>>(12)?.filter(|p| std::path::Path::new(p).is_file()),
+                enhanced: r.get::<_, Option<String>>(13)?.filter(|p| std::path::Path::new(p).is_file()),
+            })
+        },
+    ).ok()?;
+    if let Ok(emb) = db.query_row(
+        "SELECT emb FROM clip_embeddings WHERE id = ?1 AND model = ?2",
+        params![id, crate::clip::MODEL_TAG], |r| r.get::<_, Vec<u8>>(0),
+    ) {
+        ex.meta["clip"] = serde_json::json!({
+            "model": crate::clip::MODEL_TAG,
+            "emb": base64::engine::general_purpose::STANDARD.encode(emb),
+        });
+    }
+    if let Ok(mut stmt) = db.prepare(
+        "SELECT t.name, t.source FROM inspiration_tags it JOIN tags t ON t.id = it.tag_id WHERE it.inspiration_id = ?1"
+    ) {
+        if let Ok(rows) = stmt.query_map(params![id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+            for (name, source) in rows.flatten() { ex.tag_sources.insert(name, source.into()); }
+        }
+    }
+    Some(ex)
+}
+
+/// Add an item's extras to its manifest entry; queue the thumbnail / enhanced files.
+fn pack_attach_extras(entry: &mut serde_json::Value, id: &str, ex: &PackExtras, media: &mut Vec<(String, String)>) {
+    entry["meta"] = ex.meta.clone();
+    if !ex.tag_sources.is_empty() { entry["tag_sources"] = serde_json::Value::Object(ex.tag_sources.clone()); }
+    if let Some(p) = &ex.thumb {
+        let ext = std::path::Path::new(p).extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+        let z = format!("thumbs/{id}.{ext}");
+        entry["thumb"] = z.clone().into();
+        media.push((z, p.clone()));
+    }
+    if let Some(p) = &ex.enhanced {
+        let ext = std::path::Path::new(p).extension().and_then(|e| e.to_str()).unwrap_or("png");
+        let z = format!("enhanced/{id}.{ext}");
+        entry["enhanced"] = z.clone().into();
+        media.push((z, p.clone()));
+    }
+}
+
+/// An image file from a pack (thumbnail / enhanced copy): size-capped, and it must really
+/// decode as an image — never trust the archive.
+fn pack_read_image(archive: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>, name: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut f = archive.by_name(name).ok()?;
+    if f.size() > crate::media_guard::MAX_FILE_BYTES { return None; }
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).ok()?;
+    image::guess_format(&buf).ok()?;
+    image::load_from_memory(&buf).ok()?;
+    Some(buf)
+}
+
+/// A string field from untrusted pack metadata, length-capped.
+fn meta_str(meta: &serde_json::Value, key: &str, max: usize) -> Option<String> {
+    meta.get(key)?.as_str().filter(|s| s.len() <= max).map(|s| s.to_string())
+}
+
+/// A status we can trust as "finished" — anything else means "analyse again here".
+fn meta_status(meta: &serde_json::Value, key: &str, allowed: &[&str]) -> Option<String> {
+    meta_str(meta, key, 32).filter(|s| allowed.contains(&s.as_str()))
+}
+
+/// One item's analysis results as read back from an untrusted pack. Every field is
+/// checked; a missing or odd one is None and that step simply runs again on this computer.
+#[derive(Debug, Default, PartialEq)]
+struct PackMeta {
+    aspect_ratio:        Option<f64>,
+    duration_secs:       Option<f64>,
+    ocr_text:            String,
+    ocr_status:          Option<String>,
+    ocr_language:        Option<String>,
+    palette:             Option<String>,
+    phash:               Option<String>,
+    auto_tag_status:     Option<String>,
+    auto_tag_confidence: Option<String>,
+    auto_tag_model:      Option<String>,
+    object_tags:         Option<String>,
+    object_status:       Option<String>,
+    clip_emb:            Option<Vec<u8>>,
+}
+
+fn read_pack_meta(item: &serde_json::Value, is_video: bool) -> PackMeta {
+    use base64::Engine;
+    const DONE: &[&str] = &["done", "skipped", "failed", "error"];
+    let meta = &item["meta"];
+
+    let ocr_status = if is_video { Some("skipped".to_string()) } else { meta_status(meta, "ocr_status", DONE) };
+    let auto_tag_status = meta_status(meta, "auto_tag_status", DONE);
+    let object_status = meta_status(meta, "object_status", DONE);
+    PackMeta {
+        aspect_ratio:  meta["aspect_ratio"].as_f64().filter(|r| r.is_finite() && *r > 0.01 && *r < 100.0),
+        duration_secs: meta["duration_secs"].as_f64().filter(|d| d.is_finite() && *d >= 0.0),
+        // v1 packs carried ocr_text too, but import used to drop it
+        ocr_text: item["ocr_text"].as_str().filter(|t| t.len() <= 200_000).unwrap_or("").replace('\r', ""),
+        ocr_language: ocr_status.as_ref().and_then(|_| meta_str(meta, "ocr_language", 32)),
+        ocr_status,
+        // Only a short list of real hex colours
+        palette: meta_str(meta, "palette", 4096)
+            .filter(|p| serde_json::from_str::<Vec<String>>(p).map_or(false, |v| {
+                !v.is_empty() && v.len() <= 16 && v.iter().all(|c| {
+                    let h = c.trim_start_matches('#');
+                    c.starts_with('#') && (h.len() == 6 || h.len() == 8) && h.chars().all(|ch| ch.is_ascii_hexdigit())
+                })
+            })),
+        // Fingerprint for duplicate search, current format only
+        phash: meta_str(meta, "phash", 2048)
+            .filter(|_| meta["phash_source"].as_str() == Some(FP_VERSION))
+            .filter(|ph| parse_fp(ph).is_some()),
+        auto_tag_confidence: auto_tag_status.as_ref()
+            .and_then(|_| meta_str(meta, "auto_tag_confidence", 65_536))
+            .filter(|c| serde_json::from_str::<serde_json::Value>(c).is_ok()),
+        auto_tag_model: auto_tag_status.as_ref().and_then(|_| meta_str(meta, "auto_tag_model", 128)),
+        auto_tag_status,
+        object_tags: object_status.as_ref().and_then(|_| meta_str(meta, "object_tags", 65_536)),
+        object_status,
+        // CLIP embedding (search by meaning, find similar): same model, right size, real numbers
+        clip_emb: meta["clip"]["emb"].as_str()
+            .filter(|_| meta["clip"]["model"].as_str() == Some(crate::clip::MODEL_TAG))
+            .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+            .filter(|v| v.len() == crate::clip::DIM * 4)
+            .filter(|v| v.chunks_exact(4).all(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]).is_finite())),
+    }
+}
+
 #[tauri::command]
 pub async fn export_all_items(
     save_path: String,
@@ -1881,7 +2081,7 @@ pub async fn export_all_items(
     // Phase 1: DB queries — fast, done while holding the lock briefly
     type Row = (String, Option<String>, String, Option<String>, String,
                 Option<String>, Option<String>, i64, Option<String>);
-    let (items, tags_map): (Vec<Row>, HashMap<String, Vec<String>>) = {
+    let (items, tags_map, extras): (Vec<Row>, HashMap<String, Vec<String>>, HashMap<String, PackExtras>) = {
         let db = state.db.lock().unwrap();
 
         let items: Vec<Row> = {
@@ -1919,7 +2119,11 @@ pub async fn export_all_items(
             map
         };
 
-        (items, tags_map)
+        let extras: HashMap<String, PackExtras> = items.iter()
+            .filter_map(|it| pack_extras(&db, &it.0).map(|ex| (it.0.clone(), ex)))
+            .collect();
+
+        (items, tags_map, extras)
     }; // DB lock released before the heavy work begins
 
     // Phases 2–4: manifest + ZIP + XOR — all heavy I/O, run off the UI thread
@@ -1954,12 +2158,13 @@ pub async fn export_all_items(
             if let Some(v) = source_platform { entry["source_platform"] = serde_json::json!(v); }
             if let Some(v) = ocr_text        { entry["ocr_text"]        = serde_json::json!(v); }
 
-            manifest_items.push(entry);
             media_entries.push((file_in_zip, stored_path.clone()));
+            if let Some(ex) = extras.get(id) { pack_attach_extras(&mut entry, id, ex, &mut media_entries); }
+            manifest_items.push(entry);
         }
 
         let manifest = serde_json::json!({
-            "version": 1,
+            "version": PACK_MANIFEST_VERSION,
             "type": "qooti-library-pack",
             "collection": { "name": "qooti Library", "exported_at": exported_at },
             "items": manifest_items,
@@ -2105,18 +2310,48 @@ pub fn import_qooti_pack(
         if std::fs::write(&dest_path, &media_bytes).is_err() { skipped_count += 1; continue; }
         let stored_path = dest_path.to_string_lossy().into_owned();
 
-        // Derive video metadata (duration + aspect ratio)
+        // What the exporting computer already worked out (manifest v2)
         let is_video = file_type == "video";
-        let (duration, video_ratio) = if is_video { video_meta(&dest_path, &app) } else { (None, None) };
-        let aspect_ratio = video_ratio
+        let PackMeta {
+            aspect_ratio: meta_ratio, duration_secs: meta_duration, ocr_text, ocr_status, ocr_language,
+            palette, phash, auto_tag_status, auto_tag_confidence, auto_tag_model,
+            object_tags, object_status, clip_emb,
+        } = read_pack_meta(item_meta, is_video);
+        let phash_source = phash.as_ref().map(|_| FP_VERSION);
+
+        // Video length + shape: ffprobe only when the pack didn't carry them
+        let (duration, video_ratio) = if is_video && (meta_ratio.is_none() || meta_duration.is_none()) {
+            video_meta(&dest_path, &app)
+        } else { (meta_duration, None) };
+        let aspect_ratio = meta_ratio
+            .or(video_ratio)
             .or_else(|| if is_video { None } else { image_aspect_ratio(&stored_path) })
             .unwrap_or(validated.default_ratio);
-        let ocr_status   = if is_video { Some("skipped") } else { None };
-        let palette_json = if !is_video {
+
+        let palette_json = palette.or_else(|| if !is_video {
             let p = stored_path.clone();
             let colors = std::panic::catch_unwind(|| palette_from_path(&p, 5)).unwrap_or_default();
             if colors.is_empty() { None } else { serde_json::to_string(&colors).ok() }
-        } else { None };
+        } else { None });
+
+        // Video thumbnail
+        let thumbnail_path = item_meta["thumb"].as_str()
+            .and_then(|z| pack_read_image(&mut archive, z))
+            .and_then(|bytes| {
+                let dest = vault_path.join("thumbnails").join(format!("{item_id}_thumb.jpg"));
+                std::fs::write(&dest, bytes).ok()?;
+                Some(dest.to_string_lossy().into_owned())
+            });
+
+        // AI-enhanced copy, kept next to the original as the enhancer does
+        let enhanced_path = item_meta["enhanced"].as_str()
+            .and_then(|z| pack_read_image(&mut archive, z))
+            .and_then(|bytes| {
+                let dest = dest_path.with_file_name(format!("{item_id}_enhanced.png"));
+                std::fs::write(&dest, bytes).ok()?;
+                Some(dest.to_string_lossy().into_owned())
+            });
+
 
         let title          = item_meta["title"].as_str().map(|s| s.to_string());
         let source_url     = item_meta["source_url"].as_str().map(|s| s.to_string());
@@ -2131,11 +2366,22 @@ pub fn import_qooti_pack(
                 "INSERT INTO inspirations \
                  (id, type, title, stored_path, file_hash, mime_type, aspect_ratio, ocr_text, \
                   ocr_status, source_url, source_platform, palette, duration_secs, \
-                  import_source, batch_id, created_at, updated_at) \
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,'',?8,?9,?10,?11,?12,'pack_import',?13,?14,?14)",
+                  import_source, batch_id, created_at, updated_at, \
+                  ocr_language, phash, phash_source, auto_tag_status, auto_tag_confidence, auto_tag_model, \
+                  object_tags, object_status, thumbnail_path, enhanced_path) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?15,?8,?9,?10,?11,?12,'pack_import',?13,?14,?14, \
+                         ?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
                 params![item_id, file_type, title, stored_path, hash, mime_val, aspect_ratio,
-                        ocr_status, source_url, source_platform, palette_json, duration, col_id, created_at],
+                        ocr_status, source_url, source_platform, palette_json, duration, col_id, created_at,
+                        ocr_text, ocr_language, phash, phash_source, auto_tag_status, auto_tag_confidence,
+                        auto_tag_model, object_tags, object_status, thumbnail_path, enhanced_path],
             ).is_err() { skipped_count += 1; continue; }
+            if let Some(emb) = &clip_emb {
+                db.execute(
+                    "INSERT OR REPLACE INTO clip_embeddings (id, model, emb) VALUES (?1, ?2, ?3)",
+                    params![item_id, crate::clip::MODEL_TAG, emb],
+                ).ok();
+            }
         }
 
         // Add to collection
@@ -2159,9 +2405,13 @@ pub fn import_qooti_pack(
                     ).ok();
                     let tag_id = tag_id.unwrap_or_else(|| {
                         let new_id = Uuid::new_v4().to_string();
+                        // Keep whether the tag was the user's own or a model's guess
+                        let source = item_meta["tag_sources"][tag_name].as_str()
+                            .filter(|s| matches!(*s, "user" | "model" | "import"))
+                            .unwrap_or("import");
                         db.execute(
-                            "INSERT INTO tags (id, name, source, created_at) VALUES (?1,?2,'import',?3)",
-                            params![new_id, tag_name, now],
+                            "INSERT INTO tags (id, name, source, created_at) VALUES (?1,?2,?3,?4)",
+                            params![new_id, tag_name, source, now],
                         ).ok();
                         new_id
                     });
@@ -2370,16 +2620,25 @@ pub fn backfill_image_ratios_once(app: &AppHandle) {
 }
 
 // ─── Duplicate detection ─────────────────────────────────────────
-// A fingerprint = a 64-bit dHash (cheap first-pass prune) + a 16×16 grayscale
-// signature (256 samples) for a precise mean-absolute-difference check. dHash
-// alone over-groups flat/light design thumbnails (their coarse gradients look
-// alike), so the grayscale signature is what actually tells images apart.
-// Stored as "<dhash:16hex>:<256-byte sig hex>". phash_source "v2" marks this format.
+// A fingerprint, taken after trimming a uniform frame (letterbox bars, a plain canvas
+// margin) so a padded copy still lines up with the original:
+//   • 64-bit dHash — coarse layout
+//   • 16×16 grayscale signature (256 samples) — light/dark layout, compared by MAD
+//   • 4×4 RGB signature (48 samples) — colour, so a recoloured variant isn't a copy
+//   • aspect ratio of the trimmed picture
+// Stored as "v3|<dhash 16hex>|<gray 512hex>|<rgb 96hex>|<aspect>"; phash_source FP_VERSION.
+// The fingerprint only CONFIRMS a match — what a picture shows is judged by CLIP (see
+// dup_match). v2 strings ("<dhash>:<gray>") are still parsed until the backfill redoes them.
+const FP_VERSION: &str = "v3";
+
 fn phash_from_path(path: &str) -> Option<String> {
-    let img = image::open(path).ok()?;
+    use image::imageops::FilterType::Triangle;
+    let img = trim_uniform_border(image::open(path).ok()?);
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 { return None; }
 
     // dHash — 9×8 luma, compare each pixel to its right neighbour → 64 bits.
-    let d = img.resize_exact(9, 8, image::imageops::FilterType::Triangle).to_luma8();
+    let d = img.resize_exact(9, 8, Triangle).to_luma8();
     let mut dhash: u64 = 0;
     let mut i = 0u32;
     for y in 0..8u32 {
@@ -2389,41 +2648,203 @@ fn phash_from_path(path: &str) -> Option<String> {
         }
     }
 
-    // Grayscale signature — 16×16 luma samples as raw bytes (hex).
-    let g = img.resize_exact(16, 16, image::imageops::FilterType::Triangle).to_luma8();
-    let mut sig = String::with_capacity(512);
-    for p in g.pixels() { sig.push_str(&format!("{:02x}", p[0])); }
+    let mut gray = String::with_capacity(512);
+    for p in img.resize_exact(16, 16, Triangle).to_luma8().pixels() { gray.push_str(&format!("{:02x}", p[0])); }
+    let mut rgb = String::with_capacity(96);
+    for p in img.resize_exact(4, 4, Triangle).to_rgb8().pixels() {
+        for c in p.0 { rgb.push_str(&format!("{c:02x}")); }
+    }
 
-    Some(format!("{dhash:016x}:{sig}"))
+    Some(format!("{FP_VERSION}|{dhash:016x}|{gray}|{rgb}|{:.4}", w as f64 / h as f64))
 }
 
-struct Fp { dhash: u64, sig: Vec<u8> }
+/// Crop a uniform frame around the picture: letterbox bars on a video still, a plain
+/// margin around a design. Only when at least three corners share one colour (a real
+/// frame, not artwork reaching the edge), and never below 40% of either side.
+fn trim_uniform_border(img: image::DynamicImage) -> image::DynamicImage {
+    let (w, h) = img.dimensions();
+    if w < 16 || h < 16 { return img; }
+    // Find the box on a small copy, then crop the full image.
+    let scale = (256.0 / w.max(h) as f64).min(1.0);
+    let sw = ((w as f64 * scale).round() as u32).max(8);
+    let sh = ((h as f64 * scale).round() as u32).max(8);
+    let small = img.resize_exact(sw, sh, image::imageops::FilterType::Triangle).to_rgb8();
+    let px = |x: u32, y: u32| small.get_pixel(x, y).0;
+    let corners = [px(0, 0), px(sw - 1, 0), px(0, sh - 1), px(sw - 1, sh - 1)];
+    let close = |p: [u8; 3], q: [u8; 3]| p.iter().zip(q).map(|(a, b)| (*a as i32 - b as i32).abs()).sum::<i32>() <= 36;
+    let Some(bg) = corners.iter().copied().find(|&c| corners.iter().filter(|&&o| close(c, o)).count() >= 3) else { return img };
+    let line_is_bg = |count: u32, at: &dyn Fn(u32) -> [u8; 3]| (0..count).filter(|&k| close(at(k), bg)).count() * 100 >= count as usize * 98;
+
+    let (mut top, mut bottom) = (0u32, sh - 1);
+    while top < bottom && line_is_bg(sw, &|x| px(x, top)) { top += 1; }
+    while bottom > top && line_is_bg(sw, &|x| px(x, bottom)) { bottom -= 1; }
+    let rows = bottom - top + 1;
+    let (mut left, mut right) = (0u32, sw - 1);
+    while left < right && line_is_bg(rows, &|y| px(left, top + y)) { left += 1; }
+    while right > left && line_is_bg(rows, &|y| px(right, top + y)) { right -= 1; }
+    let cols = right - left + 1;
+    if (cols == sw && rows == sh) || cols * 10 < sw * 4 || rows * 10 < sh * 4 { return img; }
+
+    let x0 = (left as f64 / scale).floor() as u32;
+    let y0 = (top as f64 / scale).floor() as u32;
+    let x1 = (((right + 1) as f64 / scale).ceil() as u32).min(w);
+    let y1 = (((bottom + 1) as f64 / scale).ceil() as u32).min(h);
+    img.crop_imm(x0, y0, x1.saturating_sub(x0).max(1), y1.saturating_sub(y0).max(1))
+}
+
+struct Fp { dhash: u64, sig: Vec<u8>, rgb: Option<Vec<u8>>, aspect: Option<f64> }
+
+fn hex_bytes(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 { return None; }
+    (0..s.len()).step_by(2).map(|k| u8::from_str_radix(s.get(k..k + 2)?, 16).ok()).collect()
+}
 
 fn parse_fp(s: &str) -> Option<Fp> {
+    if let Some(rest) = s.strip_prefix("v3|") {
+        let mut parts = rest.split('|');
+        let dhash = u64::from_str_radix(parts.next()?, 16).ok()?;
+        let sig = hex_bytes(parts.next()?).filter(|v| v.len() == 256)?;
+        let rgb = hex_bytes(parts.next()?).filter(|v| v.len() == 48)?;
+        let aspect = parts.next()?.parse::<f64>().ok().filter(|a| *a > 0.0)?;
+        return Some(Fp { dhash, sig, rgb: Some(rgb), aspect: Some(aspect) });
+    }
+    // v2: "<dhash>:<gray>"
     let (dh, gs) = s.split_once(':')?;
     let dhash = u64::from_str_radix(dh, 16).ok()?;
-    if gs.len() != 512 { return None; }   // 256 bytes
-    let b = gs.as_bytes();
-    let mut sig = Vec::with_capacity(256);
-    for k in 0..256 {
-        let hi = (b[k * 2] as char).to_digit(16)?;
-        let lo = (b[k * 2 + 1] as char).to_digit(16)?;
-        sig.push((hi * 16 + lo) as u8);
-    }
-    Some(Fp { dhash, sig })
+    let sig = hex_bytes(gs).filter(|v| v.len() == 256)?;
+    Some(Fp { dhash, sig, rgb: None, aspect: None })
 }
 
-/// Are two fingerprints near-duplicates? Aspect gate (reject very different
-/// shapes) → dHash prune (cheap) → 16×16 grayscale mean-absolute-difference
-/// (precise). Returns the MAD (0 = identical pixels) when they match.
-fn fp_similar(a: &Fp, b: &Fp, ar_a: f64, ar_b: f64, mad_threshold: u32) -> Option<u32> {
-    let (hi, lo) = if ar_a >= ar_b { (ar_a, ar_b) } else { (ar_b, ar_a) };
-    if lo > 0.0 && hi / lo > 1.35 { return None; }              // shapes too different
-    if (a.dhash ^ b.dhash).count_ones() > 22 { return None; }   // clearly unrelated
-    let mad: u32 = a.sig.iter().zip(b.sig.iter())
-        .map(|(x, y)| (*x as i32 - *y as i32).unsigned_abs())
-        .sum::<u32>() / 256;
-    if mad <= mad_threshold { Some(mad) } else { None }
+/// Mean absolute difference of two equal-length signatures (0 = identical).
+fn sig_mad(a: &[u8], b: &[u8]) -> u32 {
+    if a.is_empty() || a.len() != b.len() { return u32::MAX; }
+    a.iter().zip(b).map(|(x, y)| (*x as i32 - *y as i32).unsigned_abs()).sum::<u32>() / a.len() as u32
+}
+
+/// One item as the duplicate finder sees it.
+struct DupCand {
+    motion:   bool,                // video / GIF — only ever compared with each other
+    fp:       Option<Fp>,
+    clip:     Option<Vec<f32>>,    // CLIP embedding, L2-normalised (clip.rs)
+    words:    HashSet<String>,     // text found in the picture (OCR), normalised
+    duration: Option<f64>,
+    aspect:   f64,                 // of the trimmed picture when known
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum DupLevel { Possible, Identical }
+
+const DUP_ASPECT_TOL: f64 = 1.06;      // a resized copy keeps its shape
+const DUP_CLIP_STILL: f32 = 0.95;      // same picture: unrelated designs sit ≤ 0.81 (real library)
+const DUP_CLIP_CLIP: f32 = 0.90;       // same-length videos: thumbnails may be different frames
+const DUP_GRAY_MAX: u32 = 12;          // light/dark layout must still line up…
+const DUP_RGB_MAX: u32 = 20;           // …and so must the colours
+
+fn ocr_words(text: &str) -> HashSet<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.chars().count() >= 2)
+        .map(|w| w.to_lowercase())
+        .collect()
+}
+
+/// Are these two items the same picture / video? Every signal has to agree:
+/// kind → shape → length (videos) → the words in it → what it shows (CLIP) → layout and
+/// colour (fingerprint). Calibrated on a real 479-item library, where all 18 pairs the user
+/// marked "not duplicates" scored CLIP ≤ 0.81 and shared no words, while the one real copy
+/// (a reel saved twice) scored 0.92 with lengths 0.06 s apart.
+fn dup_match(a: &DupCand, b: &DupCand) -> Option<DupLevel> {
+    use DupLevel::*;
+    if a.motion != b.motion { return None; }
+
+    let (hi, lo) = if a.aspect >= b.aspect { (a.aspect, b.aspect) } else { (b.aspect, a.aspect) };
+    if lo <= 0.0 || hi / lo > DUP_ASPECT_TOL { return None; }
+
+    let same_length = match (a.duration, b.duration) {
+        (Some(x), Some(y)) if x > 0.0 && y > 0.0 => {
+            if (x - y).abs() > 0.6f64.max(0.03 * x.max(y)) { return None; }
+            true
+        }
+        _ => false,
+    };
+
+    // Same template, different words (a poster series, a UI kit's screens) is not a copy.
+    if a.words.len() >= 3 && b.words.len() >= 3 {
+        let common = a.words.intersection(&b.words).count();
+        let all = a.words.len() + b.words.len() - common;
+        if common * 2 < all { return None; }
+    }
+
+    let fp = match (&a.fp, &b.fp) {
+        (Some(x), Some(y)) => Some((
+            sig_mad(&x.sig, &y.sig),
+            (x.dhash ^ y.dhash).count_ones(),
+            match (&x.rgb, &y.rgb) { (Some(p), Some(q)) => Some(sig_mad(p, q)), _ => None },
+        )),
+        _ => None,
+    };
+
+    match (&a.clip, &b.clip) {
+        (Some(x), Some(y)) => {
+            let cos: f32 = x.iter().zip(y).map(|(p, q)| p * q).sum();
+            if a.motion && same_length {
+                if cos < DUP_CLIP_CLIP { return None; }
+                return Some(if cos >= 0.97 { Identical } else { Possible });
+            }
+            if cos < DUP_CLIP_STILL { return None; }
+            let (gray, _, rgb) = fp?;
+            if gray > DUP_GRAY_MAX || rgb.is_some_and(|c| c > DUP_RGB_MAX) { return None; }
+            Some(if cos >= 0.975 && gray <= 4 { Identical } else { Possible })
+        }
+        // Not embedded yet (model still downloading / indexing): fingerprint only, strictly.
+        _ => {
+            let (gray, dh, rgb) = fp?;
+            if a.motion && !same_length && (a.duration.is_some() || b.duration.is_some()) { return None; }
+            if gray > 4 || dh > 10 || rgb.is_some_and(|c| c > 10) { return None; }
+            Some(if gray <= 2 && dh <= 4 { Identical } else { Possible })
+        }
+    }
+}
+
+/// Group matching items. Every pair inside a group must match, and no pair the user
+/// marked "not duplicates" may share a group — the old seed-only check let B and C come
+/// back together whenever both still matched A. `order` is oldest first, so a group's
+/// first item is the one to keep.
+fn cluster_dupes(
+    order: &[usize],
+    edges: &HashMap<(usize, usize), DupLevel>,
+    used: &mut [bool],
+    ignored: &dyn Fn(usize, usize) -> bool,
+) -> Vec<(Vec<usize>, DupLevel)> {
+    let edge = |a: usize, b: usize| edges.get(&(a.min(b), a.max(b))).copied();
+    let rank: HashMap<usize, usize> = order.iter().enumerate().map(|(r, &i)| (i, r)).collect();
+    let mut neighbours: HashMap<usize, Vec<usize>> = HashMap::new();
+    for &(a, b) in edges.keys() {
+        neighbours.entry(a).or_default().push(b);
+        neighbours.entry(b).or_default().push(a);
+    }
+    let mut groups = Vec::new();
+    for &seed in order {
+        if used[seed] { continue; }
+        let Some(nb) = neighbours.get(&seed) else { continue };
+        let mut cands: Vec<usize> = nb.iter().copied().filter(|&c| !used[c]).collect();
+        cands.sort_by_key(|c| rank.get(c).copied().unwrap_or(usize::MAX));
+        let mut members = vec![seed];
+        let mut level = DupLevel::Identical;
+        for c in cands {
+            let links: Option<Vec<DupLevel>> = members.iter()
+                .map(|&m| if ignored(m, c) { None } else { edge(m, c) })
+                .collect();
+            if let Some(links) = links {
+                level = links.into_iter().fold(level, |l, e| l.min(e));
+                members.push(c);
+            }
+        }
+        if members.len() >= 2 {
+            for &m in &members { used[m] = true; }
+            groups.push((members, level));
+        }
+    }
+    groups
 }
 
 /// Fill in perceptual hashes for any items missing one — new imports, videos whose
@@ -2437,9 +2858,9 @@ pub fn ensure_phashes(app: &AppHandle) {
         let db = match state.db.lock() { Ok(d) => d, Err(_) => return };
         let mut stmt = match db.prepare(
             "SELECT id, type, thumbnail_path, stored_path FROM inspirations \
-             WHERE phash IS NULL OR phash_source IS NOT 'v2'"
+             WHERE phash IS NULL OR phash_source IS NOT ?1"
         ) { Ok(s) => s, Err(_) => return };
-        let mapped = match stmt.query_map([], |r| Ok((
+        let mapped = match stmt.query_map([FP_VERSION], |r| Ok((
             r.get::<_, String>(0)?, r.get::<_, String>(1)?,
             r.get::<_, Option<String>>(2)?, r.get::<_, String>(3)?,
         ))) { Ok(m) => m, Err(_) => return };
@@ -2475,8 +2896,8 @@ pub fn ensure_phashes(app: &AppHandle) {
         if let Ok(db) = state.db.lock() {
             for (id, ph) in &results {
                 let _ = db.execute(
-                    "UPDATE inspirations SET phash = ?1, phash_source = 'v2' WHERE id = ?2",
-                    params![ph, id],
+                    "UPDATE inspirations SET phash = ?1, phash_source = ?3 WHERE id = ?2",
+                    params![ph, id, FP_VERSION],
                 );
             }
         }
@@ -2496,17 +2917,17 @@ pub struct DupItem {
 
 #[derive(Serialize)]
 pub struct DupGroup {
-    pub reason:   String,   // "exact" | "identical" | "similar"
-    pub distance: u32,      // smallest pairwise Hamming distance in the group
+    pub reason:   String,   // "exact" | "identical" | "same_video" | "potential"
+    pub distance: u32,      // unused (kept for the frontend contract)
     pub items:    Vec<DupItem>,
 }
 
-/// Group duplicate / near-duplicate items. Exact = identical file bytes (same
-/// file_hash). Near = perceptual-hash Hamming distance ≤ THRESHOLD — catches the
-/// same image re-encoded, resized, or lightly edited even when title/tags differ.
+/// Group duplicate items. Exact = identical file bytes (same file_hash). Otherwise
+/// every pair in a group must pass dup_match — the same picture re-encoded, resized,
+/// padded or lightly edited, or the same video saved twice — even when title/tags differ.
 ///
 /// Runs on the blocking thread pool (NOT the main thread) so decoding images +
-/// the O(n²) compare never freeze the UI.
+/// the compare never freeze the UI.
 #[tauri::command]
 pub async fn find_duplicates(app: AppHandle) -> Result<Vec<DupGroup>, String> {
     tauri::async_runtime::spawn_blocking(move || find_duplicates_impl(&app))
@@ -2523,26 +2944,42 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
     struct Row {
         id: String, kind: String, title: Option<String>, stored: String,
         thumb: Option<String>, created_at: i64, file_hash: Option<String>,
-        fp: Option<Fp>, aspect: f64, collections: Option<String>,
+        collections: Option<String>, cand: DupCand,
     }
 
     let rows: Vec<Row> = {
         let db = state.db.lock().map_err(|_| "db lock".to_string())?;
+        crate::clip::ensure_table(&db);   // the join below needs it even before the first index
         let mut stmt = db.prepare(
-            "SELECT id, type, title, stored_path, thumbnail_path, created_at, file_hash, phash, aspect_ratio,
+            "SELECT i.id, i.type, i.title, i.stored_path, i.thumbnail_path, i.created_at, i.file_hash, i.phash, i.aspect_ratio,
                     (SELECT json_group_array(c.name)
                      FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
-                     WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
-             FROM inspirations"
+                     WHERE ci.inspiration_id = i.id) AS collection_names,
+                    i.ocr_text, i.duration_secs, e.emb
+             FROM inspirations i
+             LEFT JOIN clip_embeddings e ON e.id = i.id AND e.model = ?1"
         ).map_err(|e| e.to_string())?;
-        let mapped = stmt.query_map([], |r| {
-            let ph: Option<String> = r.get(7)?;
+        let mapped = stmt.query_map([crate::clip::MODEL_TAG], |r| {
+            let kind: String = r.get(1)?;
+            let fp = r.get::<_, Option<String>>(7)?.as_deref().and_then(parse_fp);
+            let aspect = fp.as_ref().and_then(|f| f.aspect)
+                .unwrap_or(r.get::<_, Option<f64>>(8)?.unwrap_or(1.0));
+            let clip = r.get::<_, Option<Vec<u8>>>(12)?.as_deref().and_then(crate::clip::from_blob).map(|mut v| {
+                let len = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                if len > 0.0 { for x in &mut v { *x /= len; } }
+                v
+            });
             Ok(Row {
-                id: r.get(0)?, kind: r.get(1)?, title: r.get(2)?, stored: r.get(3)?,
+                id: r.get(0)?, title: r.get(2)?, stored: r.get(3)?,
                 thumb: r.get(4)?, created_at: r.get(5)?, file_hash: r.get(6)?,
-                fp: ph.as_deref().and_then(parse_fp),
-                aspect: r.get::<_, Option<f64>>(8)?.unwrap_or(1.0),
                 collections: r.get(9)?,
+                cand: DupCand {
+                    motion: kind == "video" || kind == "gif",
+                    fp, clip, aspect,
+                    words: ocr_words(&r.get::<_, Option<String>>(10)?.unwrap_or_default()),
+                    duration: r.get(11)?,
+                },
+                kind,
             })
         }).map_err(|e| e.to_string())?;
         mapped.filter_map(|r| r.ok()).collect()
@@ -2551,21 +2988,23 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
     let n = rows.len();
     if n < 2 { return Ok(vec![]); }
 
-    // Pairs the user explicitly marked "not duplicates" — never regroup these.
-    let ignored: std::collections::HashSet<(String, String)> = {
+    // Pairs the user explicitly marked "not duplicates" — never in one group again.
+    let ignored: HashSet<(usize, usize)> = {
+        let index: HashMap<&str, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.as_str(), i)).collect();
         let db = state.db.lock().map_err(|_| "db lock".to_string())?;
-        let mut set = std::collections::HashSet::new();
+        let mut set = HashSet::new();
         if let Ok(mut stmt) = db.prepare("SELECT a, b FROM ignored_dupes") {
             if let Ok(it) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
-                for pair in it.flatten() { set.insert(pair); }
+                for (a, b) in it.flatten() {
+                    if let (Some(&i), Some(&j)) = (index.get(a.as_str()), index.get(b.as_str())) {
+                        set.insert((i.min(j), i.max(j)));
+                    }
+                }
             }
         }
         set
     };
-    let ignored_pair = |a: &str, b: &str| {
-        let key = if a < b { (a.to_string(), b.to_string()) } else { (b.to_string(), a.to_string()) };
-        ignored.contains(&key)
-    };
+    let is_ignored = |a: usize, b: usize| ignored.contains(&(a.min(b), a.max(b)));
 
     let mut used = vec![false; n];
     let mut clusters: Vec<(&'static str, Vec<usize>)> = Vec::new();
@@ -2586,33 +3025,35 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
         }
     }
 
-    // 2. Near — greedy STAR clustering: every candidate must match the SEED itself,
-    //    so unrelated images can never chain into one giant false group (the old
-    //    union-find bug). dHash prunes cheaply; the 16×16 grayscale MAD verifies.
-    //    Only HIGH-CONFIDENCE near-identical (MAD ≤ 6) are reported — the fuzzy
-    //    "similar" tier was dropped to avoid grouping merely-alike flat designs.
-    //    Capped so a very large library can't hang.
-    const MAD_THRESHOLD: u32 = 6;
+    // 2. Same picture / video. Only items of the same kind and nearly the same shape can
+    //    match, so compare along a sorted aspect window instead of every pair, then verify
+    //    each candidate pair with dup_match. Capped so a very large library can't hang.
     const CAP: usize = 20_000;
     if n <= CAP {
-        for i in 0..n {
-            if used[i] { continue; }
-            let Some(fa) = rows[i].fp.as_ref() else { continue };
-            let mut members = vec![i];
-            for j in (i + 1)..n {
-                if used[j] { continue; }
-                let Some(fb) = rows[j].fp.as_ref() else { continue };
-                if fp_similar(fa, fb, rows[i].aspect, rows[j].aspect, MAD_THRESHOLD).is_some()
-                    && !ignored_pair(&rows[i].id, &rows[j].id)
-                {
-                    members.push(j);
-                    used[j] = true;
-                }
+        let mut by_shape: Vec<usize> = (0..n).filter(|&i| !used[i]).collect();
+        by_shape.sort_by(|&a, &b| {
+            let (ca, cb) = (&rows[a].cand, &rows[b].cand);
+            ca.motion.cmp(&cb.motion).then(ca.aspect.total_cmp(&cb.aspect))
+        });
+        let mut edges: HashMap<(usize, usize), DupLevel> = HashMap::new();
+        for (k, &i) in by_shape.iter().enumerate() {
+            let a = &rows[i].cand;
+            for &j in &by_shape[k + 1..] {
+                let b = &rows[j].cand;
+                if b.motion != a.motion || b.aspect > a.aspect * DUP_ASPECT_TOL { break; }
+                if is_ignored(i, j) { continue; }
+                if let Some(level) = dup_match(a, b) { edges.insert((i.min(j), i.max(j)), level); }
             }
-            if members.len() >= 2 {
-                used[i] = true;
-                clusters.push(("potential", members));   // non-committal: perceptual, not certain
-            }
+        }
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&i| rows[i].created_at);
+        for (members, level) in cluster_dupes(&order, &edges, &mut used, &is_ignored) {
+            let reason = match level {
+                DupLevel::Identical if rows[members[0]].cand.motion => "same_video",
+                DupLevel::Identical => "identical",
+                DupLevel::Possible => "potential",
+            };
+            clusters.push((reason, members));
         }
     }
 
@@ -2631,9 +3072,9 @@ fn find_duplicates_impl(app: &AppHandle) -> Result<Vec<DupGroup>, String> {
         groups.push(DupGroup { reason: reason.to_string(), distance: 0, items });
     }
 
-    // Exact copies first, then potential matches; larger groups higher.
+    // Exact copies first, then near-certain, then possible matches; larger groups higher.
     groups.sort_by(|a, b| {
-        let rank = |r: &str| if r == "exact" { 0 } else { 1 };
+        let rank = |r: &str| match r { "exact" => 0, "identical" | "same_video" => 1, _ => 2 };
         rank(&a.reason).cmp(&rank(&b.reason)).then(b.items.len().cmp(&a.items.len()))
     });
 
@@ -3035,6 +3476,7 @@ pub async fn relocate_vault(
 
     // ── Commit: write new vault path ───────────────────────────────
     vault::write_custom_vault_path(&app, &new_vault).map_err(|e| e.to_string())?;
+    let _ = app.asset_protocol_scope().allow_directory(&new_vault, true);
 
     // ── Update absolute paths in DB ────────────────────────────────
     // stored_path and thumbnail_path are stored as absolute paths, so they
@@ -3204,6 +3646,22 @@ pub struct MobileQrData {
     pub svg: String,
 }
 
+/// New connection key: the old QR code stops working, so a phone that once scanned it
+/// (or a photo of it) can no longer send files in. The browser extension shares the key
+/// and re-pairs by itself when it sees the change.
+#[tauri::command]
+pub fn reset_mobile_connection_key(state: State<AppState>) -> Result<MobileQrData, String> {
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES ('extension_connection_key', ?1)",
+            [uuid::Uuid::new_v4().to_string()],
+        ).map_err(|e| e.to_string())?;
+    }
+    log::info!(target: "ExtServer", "connection_key_reset");
+    get_mobile_connection_qr(state)
+}
+
 #[tauri::command]
 pub fn get_mobile_connection_qr(state: State<AppState>) -> Result<MobileQrData, String> {
     let db = state.db.lock().unwrap();
@@ -3279,6 +3737,21 @@ pub fn download_url(
     quality: String,
     ext_id: Option<String>,
 ) -> Result<String, String> {
+    // Links reach here from the page, the browser extension and the phone: only plain
+    // web addresses go on to the downloader (never options, local files or other schemes).
+    if !is_web_url(&url) {
+        log::warn!(target: "Download", "rejected_url url={url:?}");
+        return Err("Unsupported link".into());
+    }
+    // Nothing from the user's own network (router, NAS, other programs here) — a web
+    // page picks what the extension sends. run_ytdlp checks again after the DNS lookup.
+    if crate::net_guard::is_private_literal(&url) {
+        log::warn!(target: "Download", "rejected_private_address");
+        if let Some(ref eid) = ext_id {
+            set_ext_progress(&app, eid, 0.0, "", "error", crate::net_guard::PRIVATE_ADDRESS);
+        }
+        return Err(crate::net_guard::PRIVATE_ADDRESS.into());
+    }
     let vault_path = vault::get_vault_path(&app).map_err(|e| e.to_string())?;
     let tmp_dir = vault_path.join("downloads_tmp");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
@@ -3356,6 +3829,16 @@ pub fn download_url(
     try_start_next();
 
     Ok(download_id)
+}
+
+/// An http(s) address with a host and no spaces or control characters.
+fn is_web_url(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    let rest = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"));
+    url.len() <= 4096
+        && url == url.trim()
+        && !url.chars().any(|c| c.is_whitespace() || c.is_control())
+        && rest.is_some_and(|r| r.chars().next().is_some_and(|c| c.is_ascii_alphanumeric() || c == '['))
 }
 
 pub fn ytdlp_binary_path(app: &AppHandle) -> std::path::PathBuf {
@@ -3651,27 +4134,42 @@ fn parse_video_wh(s: &str) -> Option<f64> {
     None
 }
 
-/// What the browser extension shows when a save fails: short, plain words (old
-/// extensions cut the text at 80 chars). The raw error stays in the log.
+/// Why a save from the browser extension failed: (code, raw-error needles, wording).
+/// Checked in order. The extension shows its own translation of the code (English or
+/// Uzbek); the English wording is for older extensions, which cut it at 80 chars.
+const EXT_ERRORS: &[(&str, &[&str], &str)] = &[
+    ("private_address",    &["private_address"], "qooti doesn't download from addresses on your own network."),
+    ("youtube_setup",      &["couldn't set up youtube"], "Couldn't set up YouTube. Check your internet and try again."),
+    ("not_video",          &["couldn't read the video link"], "This link isn't a video. Open the video itself and try again."),
+    ("timeout",            &["timed out", "timeout"], "This took too long. Please try again."),
+    ("unavailable",        &["private video", "video unavailable", "is unavailable", "has been removed", "members-only", "not available in your country"], "This video is private, removed or unavailable."),
+    ("age_bot",            &["sign in to confirm", "confirm your age", "age-restricted"], "YouTube blocked this one (age or bot check). Try again later."),
+    ("signin",             &["qooti extension", "browser session", "logged-in", "login required", "cookies"], "Sign in to this site in your browser, then try again."),
+    ("unsupported",        &["unsupported url", "private or unsupported"], "qooti can't save from this link."),
+    ("refused",            &["http error 403", "forbidden", "http error 429", "http error 503", "challenge"], "The site refused the download. Try again in a few minutes."),
+    ("network",            &["unable to download webpage", "getaddrinfo", "failed to resolve", "connection", "network"], "Couldn't connect. Check your internet and try again."),
+    ("missing_downloader", &["yt-dlp not found"], "qooti's downloader is missing. Reinstall qooti to fix it."),
+    ("nothing_found",      &["no importable files", "no output files", "requested format is not available"], "No video or image found here."),
+    ("add_failed",         &["save failed", "couldn't add"], "Downloaded, but couldn't add it to your library."),
+    ("image_failed",       &["failed to save image", "failed to download image"], "Couldn't save this image."),
+];
+const EXT_ERROR_GENERIC: &str = "Couldn't save this. Please try again.";
+
+/// What the browser extension shows when a save fails: short, plain words. The raw
+/// error stays in the log.
 pub(crate) fn friendly_ext_error(raw: &str) -> String {
     let l = raw.to_lowercase();
-    let has = |needles: &[&str]| needles.iter().any(|n| l.contains(n));
-    let msg = if has(&["free daily limit", "download_limit"]) { return raw.to_string() }
-        else if has(&["couldn't set up youtube"]) { "Couldn't set up YouTube. Check your internet and try again." }
-        else if has(&["couldn't read the video link"]) { "This link isn't a video. Open the video itself and try again." }
-        else if has(&["timed out", "timeout"]) { "This took too long. Please try again." }
-        else if has(&["private video", "video unavailable", "is unavailable", "has been removed", "members-only", "not available in your country"]) { "This video is private, removed or unavailable." }
-        else if has(&["sign in to confirm", "confirm your age", "age-restricted"]) { "YouTube blocked this one (age or bot check). Try again later." }
-        else if has(&["qooti extension", "browser session", "logged-in", "login required", "cookies"]) { "Sign in to this site in your browser, then try again." }
-        else if has(&["unsupported url", "private or unsupported"]) { "qooti can't save from this link." }
-        else if has(&["http error 403", "forbidden", "http error 429", "http error 503", "challenge"]) { "The site refused the download. Try again in a few minutes." }
-        else if has(&["unable to download webpage", "getaddrinfo", "failed to resolve", "connection", "network"]) { "Couldn't connect. Check your internet and try again." }
-        else if has(&["yt-dlp not found"]) { "qooti's downloader is missing. Reinstall qooti to fix it." }
-        else if has(&["no importable files", "no output files", "requested format is not available"]) { "No video or image found here." }
-        else if has(&["save failed", "couldn't add"]) { "Downloaded, but couldn't add it to your library." }
-        else if has(&["failed to save image", "failed to download image"]) { "Couldn't save this image." }
-        else { "Couldn't save this. Please try again." };
-    msg.to_string()
+    if l.contains("free daily limit") || l.contains("download_limit") { return raw.to_string() }
+    EXT_ERRORS.iter()
+        .find(|(_, needles, _)| needles.iter().any(|n| l.contains(n)))
+        .map_or(EXT_ERROR_GENERIC, |e| e.2)
+        .to_string()
+}
+
+/// The code for wording made by `friendly_ext_error` ("generic" for anything else).
+pub(crate) fn ext_error_code(message: &str) -> &'static str {
+    if message.to_lowercase().contains("daily limit") { return "limit" }
+    EXT_ERRORS.iter().find(|e| e.2 == message).map_or("generic", |e| e.0)
 }
 
 fn set_ext_progress(app: &AppHandle, ext_id: &str, pct: f64, speed: &str, status: &str, message: &str) {
@@ -3957,6 +4455,13 @@ fn run_ytdlp(
 ) {
     use std::io::Read;
 
+    // A name can lead to the local network too: look it up before fetching anything.
+    if let Err(code) = crate::net_guard::check_public_url(&url) {
+        log::warn!(target: "Download", "rejected_private_address download_id={download_id}");
+        emit_download_error(&app, &download_id, code, ext_id.as_deref());
+        return;
+    }
+
     let binary = ytdlp_binary(&app);
     if let Ok(meta) = std::fs::metadata(&binary) {
         log::debug!(target: "Download", "binary path={:?} bytes={}", binary, meta.len());
@@ -3990,11 +4495,14 @@ fn run_ytdlp(
 
         let mut fetched: Option<(Vec<u8>, String)> = None;
         for cand in &candidates {
-            let r = ureq::get(cand).set("User-Agent", ua).call()
+            let r = crate::net_guard::agent().get(cand).set("User-Agent", ua).call()
                 .map_err(|e| e.to_string())
                 .and_then(|r| {
+                    // An image link is read into memory: stop at a sane size.
+                    const MAX_IMAGE: u64 = 200 * 1024 * 1024;
                     let mut bytes = Vec::new();
-                    r.into_reader().read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+                    r.into_reader().take(MAX_IMAGE + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+                    if bytes.len() as u64 > MAX_IMAGE { return Err("image too large".to_string()); }
                     Ok(bytes)
                 });
             match r {
@@ -4255,7 +4763,8 @@ fn run_ytdlp(
         log::warn!(target: "Download", "cookie_source=none needs_auth=true download_id={download_id}");
     }
 
-    let with_url = |mut a: Vec<String>| -> Vec<String> { a.push(url.clone()); a };
+    // "--" ends the options: whatever the URL looks like, yt-dlp can only read it as a URL.
+    let with_url = |mut a: Vec<String>| -> Vec<String> { a.push("--".into()); a.push(url.clone()); a };
     // Normal runs never load yt-dlp plugins (see pot_installed above).
     let plugins_off = |a: Vec<String>| -> Vec<String> {
         let mut v = vec!["--no-plugin-dirs".to_string()];
@@ -4572,7 +5081,7 @@ fn pinterest_image_fallback(
               (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
     // Step 1: fetch the Pinterest pin page HTML
-    let html = match ureq::get(url).set("User-Agent", ua).call() {
+    let html = match crate::net_guard::agent().get(url).set("User-Agent", ua).call() {
         Ok(r)  => match r.into_string() {
             Ok(s)  => s,
             Err(e) => { log::warn!(target: "Download", "pinterest_page_read_err error={e}"); return vec![]; }
@@ -4596,7 +5105,7 @@ fn pinterest_image_fallback(
     let mut bytes: Vec<u8> = Vec::new();
     let mut used_img = image_url.clone();
     for cand in &img_candidates {
-        match ureq::get(cand).set("User-Agent", ua).call() {
+        match crate::net_guard::agent().get(cand).set("User-Agent", ua).call() {
             Ok(r) => {
                 let mut b = Vec::new();
                 if r.into_reader().read_to_end(&mut b).is_ok() && !b.is_empty() {
@@ -5137,10 +5646,10 @@ pub fn fetch_youtube_thumbnail(url: String) -> Result<String, String> {
     let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
               (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     let thumb_url = format!("https://img.youtube.com/vi/{}/maxresdefault.jpg", video_id);
-    let resp = ureq::get(&thumb_url).set("User-Agent", ua).call()
+    let resp = crate::net_guard::agent().get(&thumb_url).set("User-Agent", ua).call()
         .or_else(|_| {
             let fb = format!("https://img.youtube.com/vi/{}/hqdefault.jpg", video_id);
-            ureq::get(&fb).set("User-Agent", ua).call()
+            crate::net_guard::agent().get(&fb).set("User-Agent", ua).call()
         })
         .map_err(|e| e.to_string())?;
     let mut bytes: Vec<u8> = Vec::new();
@@ -5170,12 +5679,10 @@ fn extract_yt_video_id(url: &str) -> Option<&str> {
 
 // ── Free-plan helpers ─────────────────────────────────────────────
 
-fn get_plan_from_db(db: &rusqlite::Connection) -> String {
-    db.query_row(
-        "SELECT value FROM preferences WHERE key = 'plan'",
-        [],
-        |r| r.get::<_, String>(0),
-    ).unwrap_or_else(|_| "free".to_string())
+/// The plan the free-plan limits use: the verified licence ticket, never the `plan`
+/// preference (that's a display copy the user could edit in the database).
+fn get_plan_from_db(_db: &rusqlite::Connection) -> String {
+    crate::bloot_hub::verified_plan().to_string()
 }
 
 fn is_free_plan(plan: &str) -> bool {
@@ -5184,7 +5691,7 @@ fn is_free_plan(plan: &str) -> bool {
 
 // Returns true if this collection is read-only for the current (free) plan user.
 // A collection is locked when it's not among the FREE_COLLECTION_LIMIT oldest ones.
-fn is_collection_locked(db: &rusqlite::Connection, collection_id: &str) -> bool {
+pub(crate) fn is_collection_locked(db: &rusqlite::Connection, collection_id: &str) -> bool {
     let plan = get_plan_from_db(db);
     if !is_free_plan(&plan) { return false; }
     // Count how many collections were created strictly before this one.
@@ -5231,6 +5738,8 @@ pub fn get_free_plan_info(state: State<AppState>) -> Result<FreePlanInfo, String
     let collection_count: i64 = db.query_row(
         "SELECT COUNT(*) FROM collections", [], |r| r.get(0)
     ).unwrap_or(0);
+    // For the bars on the account site's Free card (sent only on Free, only on change).
+    crate::bloot_hub::report_usage(item_total, collection_count);
 
     let queued_count: i64 = db.query_row(
         "SELECT COUNT(*) FROM ext_download_queue", [], |r| r.get(0)
@@ -5280,10 +5789,76 @@ fn now_ms() -> i64 {
 }
 
 // ─── URL duplicate check ─────────────────────────────────────────
+// Before downloading a link, qooti looks for an item saved from the same page. The
+// same page is often written differently — share links add ?si=/utm_ tags, youtu.be vs
+// youtube.com/watch?v=, Shorts, www./m. — so links are compared by a normal form.
+
+/// A link reduced to what identifies the page: the video id for YouTube, Instagram and
+/// TikTok; otherwise host + path + the query without tracking tags (sorted), no fragment.
+pub fn normalize_link(raw: &str) -> String {
+    let s = raw.trim();
+    let no_scheme = s.split_once("://").map_or(s, |(_, rest)| rest);
+    let no_frag = no_scheme.split('#').next().unwrap_or("");
+    let (host_path, query) = no_frag.split_once('?').unwrap_or((no_frag, ""));
+    let (host, path) = host_path.split_once('/').unwrap_or((host_path, ""));
+    let host = host.to_ascii_lowercase();
+    let host = host.trim_start_matches("www.").trim_start_matches("m.").trim_start_matches("mobile.");
+    let path = path.trim_end_matches('/');
+    let segs: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    let param = |k: &str| query.split('&').find_map(|kv| kv.split_once('=').filter(|(a, _)| *a == k).map(|(_, v)| v.to_string()));
+
+    match host {
+        "youtu.be" => if let Some(id) = segs.first() { return format!("youtube:{id}") },
+        "youtube.com" | "music.youtube.com" => {
+            if let Some(id) = param("v").filter(|v| !v.is_empty()) { return format!("youtube:{id}") }
+            if let [kind, id, ..] = segs.as_slice() {
+                if matches!(*kind, "shorts" | "embed" | "live" | "v") { return format!("youtube:{id}") }
+            }
+        }
+        "instagram.com" => {
+            // /p/ID, /reel/ID, /reels/ID, /tv/ID — also behind a /username/ prefix
+            if let Some(i) = segs.iter().position(|p| matches!(*p, "p" | "reel" | "reels" | "tv")) {
+                if let Some(id) = segs.get(i + 1) { return format!("instagram:{id}") }
+            }
+        }
+        "tiktok.com" => {
+            if let Some(i) = segs.iter().position(|p| *p == "video" || *p == "photo") {
+                if let Some(id) = segs.get(i + 1) { return format!("tiktok:{id}") }
+            }
+        }
+        // A post is its path; the query (?s=20&t=…) is only share tracking
+        "x.com" | "twitter.com" | "pinterest.com" | "behance.net" | "dribbble.com" => return format!("{host}/{path}"),
+        _ => {}
+    }
+
+    const TRACKING: &[&str] = &["si", "feature", "igsh", "igshid", "fbclid", "gclid", "ref", "ref_src", "share_id", "_r", "_t"];
+    let mut keep: Vec<&str> = query.split('&')
+        .filter(|kv| !kv.is_empty())
+        .filter(|kv| { let k = kv.split('=').next().unwrap_or(""); !k.starts_with("utm_") && !TRACKING.contains(&k) })
+        .collect();
+    keep.sort_unstable();
+    let mut out = format!("{host}/{path}");
+    if !keep.is_empty() { out.push('?'); out.push_str(&keep.join("&")); }
+    out
+}
+
+/// The item already saved from this link, if any (exact match first, then the normal form).
+pub fn find_by_link(db: &rusqlite::Connection, url: &str) -> Option<String> {
+    let url = url.trim();
+    if url.is_empty() { return None; }
+    if let Ok(id) = db.query_row("SELECT id FROM inspirations WHERE source_url = ?1 LIMIT 1", params![url], |r| r.get(0)) {
+        return Some(id);
+    }
+    let want = normalize_link(url);
+    let mut stmt = db.prepare("SELECT id, source_url FROM inspirations WHERE source_url IS NOT NULL AND source_url != ''").ok()?;
+    let rows: Vec<(String, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).ok()?.flatten().collect();
+    rows.into_iter().find(|(_, u)| normalize_link(u) == want).map(|(id, _)| id)
+}
 
 #[tauri::command]
 pub fn check_url_exists(url: String, state: State<AppState>) -> Result<Option<Inspiration>, String> {
     let db = state.db.lock().unwrap();
+    let Some(id) = find_by_link(&db, &url) else { return Ok(None) };
     db.query_row(
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
@@ -5292,8 +5867,8 @@ pub fn check_url_exists(url: String, state: State<AppState>) -> Result<Option<In
                 (SELECT json_group_array(c.name) FROM collection_items ci
                  JOIN collections c ON c.id = ci.collection_id
                  WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
-         FROM inspirations WHERE source_url = ?1 LIMIT 1",
-        params![url],
+         FROM inspirations WHERE id = ?1",
+        params![id],
         row_to_inspiration,
     ).optional().map_err(|e| e.to_string())
 }
@@ -5408,21 +5983,6 @@ const INSP_SELECT: &str =
              JOIN collections c ON c.id = ci.collection_id
              WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
      FROM inspirations";
-
-/// Full rows for the given ids (any order), keyed by id. Used by reco.rs.
-pub(crate) fn inspirations_by_ids(db: &rusqlite::Connection, ids: &[String]) -> HashMap<String, Inspiration> {
-    let mut out = HashMap::new();
-    for chunk in ids.chunks(500) {
-        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!("{INSP_SELECT} WHERE id IN ({placeholders})");
-        if let Ok(mut stmt) = db.prepare(&sql) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), row_to_inspiration) {
-                for r in rows.flatten() { out.insert(r.id.clone(), r); }
-            }
-        }
-    }
-    out
-}
 
 // Items saved 60–180 days ago, least recently viewed first.
 #[tauri::command]
@@ -5768,7 +6328,7 @@ pub async fn reset_app(
 
 #[cfg(test)]
 mod ext_error_tests {
-    use super::friendly_ext_error;
+    use super::{ext_error_code, friendly_ext_error};
 
     #[test]
     fn extension_errors_are_plain_and_short() {
@@ -5788,5 +6348,263 @@ mod ext_error_tests {
         }
         assert_eq!(friendly_ext_error(cases[0]), "YouTube blocked this one (age or bot check). Try again later.");
         assert_eq!(friendly_ext_error(cases[1]), "This video is private, removed or unavailable.");
+    }
+
+    // The extension words each code in its own language
+    #[test]
+    fn every_wording_has_its_code() {
+        let code = |raw: &str| ext_error_code(&friendly_ext_error(raw));
+        assert_eq!(code("ERROR: [youtube] x: Sign in to confirm you're not a bot"), "age_bot");
+        assert_eq!(code("Requested content is not available, rate-limit reached or login required. Use --cookies"), "signin");
+        assert_eq!(code("private_address"), "private_address");
+        assert_eq!(code("timed out in pending state"), "timeout");
+        assert_eq!(code("something nobody anticipated"), "generic");
+        assert_eq!(code("Free daily limit reached. qooti will download it at midnight."), "limit");
+    }
+}
+
+#[cfg(test)]
+mod dup_tests {
+    use super::*;
+
+    fn unit(seed: &[f32]) -> Vec<f32> {
+        let mut v: Vec<f32> = (0..512).map(|k| seed[k % seed.len()] + (k as f32 * 0.37).sin() * 0.05).collect();
+        let len = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        for x in &mut v { *x /= len; }
+        v
+    }
+    /// A copy of `v` rotated towards an orthogonal direction so cos(v, result) == cos.
+    fn at_cos(v: &[f32], cos: f32) -> Vec<f32> {
+        let mut o: Vec<f32> = (0..512).map(|k| if k % 2 == 0 { 1.0 } else { -1.0 }).collect();
+        let d: f32 = o.iter().zip(v).map(|(a, b)| a * b).sum();
+        for (x, y) in o.iter_mut().zip(v) { *x -= d * y; }
+        let len = o.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let s = (1.0 - cos * cos).sqrt();
+        v.iter().zip(&o).map(|(a, b)| cos * a + s * b / len).collect()
+    }
+    fn fp(gray: u8, rgb: u8) -> Option<Fp> {
+        Some(Fp { dhash: 0xF0F0, sig: vec![gray; 256], rgb: Some(vec![rgb; 48]), aspect: Some(1.0) })
+    }
+    fn still(clip: Option<Vec<f32>>, gray: u8, text: &str) -> DupCand {
+        DupCand { motion: false, fp: fp(gray, 100), clip, words: ocr_words(text), duration: None, aspect: 1.0 }
+    }
+
+    #[test]
+    fn same_picture_matches_and_lookalikes_do_not() {
+        let e = unit(&[0.3, -0.2, 0.9]);
+        assert_eq!(dup_match(&still(Some(e.clone()), 100, ""), &still(Some(at_cos(&e, 0.99)), 101, "")), Some(DupLevel::Identical));
+        assert_eq!(dup_match(&still(Some(e.clone()), 100, ""), &still(Some(at_cos(&e, 0.96)), 108, "")), Some(DupLevel::Possible));
+        // Same light/dark layout, different picture (the old false positives: CLIP ≤ 0.81).
+        assert_eq!(dup_match(&still(Some(e.clone()), 100, ""), &still(Some(at_cos(&e, 0.81)), 100, "")), None);
+        // Same template, different words.
+        assert_eq!(dup_match(&still(Some(e.clone()), 100, "summer sale up to fifty"), &still(Some(at_cos(&e, 0.99)), 100, "winter launch new collection")), None);
+        // Recoloured variant: layout lines up, colours don't.
+        let mut b = still(Some(at_cos(&e, 0.97)), 100, "");
+        b.fp = fp(100, 160);
+        assert_eq!(dup_match(&still(Some(e.clone()), 100, ""), &b), None);
+        // A still is never a copy of a video.
+        let mut v = still(Some(e.clone()), 100, "");
+        v.motion = true;
+        assert_eq!(dup_match(&still(Some(e.clone()), 100, ""), &v), None);
+    }
+
+    #[test]
+    fn same_video_is_found_even_when_thumbnails_differ() {
+        let e = unit(&[0.5, 0.1, -0.4]);
+        let clip = |cos: f32, dur: f64, gray: u8| DupCand { motion: true, fp: fp(gray, 100), clip: Some(at_cos(&e, cos)), words: HashSet::new(), duration: Some(dur), aspect: 1.78 };
+        // The reel saved twice: CLIP 0.92, 0.06 s apart, thumbnails from different frames.
+        assert_eq!(dup_match(&clip(1.0, 60.14, 60), &clip(0.92, 60.20, 140)), Some(DupLevel::Possible));
+        // Same look, different length → different videos.
+        assert_eq!(dup_match(&clip(1.0, 2.46, 60), &clip(0.95, 8.17, 60)), None);
+        // Same length, different content.
+        assert_eq!(dup_match(&clip(1.0, 13.19, 60), &clip(0.69, 12.98, 60)), None);
+    }
+
+    #[test]
+    fn without_clip_only_near_identical_fingerprints_match() {
+        let a = still(None, 100, "");
+        assert_eq!(dup_match(&a, &still(None, 101, "")), Some(DupLevel::Identical));
+        assert_eq!(dup_match(&a, &still(None, 106, "")), None);
+    }
+
+    #[test]
+    fn dismissed_pairs_never_share_a_group() {
+        // A matches B and C, B matches C, but the user said B and C are not duplicates.
+        let edges: HashMap<(usize, usize), DupLevel> =
+            [((0, 1), DupLevel::Identical), ((0, 2), DupLevel::Identical), ((1, 2), DupLevel::Identical)].into();
+        let mut used = vec![false; 3];
+        let groups = cluster_dupes(&[0, 1, 2], &edges, &mut used, &|a, b| (a.min(b), a.max(b)) == (1, 2));
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].0, vec![0, 1]);
+
+        // Every pair must match: C matches A but not B → C stays out of A+B.
+        let edges: HashMap<(usize, usize), DupLevel> = [((0, 1), DupLevel::Possible), ((0, 2), DupLevel::Possible)].into();
+        let mut used = vec![false; 3];
+        let groups = cluster_dupes(&[0, 1, 2], &edges, &mut used, &|_, _| false);
+        assert_eq!(groups, vec![(vec![0, 1], DupLevel::Possible)]);
+    }
+
+    #[test]
+    fn letterbox_bars_are_trimmed_before_fingerprinting() {
+        let mut img = image::RgbImage::from_pixel(300, 300, image::Rgb([0, 0, 0]));
+        for y in 75..225 { for x in 0..300 { img.put_pixel(x, y, image::Rgb([(x % 255) as u8, 120, (y % 200) as u8])); } }
+        let dir = std::env::temp_dir().join("qooti-dup-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("letterbox.png");
+        img.save(&path).unwrap();
+        let f = parse_fp(&phash_from_path(path.to_str().unwrap()).unwrap()).unwrap();
+        assert!((f.aspect.unwrap() - 2.0).abs() < 0.05, "aspect {:?}", f.aspect);
+        assert_eq!(f.rgb.as_ref().map(|v| v.len()), Some(48));
+        // v2 strings still parse until the backfill replaces them.
+        assert!(parse_fp(&format!("{:016x}:{}", 7u64, "ab".repeat(256))).is_some());
+    }
+}
+
+#[cfg(test)]
+mod pack_meta_tests {
+    use super::*;
+    use base64::Engine;
+
+    /// Everything one computer worked out for an item survives export → manifest → import,
+    /// so the other computer has nothing to recompute.
+    #[test]
+    fn pack_carries_all_analysis_results() {
+        let dir = std::env::temp_dir().join(format!("qooti-pack-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let img = dir.join("a.png");
+        image::RgbImage::from_fn(64, 48, |x, y| image::Rgb([(x * 4) as u8, (y * 5) as u8, 90])).save(&img).unwrap();
+        let thumb = dir.join("a_thumb.jpg");
+        image::RgbImage::from_pixel(8, 8, image::Rgb([10, 20, 30])).save(&thumb).unwrap();
+        let phash = phash_from_path(img.to_str().unwrap()).unwrap();
+        let emb: Vec<u8> = (0..crate::clip::DIM).flat_map(|k| (k as f32 / 512.0).to_le_bytes()).collect();
+
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrate(&db).unwrap();
+        crate::clip::ensure_table(&db);
+        db.execute(
+            "INSERT INTO inspirations (id, type, stored_path, created_at, updated_at, aspect_ratio, palette,
+                ocr_text, ocr_status, ocr_language, phash, phash_source, auto_tag_status, auto_tag_confidence,
+                auto_tag_model, object_tags, object_status, duration_secs, thumbnail_path)
+             VALUES ('a','image',?1,0,0,1.3333,'[\"#112233\",\"#AABBCC\"]','hello world','done','eng',?2,?3,
+                'done','{\"sunset\":0.81}','clip-vit-base-patch32','person car','done',NULL,?4)",
+            params![img.to_string_lossy(), phash, FP_VERSION, thumb.to_string_lossy()],
+        ).unwrap();
+        db.execute("INSERT INTO clip_embeddings (id, model, emb) VALUES ('a', ?1, ?2)", params![crate::clip::MODEL_TAG, emb]).unwrap();
+        db.execute("INSERT INTO tags (id, name, source, created_at) VALUES ('t1','sunset','model',0),('t2','moodboard','user',0)", []).unwrap();
+        db.execute("INSERT INTO inspiration_tags (inspiration_id, tag_id) VALUES ('a','t1'),('a','t2')", []).unwrap();
+
+        // Export side
+        let ex = pack_extras(&db, "a").unwrap();
+        let mut entry = serde_json::json!({ "id": "a", "type": "image", "file": "media/a.png", "ocr_text": "hello world" });
+        let mut media = vec![("media/a.png".to_string(), img.to_string_lossy().into_owned())];
+        pack_attach_extras(&mut entry, "a", &ex, &mut media);
+        assert_eq!(media.len(), 2, "thumbnail travels with the item");
+        assert_eq!(entry["thumb"], "thumbs/a.jpg");
+        assert_eq!(entry["tag_sources"]["sunset"], "model");
+        assert_eq!(entry["tag_sources"]["moodboard"], "user");
+
+        // Through JSON text, as in the real pack
+        let entry: serde_json::Value = serde_json::from_str(&serde_json::to_string(&entry).unwrap()).unwrap();
+
+        // Import side
+        let got = read_pack_meta(&entry, false);
+        assert_eq!(got, PackMeta {
+            aspect_ratio:        Some(1.3333),
+            duration_secs:       None,
+            ocr_text:            "hello world".into(),
+            ocr_status:          Some("done".into()),
+            ocr_language:        Some("eng".into()),
+            palette:             Some("[\"#112233\",\"#AABBCC\"]".into()),
+            phash:               Some(phash.clone()),
+            auto_tag_status:     Some("done".into()),
+            auto_tag_confidence: Some("{\"sunset\":0.81}".into()),
+            auto_tag_model:      Some("clip-vit-base-patch32".into()),
+            object_tags:         Some("person car".into()),
+            object_status:       Some("done".into()),
+            clip_emb:            Some(emb.clone()),
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A tampered or half-finished pack never plants bad data: each odd field is dropped and
+    /// that step runs again here.
+    #[test]
+    fn pack_meta_rejects_bad_values() {
+        let short = base64::engine::general_purpose::STANDARD.encode([0u8; 16]);
+        let nan: Vec<u8> = (0..crate::clip::DIM).flat_map(|_| f32::NAN.to_le_bytes()).collect();
+        let nan = base64::engine::general_purpose::STANDARD.encode(nan);
+        for (meta, what) in [
+            (serde_json::json!({ "clip": { "model": crate::clip::MODEL_TAG, "emb": short } }), "short embedding"),
+            (serde_json::json!({ "clip": { "model": crate::clip::MODEL_TAG, "emb": nan } }), "NaN embedding"),
+            (serde_json::json!({ "clip": { "model": "other", "emb": "" } }), "other model"),
+        ] {
+            assert_eq!(read_pack_meta(&serde_json::json!({ "meta": meta }), false).clip_emb, None, "{what}");
+        }
+        let m = read_pack_meta(&serde_json::json!({ "meta": {
+            "aspect_ratio": -2.0, "palette": "[\"red\"]", "phash": "v2|abc", "phash_source": "v2",
+            "ocr_status": "processing", "ocr_language": "eng", "auto_tag_status": "processing",
+            "auto_tag_model": "x", "object_status": "weird", "object_tags": "car",
+        }, "ocr_text": "a\r\nb" }), false);
+        assert_eq!(m, PackMeta { ocr_text: "a\nb".into(), ..Default::default() });
+        // v1 pack: no meta at all, but its OCR text is kept
+        let v1 = read_pack_meta(&serde_json::json!({ "ocr_text": "kept" }), false);
+        assert_eq!(v1, PackMeta { ocr_text: "kept".into(), ..Default::default() });
+        // Videos never queue OCR
+        assert_eq!(read_pack_meta(&serde_json::json!({}), true).ocr_status.as_deref(), Some("skipped"));
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::*;
+
+    #[test]
+    fn same_page_written_differently_matches() {
+        let same = |a: &str, b: &str| assert_eq!(normalize_link(a), normalize_link(b), "{a} vs {b}");
+        same("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s", "https://youtu.be/dQw4w9WgXcQ?si=abc");
+        same("https://youtube.com/shorts/abc123?feature=share", "https://m.youtube.com/watch?v=abc123");
+        same("https://www.instagram.com/reel/C9xyz/?igsh=MTc4", "https://instagram.com/p/C9xyz");
+        same("https://www.instagram.com/someone/reel/C9xyz/", "https://instagram.com/reel/C9xyz");
+        same("https://www.tiktok.com/@me/video/7300000000?is_from_webapp=1", "https://tiktok.com/@me/video/7300000000");
+        same("https://x.com/user/status/123?s=20&t=xyz", "https://x.com/user/status/123");
+        same("https://site.com/page/?utm_source=a&id=7#top", "http://site.com/page?id=7");
+        same("https://site.com/a?b=2&a=1", "https://site.com/a?a=1&b=2");
+    }
+
+    #[test]
+    fn different_pages_stay_different() {
+        let differ = |a: &str, b: &str| assert_ne!(normalize_link(a), normalize_link(b), "{a} vs {b}");
+        differ("https://youtu.be/aaa", "https://youtu.be/bbb");
+        differ("https://site.com/search?q=cats", "https://site.com/search?q=dogs");
+        differ("https://site.com/one", "https://site.com/two");
+        differ("https://instagram.com/p/AAA", "https://instagram.com/p/BBB");
+    }
+
+    #[test]
+    fn finds_the_saved_item() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrate(&db).unwrap();
+        db.execute("INSERT INTO inspirations (id, type, stored_path, source_url, created_at, updated_at) VALUES ('a','video','x','https://www.youtube.com/watch?v=XYZ',0,0)", []).unwrap();
+        assert_eq!(find_by_link(&db, "https://youtu.be/XYZ?si=1").as_deref(), Some("a"));
+        assert_eq!(find_by_link(&db, "https://youtu.be/OTHER"), None);
+        assert_eq!(find_by_link(&db, "  "), None);
+    }
+}
+
+#[cfg(test)]
+mod url_guard_tests {
+    use super::is_web_url;
+
+    #[test]
+    fn accepts_web_addresses_only() {
+        assert!(is_web_url("https://www.youtube.com/watch?v=abc"));
+        assert!(is_web_url("http://i.pinimg.com/originals/a.jpg"));
+        assert!(!is_web_url(r"--config-locations=\\server\share\x"));
+        assert!(!is_web_url("-o x https://a.com"));
+        assert!(!is_web_url("file:///C:/Windows/win.ini"));
+        assert!(!is_web_url("https://"));
+        assert!(!is_web_url("https:// a.com"));
+        assert!(!is_web_url(" https://a.com"));
+        assert!(!is_web_url("javascript:alert(1)"));
     }
 }

@@ -15,7 +15,7 @@ pub mod logger;
 pub mod media_guard;
 pub mod vault;
 pub mod extension_server;
-pub mod local_stats_server;
+pub mod net_guard;
 pub mod updater;
 pub mod pack;
 pub mod palette;
@@ -28,6 +28,17 @@ pub struct ExtProgress {
     pub message:        String,
     pub inspiration_id: Option<String>,
     pub updated_at:     std::time::Instant,
+}
+
+/// The tray menu's items, kept so they follow the app's language (commands::set_setting).
+pub struct TrayMenu {
+    pub show: MenuItem<tauri::Wry>,
+    pub quit: MenuItem<tauri::Wry>,
+}
+
+/// The tray menu's words in the app's language ("uz" or English).
+pub fn tray_words(lang: &str) -> (&'static str, &'static str) {
+    if lang == "uz" { ("qooti’ni ochish", "qooti’dan chiqish") } else { ("Show qooti", "Quit qooti") }
 }
 
 pub struct AppState {
@@ -122,6 +133,25 @@ pub fn run() {
                 pot_child:             std::sync::Mutex::new(None),
             });
 
+            // Read the licence ticket now, so the free-plan limits know the plan
+            // before the page has loaded.
+            let _ = bloot_hub::account(app.handle());
+
+            // The page may load files only from the library and board images — not the
+            // whole disk (tauri.conf.json starts the asset scope empty).
+            allow_media_dirs(app.handle());
+
+            // Browser cookies the extension sent for a save are written to %TEMP% and removed
+            // when that download ends; drop any a crash or an unused save left behind.
+            if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name.starts_with("qooti_cookies_") && name.ends_with(".txt") {
+                        std::fs::remove_file(entry.path()).ok();
+                    }
+                }
+            }
+
             // Clean up any partial/stale files left in downloads_tmp from a previous crash or
             // cancelled download. Safe to wipe on boot — no download can be active yet.
             if let Ok(vault_path) = vault::get_vault_path(app.handle()) {
@@ -179,8 +209,6 @@ pub fn run() {
                 }
             });
 
-            let stats_handle = app.handle().clone();
-            std::thread::spawn(move || local_stats_server::start(stats_handle));
 
             // One-time backfill of real image aspect ratios for the masonry grid
             // (images imported before native-ratio support were all stored as 1.0).
@@ -261,10 +289,15 @@ pub fn run() {
 
             window.show()?;
 
-            // Build system tray menu.
-            let show_item = MenuItem::with_id(app, "show", "Show qooti", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit qooti", true, None::<&str>)?;
+            // Build system tray menu, in the app's language.
+            let lang: String = app.state::<AppState>().db.lock().unwrap()
+                .query_row("SELECT value FROM preferences WHERE key = 'language'", [], |r| r.get(0))
+                .unwrap_or_default();
+            let (show_text, quit_text) = tray_words(&lang);
+            let show_item = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            app.manage(TrayMenu { show: show_item.clone(), quit: quit_item.clone() });
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -348,6 +381,10 @@ pub fn run() {
             commands::get_notifications,
             commands::mark_notification_read,
             commands::get_mobile_connection_qr,
+            commands::reset_mobile_connection_key,
+            extension_server::answer_extension_pair,
+            extension_server::list_extension_clients,
+            extension_server::remove_extension_client,
             commands::claim_auto_tag_candidates,
             commands::finalize_auto_tag_result,
             commands::reindex_library,
@@ -358,7 +395,6 @@ pub fn run() {
             commands::mark_not_duplicates,
             commands::find_similar,
             reco::taste_order,
-            reco::more_to_explore,
             diagnostics::diagnostics_snapshot,
             diagnostics::log_frontend,
             boards::list_boards,
@@ -494,4 +530,33 @@ fn process_ext_queue(app: &tauri::AppHandle) {
         }));
         std::thread::sleep(std::time::Duration::from_millis(800));
     }
+}
+
+/// Folders the window may show files from: the library, board images, and any older
+/// library folder items still live in (a library moved without copying its files).
+pub fn allow_media_dirs(app: &tauri::AppHandle) {
+    let scope = app.asset_protocol_scope();
+    if let Ok(v) = vault::get_vault_path(app) { let _ = scope.allow_directory(&v, true); }
+    if let Ok(d) = app.path().app_data_dir() { let _ = scope.allow_directory(d.join("board-assets"), true); }
+
+    let mut roots = std::collections::HashSet::new();
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(db) = state.db.lock() {
+            if let Ok(mut stmt) = db.prepare(
+                "SELECT stored_path FROM inspirations UNION SELECT thumbnail_path FROM inspirations \
+                 UNION SELECT enhanced_path FROM inspirations"
+            ) {
+                let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0));
+                for p in rows.into_iter().flatten().flatten().flatten() {
+                    // <library>/<images|videos|thumbnails|…>/<file> → <library>
+                    let path = std::path::Path::new(&p);
+                    if !path.is_absolute() { continue; }   // relative paths live in the library anyway
+                    if let Some(lib) = path.parent().and_then(|d| d.parent()).filter(|l| l.parent().is_some()) {
+                        roots.insert(lib.to_path_buf());
+                    }
+                }
+            }
+        }
+    }
+    for r in roots { let _ = scope.allow_directory(&r, true); }
 }

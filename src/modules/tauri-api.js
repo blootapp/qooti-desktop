@@ -58,6 +58,11 @@ export async function initTauriApi() {
     store.emit(events.EXTENSION_ADD_TO_COLLECTION, e.payload)
   })
 
+  // A browser extension asks to connect (extension_server.rs pairing)
+  await _listen('extension-pair-request', e => {
+    store.emit(events.EXTENSION_PAIR_REQUEST, e.payload)
+  })
+
   await _listen('extension-server-failed', () => {
     store.emit(events.SYSTEM_TOAST, {
       type: 'warning',
@@ -78,8 +83,23 @@ export async function initTauriApi() {
     store.emit(events.EXT_SAVE_QUEUED, e.payload)
   })
 
+  // Files dragged in from the OS. Tauri handles the drag natively (the page's own drag
+  // events never fire for OS files), so the drop overlay (B5) and the import drop zone
+  // follow these. Positions arrive in physical pixels → CSS pixels.
+  const at = p => p ? { x: p.x / devicePixelRatio, y: p.y / devicePixelRatio } : {}
+  await _listen('tauri://drag-enter', e => {
+    log.info('drag_enter', { files: e.payload?.paths?.length ?? 0 })
+    store.emit(events.FILES_DRAG, { phase: 'enter', ...at(e.payload?.position) })
+  })
+  await _listen('tauri://drag-over', e => {
+    store.emit(events.FILES_DRAG, { phase: 'over', ...at(e.payload?.position) })
+  })
+  await _listen('tauri://drag-leave', () => {
+    store.emit(events.FILES_DRAG, { phase: 'leave' })
+  })
   await _listen('tauri://drag-drop', e => {
     const paths = e.payload?.paths ?? []
+    store.emit(events.FILES_DRAG, { phase: 'drop', ...at(e.payload?.position) })
     if (paths.length) store.emit(events.FILES_DROPPED, { paths })
   })
 
@@ -189,6 +209,10 @@ const tauriApi = {
 
 
   getMobileConnectionQr: () => _invoke('get_mobile_connection_qr'),
+  resetMobileConnectionKey: () => _invoke('reset_mobile_connection_key'),
+  answerExtensionPair:  (origin, allow) => _invoke('answer_extension_pair', { origin, allow }),
+  listExtensionClients: () => _invoke('list_extension_clients'),
+  removeExtensionClient: origin => _invoke('remove_extension_client', { origin }),
 
   claimAutoTagCandidates: (batchSize = 4)                    => _invoke('claim_auto_tag_candidates', { batchSize }),
   finalizeAutoTagResult:  (id, confidence, model, status)    => _invoke('finalize_auto_tag_result', { id, confidence, model, status }),
@@ -224,13 +248,12 @@ const tauriApi = {
   listRediscover:               (limit = 20) => _invoke('list_rediscover', { limit }),
   listBecauseYouViewed:         (limit = 20) => _invoke('list_because_you_viewed', { limit }),
   listHaventSeen:               (limit = 20) => _invoke('list_havent_seen', { limit }),
-  // Taste-aware home feed order + "More to explore" shelves (reco.rs), both over the given ids.
-  tasteOrder:                   ids  => _invoke('taste_order', { ids }),
+  // Taste-aware home feed order (reco.rs) over the given ids.
+  tasteOrder:                   (ids, shuffle = 0) => _invoke('taste_order', { ids, shuffle }),
   // Feedback diagnostics (diagnostics.rs): system/library snapshot + both sessions' logs,
   // and the webview's own lines forwarded into the backend log file.
   diagnosticsSnapshot:          ()    => _invoke('diagnostics_snapshot'),
   logFrontend:                  lines => _invoke('log_frontend', { lines }),
-  moreToExplore:                ids  => _invoke('more_to_explore', { ids }),
 
   checkUrlExists: url => _invoke('check_url_exists', { url }),
   saveThumbnail:  (id, bytes) => _invoke('save_thumbnail', { id, bytes }),

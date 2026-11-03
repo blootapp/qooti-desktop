@@ -77,7 +77,7 @@ const MOCK_INSPIRATION_TAGS = {
   'mock-10': ['tag-3'],
 }
 
-export const MOCK_IMPORT_RESULT = { imported: [], skipped: [] }
+export const MOCK_IMPORT_RESULT = { imported: [], skipped: [], existing: [] }
 
 // ─── Mock API ────────────────────────────────────────────────────
 // Each function mirrors the signature of the real api.* method.
@@ -111,6 +111,10 @@ export const mockApi = {
         const tagIds = MOCK_INSPIRATION_TAGS[i.id] ?? []
         return MOCK_TAGS.some(t => tagIds.includes(t.id) && t.name.toLowerCase().includes(q))
       })
+    }
+    if (opts.uncollected) {
+      const inCols = ['mock-01','mock-02','mock-03','mock-04','mock-05','mock-06','mock-07','mock-08']
+      items = items.filter(i => !inCols.includes(i.id))
     }
     if (opts.collection_id) {
       // Mock: collections 1 contains first 4, col 2 contains 5-8
@@ -152,13 +156,17 @@ export const mockApi = {
 
   importFiles: paths => {
     const NOW2 = Date.now()
+    // A path naming an existing sample item ("…/mock-03.jpg") counts as already in the
+    // library — like the real app does for identical files
+    const existing = paths.map(p => _inspirations.find(i => p.includes(i.id))?.id).filter(Boolean)
+    paths = paths.filter(p => !_inspirations.some(i => p.includes(i.id)))
     const imported = paths.map((p, idx) => {
       const id = `import-${NOW2}-${idx}`
       const item = { id, type: 'image', title: null, stored_path: img(id, 400, 500), thumbnail_path: null, aspect_ratio: 0.80, mime_type: 'image/jpeg', ocr_text: '', ocr_status: null, source_platform: null, source_url: null, palette: null, ocr_language: null, file_hash: null, phash: null, phash_source: null, vault_id: null, created_at: NOW2, updated_at: NOW2 }
       _inspirations.unshift(item)
       return item
     })
-    return Promise.resolve({ imported, skipped: [] })
+    return Promise.resolve({ imported, skipped: [], existing })
   },
 
   readImageAsBase64: () => Promise.resolve(''),
@@ -227,6 +235,10 @@ export const mockApi = {
   markNotificationRead: id => { const n = _notifications.find(n => n.id === id); if (n) n.read = true; return Promise.resolve() },
 
   getMobileConnectionQr: () => Promise.resolve('MOCK-QR-KEY'),
+  resetMobileConnectionKey: () => Promise.resolve('MOCK-QR-KEY'),
+  answerExtensionPair:  () => Promise.resolve(),
+  listExtensionClients: () => Promise.resolve([{ origin: 'chrome-extension://mock', browser: 'Edge', approved_at: Date.now() - 86400000 }]),
+  removeExtensionClient: () => Promise.resolve(),
 
   claimAutoTagCandidates: () => Promise.resolve([]),
   finalizeAutoTagResult:  () => Promise.resolve(),
@@ -258,20 +270,15 @@ export const mockApi = {
   listRediscover:                ()   => Promise.resolve([]),
   listBecauseYouViewed:          ()   => Promise.resolve([]),
   listHaventSeen:                ()   => Promise.resolve([]),
-  tasteOrder:                    ids  => Promise.resolve(ids),
+  // Stable for a given shuffle number, different for the next one (like reco.rs)
+  tasteOrder: (ids, shuffle = 0) => {
+    const h = s => [...s].reduce((a, c) => Math.imul(a ^ c.charCodeAt(0), 16777619), 2166136261 ^ shuffle * 2654435761) >>> 0
+    return Promise.resolve(shuffle ? ids.slice().sort((a, b) => h(a) - h(b)) : ids)
+  },
   diagnosticsSnapshot:           ()   => Promise.reject(new Error('no backend in browser mode')),
   logFrontend:                   ()   => Promise.resolve(),
-  // One "because you opened" shelf and one "forgotten gems" shelf from the mock library.
-  moreToExplore: ids => {
-    const pool = ids.map(id => _inspirations.find(i => i.id === id)).filter(Boolean)
-    if (pool.length < 8) return Promise.resolve([])
-    const [pivot, ...rest] = pool
-    return Promise.resolve([
-      { kind: 'because',   pivot, items: rest.slice(0, 12) },
-      { kind: 'forgotten', pivot: null, items: rest.slice(12, 24) },
-    ].filter(s => s.items.length >= 3))
-  },
-  checkUrlExists:                _url => Promise.resolve(null),
+  // Preview: any link containing "dup" counts as already saved
+  checkUrlExists:                url => Promise.resolve(/dup/.test(url) ? (_inspirations[0] ?? null) : null),
   openUrl:                       _url => Promise.resolve(),
 
   listBoards:            ()   => Promise.resolve([]),

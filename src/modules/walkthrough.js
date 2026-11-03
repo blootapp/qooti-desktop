@@ -1,5 +1,6 @@
 import { api } from './tauri-api.js'
 import { t } from './i18n.js'
+import { isStarterPreview } from './starter.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 const EXT_URL  = 'https://chromewebstore.google.com/detail/feopgkjmnlaokclcpphaejjlpgdncdjf?utm_source=item-share-cb'
@@ -16,7 +17,7 @@ const STEP_DEFS = [
 let _root       = null
 let _spotlight  = null
 let _card       = null
-let _dotEls     = []
+let _stepEl     = null
 let _step       = 0
 let _keyHandler = null
 
@@ -47,31 +48,25 @@ function _build() {
 
   _card = document.createElement('div')
   _card.className = 'wt-card'
+  // Guide A3: "1 of N", title, body, then Skip tour · Back · Next
   _card.innerHTML = `
-    <div class="wt-card-top">
-      <div class="wt-dots" id="wt-dots"></div>
-      <button class="wt-skip-btn" id="wt-skip">${t('wt.skip')}</button>
-    </div>
+    <div class="wt-step" id="wt-step"></div>
     <h2 class="wt-title" id="wt-title"></h2>
     <p class="wt-desc"  id="wt-desc"></p>
     <div class="wt-card-bottom">
+      <button class="wt-skip-btn" id="wt-skip">${t('wt.skip')}</button>
+      <button class="wt-back-btn" id="wt-back">${t('wt.back')}</button>
       <button class="wt-next-btn" id="wt-next">${t('wt.next')}</button>
     </div>
   `
 
   _root.append(blocker, _spotlight, _card)
 
-  // Step dots
-  const dotsEl = _card.querySelector('#wt-dots')
-  _dotEls = STEP_DEFS.map(() => {
-    const dot = document.createElement('span')
-    dot.className = 'wt-dot'
-    dotsEl.appendChild(dot)
-    return dot
-  })
+  _stepEl = _card.querySelector('#wt-step')
 
   _card.querySelector('#wt-skip').addEventListener('click', _finish)
   _card.querySelector('#wt-next').addEventListener('click', _advance)
+  _card.querySelector('#wt-back').addEventListener('click', () => { if (_step > 0) _showStep(_step - 1) })
 
   _keyHandler = e => {
     if (e.key === 'Escape') { e.preventDefault(); _finish(); return }
@@ -95,9 +90,8 @@ function _showStep(idx) {
   const nextBtn = _card.querySelector('#wt-next')
   nextBtn.textContent = isLast ? t('wt.getstarted') : t('wt.next')
   _card.querySelector('#wt-skip').style.visibility = isLast ? 'hidden' : ''
-
-  // Step dots
-  _dotEls.forEach((d, i) => d.classList.toggle('is-active', i === idx))
+  _card.querySelector('#wt-back').hidden = idx === 0
+  _stepEl.textContent = t('wt.step_of', { n: idx + 1, total: STEP_DEFS.length })
 
   // Re-trigger card entrance animation
   _card.classList.remove('wt-card--in')
@@ -194,10 +188,10 @@ async function _finish() {
     _root      = null
     _spotlight = null
     _card      = null
-    _dotEls    = []
+    _stepEl    = null
     _showExtensionPromo()
   }, 280)
-  await api.setSetting('walkthrough_done', 'true').catch(() => {})
+  if (!isStarterPreview()) await api.setSetting('walkthrough_done', 'true').catch(() => {})
 }
 
 function _showExtensionPromo() {
@@ -215,15 +209,18 @@ function _showExtensionPromo() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;animation:ep-overlay-in 0.25s ease forwards'
 
   const card = document.createElement('div')
-  card.style.cssText = 'background:#1A1A1A;border:1px solid rgba(255,255,255,0.09);border-radius:16px;padding:28px 24px 20px;max-width:320px;width:90%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;animation:ep-card-in 0.32s cubic-bezier(0.16,1,0.3,1) forwards'
+  // Guide A3·6: the extension's own icon, title, one line, then "Maybe later" + the primary
+  card.style.cssText = 'background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:12px;padding:24px 20px 20px;max-width:360px;width:90%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;animation:ep-card-in 0.32s cubic-bezier(0.16,1,0.3,1) forwards'
   card.innerHTML = `
-    <div style="width:60px;height:60px;border-radius:16px;background:rgba(27,79,216,0.12);display:flex;align-items:center;justify-content:center;margin-bottom:2px">
-      <span class="icon icon-28" style="color:#3B82F6;mask-image:url('/icons/puzzle-piece.svg');-webkit-mask-image:url('/icons/puzzle-piece.svg')" aria-hidden="true"></span>
+    <div style="width:44px;height:44px;border-radius:10px;background:#0338FA;display:flex;align-items:center;justify-content:center;margin-bottom:8px">
+      <img src="/assets/brand/mark-white.svg" alt="" style="width:24px;height:24px" />
     </div>
-    <h2 style="margin:0;font-size:17px;font-weight:700;color:#EDEDF0;line-height:1.3">${t('ext.promo.title')}</h2>
-    <p style="margin:0;font-size:13.5px;color:#9A9AA3;line-height:1.5">${t('ext.promo.body')}</p>
-    <button id="ep-get" style="width:100%;margin-top:6px;padding:11px 0;border-radius:10px;background:#1B4FD8;border:none;cursor:pointer;font:inherit;font-size:14px;font-weight:600;color:#fff">${t('ext.promo.cta')}</button>
-    <button id="ep-skip" style="background:none;border:none;cursor:pointer;font:inherit;font-size:13px;color:#9A9AA3;padding:6px 0">${t('ext.promo.skip')}</button>
+    <h2 style="margin:0;font-size:15px;font-weight:600;color:var(--text-primary);line-height:1.4">${t('ext.promo.title')}</h2>
+    <p style="margin:0;font-size:12px;color:var(--text-secondary);line-height:1.5">${t('ext.promo.body')}</p>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button id="ep-skip" class="dlg-btn dlg-btn--ghost">${t('ext.promo.skip')}</button>
+      <button id="ep-get" class="dlg-btn dlg-btn--primary">${t('ext.promo.cta')}</button>
+    </div>
   `
 
   overlay.appendChild(card)

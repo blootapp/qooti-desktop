@@ -38,7 +38,7 @@ const SAFE_SETTINGS: &[&str] = &[
     "ytdlp_update_checked_at", "app_dl_count", "app_dl_date", "ext_dl_count", "ext_dl_date",
 ];
 /// Present/absent only.
-const SECRET_SETTINGS: &[&str] = &["extension_connection_key", "cookies_txt_path", "device_id", "bloot_id"];
+const SECRET_SETTINGS: &[&str] = &["extension_connection_key", "extension_clients", "cookies_txt_path", "device_id", "bloot_id"];
 
 #[tauri::command]
 pub async fn diagnostics_snapshot(app: AppHandle) -> Result<Value, String> {

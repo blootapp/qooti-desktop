@@ -1,21 +1,43 @@
 // Shared in-app dialog — replaces native prompt() / confirm()
+import { t } from './i18n.js'
+
 let _overlay = null
+
+/** True while a dialog is on screen — other key handlers should stand aside. */
+export function isDialogOpen() {
+  return !!_overlay?.classList.contains('dlg-visible')
+}
+
+/** "Are you sure?" before an item is deleted. Resolves true only when the user confirms. */
+export function confirmDeleteItem() {
+  return showConfirm({
+    title: t('item.delete_title'),
+    message: t('item.delete_msg'),
+    danger: true,
+    confirmLabel: t('action.delete'),
+  })
+}
 
 function getOverlay() {
   if (!_overlay) {
     _overlay = document.createElement('div')
     _overlay.className = 'dlg-overlay'
     document.body.appendChild(_overlay)
+    // The header's X behaves like Cancel (or OK when a dialog has nothing to cancel)
+    _overlay.addEventListener('click', e => {
+      if (!e.target.closest('[data-dlg-close]')) return
+      ;(_overlay.querySelector('#_dlg-cancel') ?? _overlay.querySelector('#_dlg-ok'))?.click()
+    })
   }
   return _overlay
 }
 
-function header(title, icon, danger) {
-  if (!icon) return `<div class="dlg-title">${escHtml(title)}</div>`
+// Guide H: title on the left, X on the right — no icon tile.
+function header(title) {
   return `
     <div class="dlg-header">
-      <div class="dlg-icon${danger ? ' dlg-icon--danger' : ''}">${I(icon, 20)}</div>
       <div class="dlg-title">${escHtml(title)}</div>
+      <button class="dlg-close" data-dlg-close aria-label="Close">${I('x', 16)}</button>
     </div>`
 }
 
@@ -24,11 +46,11 @@ export function showPrompt({ title, placeholder = '', value = '', confirmLabel =
     const overlay = getOverlay()
     overlay.innerHTML = `
       <div class="dlg-box">
-        ${header(title, icon, false)}
+        ${header(title)}
         <input class="dlg-input" placeholder="${escHtml(placeholder)}" value="${escHtml(value)}"
           autocomplete="off" spellcheck="false" />
         <div class="dlg-actions">
-          <button class="dlg-btn dlg-btn--ghost" id="_dlg-cancel">Cancel</button>
+          <button class="dlg-btn dlg-btn--ghost" id="_dlg-cancel">${escHtml(t('action.cancel'))}</button>
           <button class="dlg-btn dlg-btn--primary" id="_dlg-ok">${escHtml(confirmLabel)}</button>
         </div>
       </div>
@@ -63,12 +85,12 @@ export function showPrompt({ title, placeholder = '', value = '', confirmLabel =
 
 // Without checkboxLabel: resolves true/false.
 // With checkboxLabel:    resolves { ok: true, checked: bool } or false.
-export function showConfirm({ title, message = '', danger = false, confirmLabel = 'Confirm', icon = null, checkboxLabel = null }) {
+export function showConfirm({ title, message = '', danger = false, confirmLabel = 'Confirm', cancelLabel = 'Cancel', icon = null, checkboxLabel = null }) {
   return new Promise(resolve => {
     const overlay = getOverlay()
     overlay.innerHTML = `
       <div class="dlg-box">
-        ${header(title, icon, danger)}
+        ${header(title)}
         ${message ? `<div class="dlg-message">${escHtml(message)}</div>` : ''}
         ${checkboxLabel ? `
         <label class="dlg-check-row">
@@ -76,7 +98,7 @@ export function showConfirm({ title, message = '', danger = false, confirmLabel 
           <span class="dlg-check-label">${escHtml(checkboxLabel)}</span>
         </label>` : ''}
         <div class="dlg-actions">
-          <button class="dlg-btn dlg-btn--ghost" id="_dlg-cancel">Cancel</button>
+          <button class="dlg-btn dlg-btn--ghost" id="_dlg-cancel">${escHtml(cancelLabel)}</button>
           <button class="dlg-btn ${danger ? 'dlg-btn--danger' : 'dlg-btn--primary'}" id="_dlg-ok">${escHtml(confirmLabel)}</button>
         </div>
       </div>
@@ -119,7 +141,7 @@ export function showAlert({ title, message = '', danger = false, icon = null, ok
     const overlay = getOverlay()
     overlay.innerHTML = `
       <div class="dlg-box">
-        ${header(title, icon ?? (danger ? 'warning' : 'info'), danger)}
+        ${header(title)}
         ${message ? `<div class="dlg-message dlg-message--pre">${escHtml(message)}</div>` : ''}
         <div class="dlg-actions">
           <button class="dlg-btn dlg-btn--primary" id="_dlg-ok">${escHtml(okLabel)}</button>
@@ -156,12 +178,12 @@ export function showDuplicateDialog({ title, message = '' }) {
     const overlay = getOverlay()
     overlay.innerHTML = `
       <div class="dlg-box">
-        ${header(title, null, false)}
+        ${header(title)}
         ${message ? `<div class="dlg-message">${escHtml(message)}</div>` : ''}
         <div class="dlg-actions">
-          <button class="dlg-btn dlg-btn--ghost"      id="_dlg-cancel">Cancel</button>
-          <button class="dlg-btn dlg-btn--secondary"  id="_dlg-view">View in library</button>
-          <button class="dlg-btn dlg-btn--primary"    id="_dlg-ok">Download anyway</button>
+          <button class="dlg-btn dlg-btn--ghost"      id="_dlg-cancel">${escHtml(t('action.cancel'))}</button>
+          <button class="dlg-btn dlg-btn--secondary"  id="_dlg-view">${escHtml(t('dlg.dup.view'))}</button>
+          <button class="dlg-btn dlg-btn--primary"    id="_dlg-ok">${escHtml(t('dlg.dup.anyway'))}</button>
         </div>
       </div>
     `

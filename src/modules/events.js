@@ -27,6 +27,7 @@ export const TAG_FILTER_CHANGED = 'tag:filter-changed' // { tagIds: string[] }
 export const SEARCH_QUERY_CHANGED = 'search:query-changed' // { query: string }
 export const SEARCH_COLOR_CHANGED = 'search:color-changed' // { hex: string | null, tolerance?: 'strict'|'normal'|'broad' }
 export const SEARCH_MEDIA_CHANGED = 'search:media-changed' // { types: string[] | null } — null = all media
+export const FILTER_CLEAR_REQUESTED = 'filter:clear-requested' // { which: 'color' | 'media' } — from the active-filter chips
 
 // ─── OCR ─────────────────────────────────────────────────────────
 export const OCR_BATCH_DONE   = 'ocr:batch-done'   // { processed: number }
@@ -36,6 +37,7 @@ export const OCR_STATS_UPDATED = 'ocr:stats-updated' // { total, done, pending, 
 
 // ─── File import ─────────────────────────────────────────────────
 export const FILES_DROPPED    = 'files:dropped'    // { paths: string[] } — OS drag-drop onto window
+export const FILES_DRAG       = 'files:drag'       // { phase: 'enter'|'over'|'leave'|'drop', x?, y? } — files dragged over the window (CSS px)
 export const FILES_IMPORTING  = 'files:importing'  // { total: number }
 export const FILES_IMPORTED   = 'files:imported'   // { imported: number, skipped: number }
 export const IMPORT_REQUESTED = 'import:requested' // — top-bar import button clicked
@@ -44,6 +46,7 @@ export const QOOTI_FILE_OPEN  = 'qooti:file-open'  // { path } — a .qooti open
 // ─── Extension ───────────────────────────────────────────────────
 export const EXTENSION_ITEM_RECEIVED     = 'extension:item-received'      // payload from extension
 export const EXTENSION_ADD_TO_COLLECTION = 'extension:add-to-collection'  // { inspiration_id, collection_id }
+export const EXTENSION_PAIR_REQUEST      = 'extension:pair-request'       // { origin, browser } — ask the user
 
 // ─── Mobile ───────────────────────────────────────────────────────
 export const MOBILE_ITEMS_PENDING = 'mobile:items-pending'  // { count } — items waiting in mobile inbox

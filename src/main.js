@@ -13,7 +13,7 @@ import { init as initTags } from './modules/tags.js'
 import { init as initSearch } from './modules/search.js'
 import { init as initSettings, showTab, applyVisualSettings } from './modules/settings.js'
 import { init as initOnboarding } from './modules/onboarding.js'
-import { init as initLicensing, isSignedIn } from './modules/licensing.js'
+import { init as initLicensing, isSignedIn, getPlan, openHub } from './modules/licensing.js'
 import { init as initNotifications } from './modules/notifications.js'
 import { init as initMilestones } from './modules/milestones.js'
 import { init as initExtension } from './modules/extension.js'
@@ -35,6 +35,9 @@ import { init as initDuplicates } from './modules/duplicates.js'
 import { startWalkthrough } from './modules/walkthrough.js'
 import { initDiagnostics } from './modules/diagnostics.js'
 import { openFeedbackModal } from './modules/feedback.js'
+import { reducedMotion } from './modules/motion.js'
+import { initPageBar, setPageBar } from './modules/page-bar.js'
+import { isStarterPreview, applyStarterPreview, showStarterPill } from './modules/starter.js'
 
 // Expose progress API globally so download handlers can reach it
 window.__progressRing = { startTask }
@@ -45,13 +48,14 @@ const PRIMARY_NAV = [
   { view: 'collections', icon: 'folder',           labelKey: 'nav.collections' },
   // Boards is intentionally hidden from the drawer — reachable only via the
   // secret search-bar command `blt_boards` (see developer.js → runDevCommand).
+  { view: 'activity',    icon: 'clock-counter-clockwise', labelKey: 'nav.activity'   },
+  { view: 'duplicates',  icon: 'copy',             labelKey: 'nav.duplicates' },
+  { view: 'milestones',  icon: 'trophy',           labelKey: 'nav.milestones' },
 ]
 
+// Settings sits at the very bottom, under the storage meter.
 const SECONDARY_NAV = [
-  { view: 'activity',      icon: 'clock-counter-clockwise', labelKey: 'nav.activity'   },
-  { view: 'duplicates',    icon: 'copy',              labelKey: 'nav.duplicates' },
-  { view: 'milestones',    icon: 'trophy',            labelKey: 'nav.milestones' },
-  { view: 'settings',      icon: 'gear',              labelKey: 'nav.settings'   },
+  { view: 'settings',    icon: 'sliders',          labelKey: 'nav.settings'   },
 ]
 
 // ─── State ──────────────────────────────────────────────────────
@@ -75,8 +79,10 @@ function setupTopBar(settings) {
 
   // Hamburger
   const drawerToggle = document.getElementById('nav-drawer-toggle')
-  drawerToggle.appendChild(makeIcon('list', 18))
-  drawerToggle.addEventListener('click', () => navDrawer.classList.toggle('nav-open'))
+  drawerToggle.appendChild(makeIcon('list', 20))
+  drawerToggle.addEventListener('click', () => {
+    if (navDrawer.classList.toggle('nav-open')) refreshDrawerExtras()
+  })
 
   // Backdrop
   document.getElementById('nav-drawer-backdrop')
@@ -90,22 +96,15 @@ function setupTopBar(settings) {
   })
 
   const importBtn = document.getElementById('top-bar-import-btn')
-  importBtn.appendChild(makeIcon('plus', 18))
-  importBtn.title = 'Import'
   importBtn.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
 
-  // Quick access to Collections from the top bar
-  const collectionsBtn = document.getElementById('top-bar-collections-btn')
-  if (collectionsBtn) {
-    collectionsBtn.appendChild(makeIcon('folders', 18))
-    collectionsBtn.addEventListener('click', () => navigate('collections'))
-  }
+  // Search shortcut hint follows the platform's modifier key
+  const kbd = document.querySelector('.search-kbd')
+  if (kbd && /Mac/i.test(navigator.platform)) kbd.textContent = '⌘ K'
 
-  // Download indicator icon (SVG injected here so it picks up currentColor)
+  // Download indicator icon
   const dlIndicatorIcon = document.querySelector('.dl-indicator-icon')
-  if (dlIndicatorIcon) {
-    dlIndicatorIcon.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="10,3 10,13"/><polyline points="6,10 10,14 14,10"/><line x1="4" y1="17" x2="16" y2="17"/></svg>`
-  }
+  if (dlIndicatorIcon) dlIndicatorIcon.appendChild(makeIcon('download-simple', 20))
 
   // Profile avatar
   setupAvatar(settings)
@@ -238,19 +237,39 @@ function setupAvatar(settings) {
   dropdown.addEventListener('click', e => e.stopPropagation())
 }
 
-function buildProfileDropdown(_displayName, _initial, _avatarBg) {
+// Guide G3: who you are (avatar, name, plan), then the places you go from here.
+function buildProfileDropdown(displayName, initial, avatarBg) {
   const el = document.createElement('div')
   el.className = 'profile-dropdown hidden'
 
+  const head = document.createElement('div')
+  head.className = 'pd-head'
+  const av = document.createElement('span')
+  av.className = 'pd-avatar'
+  const src = document.querySelector('#top-bar-avatar img')?.src
+  if (src) { const img = document.createElement('img'); img.src = src; img.alt = ''; av.appendChild(img) }
+  else { av.textContent = initial; av.style.background = avatarBg }
+  const who = document.createElement('span')
+  who.className = 'pd-who'
+  who.innerHTML = `<span class="pd-name"></span><span class="pd-sub" data-i18n="account.bloot">${t('account.bloot')}</span>`
+  who.querySelector('.pd-name').textContent = displayName
+  head.append(av, who)
+  if (getPlan() === 'pro') {
+    const badge = document.createElement('span')
+    badge.className = 'pd-plan'
+    badge.textContent = 'Pro'
+    head.appendChild(badge)
+  }
+  el.appendChild(head)
+  el.appendChild(Object.assign(document.createElement('div'), { className: 'pd-divider' }))
+
   const menuItems = [
-    { i18nKey: 'settings.tab.general',    icon: 'user-circle',     view: 'settings',    tab: 'general'    },
-    { i18nKey: 'settings.tab.appearance', icon: 'palette',          view: 'settings',    tab: 'appearance' },
+    { i18nKey: 'nav.settings',            icon: 'sliders',                 view: 'settings',   tab: 'general' },
+    { i18nKey: 'nav.activity',            icon: 'clock-counter-clockwise', view: 'activity',   tab: null },
+    { i18nKey: 'nav.milestones',          icon: 'trophy',                  view: 'milestones', tab: null },
+    { i18nKey: 'feedback.menu',           icon: 'feedback',                action: 'feedback' },
     null,
-    { i18nKey: 'settings.tab.downloads',  icon: 'download-simple', view: 'settings',    tab: 'downloads'  },
-    null,
-    { i18nKey: 'nav.milestones',          icon: 'trophy',           view: 'milestones',  tab: null },
-    null,
-    { i18nKey: 'feedback.menu',           icon: 'note',             action: 'feedback' },
+    { i18nKey: 'account.manage',          icon: 'arrow-square-out',        action: 'account' },
   ]
 
   for (const item of menuItems) {
@@ -270,6 +289,7 @@ function buildProfileDropdown(_displayName, _initial, _avatarBg) {
     btn.addEventListener('click', () => {
       el.classList.add('hidden')
       if (item.action === 'feedback') { openFeedbackModal(); return }
+      if (item.action === 'account') { openHub('account'); return }
       if (item.tab) showTab(item.tab)  // set active tab before navigate triggers render
       navigate(item.view)
     })
@@ -310,15 +330,18 @@ function setupColorSwatch() {
         btn.classList.add('has-color')
         store.emit(events.SEARCH_COLOR_CHANGED, { hex, tolerance: activeColorTolerance })
       },
-      onClear: () => {
-        activeColorFilter = null
-        activeColorTolerance = 'normal'
-        btn.style.removeProperty('--swatch-color')
-        btn.classList.remove('has-color')
-        store.emit(events.SEARCH_COLOR_CHANGED, { hex: null })
-      },
+      onClear: clearColor,
     })
   })
+
+  function clearColor() {
+    activeColorFilter = null
+    activeColorTolerance = 'normal'
+    btn.style.removeProperty('--swatch-color')
+    btn.classList.remove('has-color')
+    store.emit(events.SEARCH_COLOR_CHANGED, { hex: null })
+  }
+  store.on(events.FILTER_CLEAR_REQUESTED, ({ which }) => { if (which === 'color') clearColor() })
 }
 
 // ─── Media-type filter (all / images / videos) ───────────────────
@@ -379,6 +402,7 @@ function setupMediaFilter() {
   btn.addEventListener('click', e => { e.stopPropagation(); open ? close() : openMenu() })
   document.addEventListener('click', () => { if (open) close() })
   menu.addEventListener('click', e => e.stopPropagation())
+  store.on(events.FILTER_CLEAR_REQUESTED, ({ which }) => { if (which === 'media') select('all') })
   window.addEventListener('resize', () => { if (open) position() })
   document.addEventListener('i18n:changed', () => { if (open) render() })
 }
@@ -394,13 +418,59 @@ function buildDrawerNav() {
   for (const { view, icon, labelKey } of SECONDARY_NAV) {
     secondary.appendChild(makeNavItem(view, icon, labelKey))
   }
+  document.querySelector(`.nav-item[data-view="${currentView}"]`)?.classList.add('active')
+}
+
+// Collections list + storage meter, refreshed each time the drawer opens.
+async function refreshDrawerExtras() {
+  const section = document.getElementById('drawer-collections-section')
+  const list    = document.getElementById('drawer-collections')
+  const storage = document.getElementById('drawer-storage')
+  const [cols, vault] = await Promise.all([
+    api.listCollections().catch(() => []),
+    api.getVaultInfo().catch(() => null),
+  ])
+
+  list.replaceChildren(...cols.map(col => {
+    const btn = document.createElement('button')
+    btn.className = 'nav-col'
+    const dot = document.createElement('span')
+    dot.className = 'nav-col-dot'
+    const name = document.createElement('span')
+    name.className = 'nav-col-name'
+    name.textContent = col.name
+    btn.append(dot, name)
+    btn.addEventListener('click', () => {
+      store.emit(events.COLLECTION_SELECTED, { id: col.id, name: col.name })
+      navigate('grid')
+      document.getElementById('nav-drawer').classList.remove('nav-open')
+    })
+    return btn
+  }))
+  section.hidden = cols.length === 0
+
+  if (vault) {
+    const used = vault.size_bytes ?? 0
+    const total = used + (vault.disk_free_bytes ?? 0)
+    document.getElementById('drawer-storage-text').textContent =
+      `${t('nav.items', { n: (vault.total_items ?? 0).toLocaleString() })} · ${fmtBytes(used)}`
+    document.getElementById('drawer-storage-fill').style.width =
+      total ? `${Math.max(2, Math.min(100, used / total * 100))}%` : '0%'
+  }
+  storage.hidden = !vault
+}
+
+function fmtBytes(bytes) {
+  if (bytes < 1024 * 1024)        return `${Math.round(bytes / 1024)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
 function makeNavItem(view, iconName, labelKey) {
   const btn = document.createElement('button')
   btn.className = 'nav-item'
   btn.dataset.view = view
-  btn.appendChild(makeIcon(iconName))
+  btn.appendChild(makeIcon(iconName, 16))
 
   const label = document.createElement('span')
   label.className = 'nav-label'
@@ -422,20 +492,36 @@ export function navigate(view) {
   if (view === currentView) return
   currentView = view
 
-  document.querySelectorAll('.view').forEach(el => { el.hidden = true })
-  const target = document.getElementById(`view-${view}`)
-  if (target) {
-    target.hidden = false
-    target.classList.remove('view-enter')
-    void target.offsetWidth  // force reflow so animation restarts
-    target.classList.add('view-enter')
+  // Crossfade between pages (View Transitions: the old page fades out, the new one fades
+  // in rising 4 px, the title bar and top bar stay still — see global.css). Where the API
+  // is missing, the new page just fades up on its own.
+  const swap = (enterAnim) => {
+    document.querySelectorAll('.view').forEach(el => { el.hidden = true })
+    const target = document.getElementById(`view-${view}`)
+    if (target) {
+      target.hidden = false
+      target.classList.remove('view-enter')
+      if (enterAnim) {
+        void target.offsetWidth  // force reflow so animation restarts
+        target.classList.add('view-enter')
+      }
+    }
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view)
+    })
+    // Library bar by default; pages without search set their own on NAV_CHANGE
+    setPageBar(null)
+    store.emit(events.NAV_CHANGE, { view })
   }
 
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view)
-  })
-
-  store.emit(events.NAV_CHANGE, { view })
+  // Hidden/minimised window: switch at once (a transition would wait for the next frame).
+  if (document.startViewTransition && !reducedMotion() && document.visibilityState === 'visible') {
+    const vt = document.startViewTransition(() => swap(false))
+    // A quick second switch skips this one — expected, not an error worth logging.
+    for (const p of [vt.ready, vt.finished, vt.updateCallbackDone]) p?.catch(() => {})
+  } else {
+    swap(true)
+  }
 }
 
 // ─── Splash ──────────────────────────────────────────────────────
@@ -454,20 +540,47 @@ function setupTitleBar() {
   document.getElementById('btn-minimize').addEventListener('click', () => api.windowMinimize())
   document.getElementById('btn-maximize').addEventListener('click', () => api.windowMaximize())
   document.getElementById('btn-close').addEventListener('click',    () => api.windowClose())
+
+  // Unfocused window: the bar fades back (guide B8)
+  const root = document.documentElement
+  window.addEventListener('blur',  () => root.classList.add('window-inactive'))
+  window.addEventListener('focus', () => root.classList.remove('window-inactive'))
 }
 
 // ─── Toast notifications ─────────────────────────────────────────
-function showToast({ type = 'info', message, duration = 5000 }) {
+// Guide H3: a small pill at the bottom centre — status icon + one line.
+// `key`: a toast with the same key that is still showing isn't repeated — it takes the
+// new text, stays up longer (and nods once). `action`: { label, onClick } adds a button.
+const TOAST_ICON = { success: 'check-circle', info: 'info', warning: 'warning', error: 'warning' }
+const _keyedToasts = new Map()   // key → { el, extend }
+function showToast({ type = 'info', message, duration = 5000, key = null, action = null }) {
+  const live = key && _keyedToasts.get(key)
+  if (live) { live.extend(message); return }
+
   const el = document.createElement('div')
   el.className = `system-toast system-toast--${type}`
-  el.textContent = message
+  el.appendChild(makeIcon(TOAST_ICON[type] ?? 'info', 16))
+  const text = document.createElement('span')
+  text.textContent = message
+  el.appendChild(text)
 
-  const close = document.createElement('button')
-  close.className = 'system-toast__close'
-  close.setAttribute('aria-label', 'Dismiss')
-  close.textContent = '×'
-  close.addEventListener('click', () => dismiss())
-  el.appendChild(close)
+  if (action?.label) {
+    const btn = document.createElement('button')
+    btn.className = 'system-toast__action'
+    btn.textContent = action.label
+    btn.addEventListener('click', () => { action.onClick?.(); dismiss() })
+    el.appendChild(btn)
+  }
+
+  // Problems stay until read; everything else just fades away
+  if (type === 'error' || type === 'warning') {
+    const close = document.createElement('button')
+    close.className = 'system-toast__close'
+    close.setAttribute('aria-label', t('update.dismiss'))
+    close.appendChild(makeIcon('x', 14))
+    close.addEventListener('click', () => dismiss())
+    el.appendChild(close)
+  }
 
   const container = document.getElementById('toast-container') ?? (() => {
     const c = document.createElement('div')
@@ -480,10 +593,25 @@ function showToast({ type = 'info', message, duration = 5000 }) {
 
   let timer = setTimeout(dismiss, duration)
 
+  if (key) {
+    _keyedToasts.set(key, {
+      el,
+      extend(next) {
+        if (next) text.textContent = next
+        clearTimeout(timer)
+        timer = setTimeout(dismiss, duration)
+        el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }],
+          { duration: 220, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' })
+      },
+    })
+  }
+
   function dismiss() {
     clearTimeout(timer)
+    if (key && _keyedToasts.get(key)?.el === el) _keyedToasts.delete(key)
     el.classList.add('system-toast--out')
     el.addEventListener('animationend', () => el.remove(), { once: true })
+    setTimeout(() => el.remove(), 400)   // hidden window: animationend may not fire
   }
 }
 
@@ -517,7 +645,11 @@ async function boot() {
     // initI18n(), so a saved Uzbek choice was dropped on every restart.
     const settings = await api.getSettings()
     initI18n(settings.language)
+    // blt_starter: preview as a brand-new user — must be in place before any view loads
+    const starter = isStarterPreview()
+    if (starter) { applyStarterPreview(api); showStarterPill() }
     bindStoreListeners()
+    initPageBar()
     buildDrawerNav()
 
     applyVisualSettings(settings)
@@ -577,11 +709,12 @@ async function boot() {
     // into the library (zero clicks). Otherwise the one-step "Continue with bloot
     // apps" screen shows — also once for existing users from the typed-bloot-ID days.
     // Orientation is handled by the in-app spotlight tour.
-    const effectiveState  = isSignedIn() ? 'complete' : 'pending_login'
+    // (In the blt_starter preview everything runs from the first screen again.)
+    const effectiveState  = isSignedIn() && !starter ? 'complete' : 'pending_login'
     if (effectiveState === 'complete' && settings.onboarding_state !== 'complete') {
       await api.setSetting('onboarding_state', 'complete')
     }
-    const walkthroughDone = !!settings.walkthrough_done
+    const walkthroughDone = !!settings.walkthrough_done && !starter
 
     if (effectiveState !== 'complete') {
       initOnboarding(document.getElementById('onboarding-root'), { ...settings, onboarding_state: effectiveState })

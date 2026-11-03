@@ -2,6 +2,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
+import { t } from './i18n.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 const I = (name, size = 16) =>
@@ -41,21 +42,21 @@ function render() {
       <div class="sp-hero">
         <div class="sp-input-wrap">
           ${I('magnifying-glass', 18)}
-          <input class="sp-input" placeholder="Search your library…"
+          <input class="sp-input" placeholder="${t('search.placeholder')}"
             autocomplete="off" spellcheck="false" value="${escHtml(filter.query ?? '')}" />
         </div>
       </div>
       <div class="sp-filters">
         <div class="sp-filter-row">
-          <button class="chip ${!filter.type     ? 'active' : ''}" data-type="">All types</button>
-          <button class="chip ${filter.type==='image' ? 'active':''}" data-type="image">Images</button>
-          <button class="chip ${filter.type==='video' ? 'active':''}" data-type="video">Videos</button>
-          <button class="chip ${filter.type==='link'  ? 'active':''}" data-type="link">Links</button>
+          <button class="chip ${!filter.type     ? 'active' : ''}" data-type="">${t('search.all_types')}</button>
+          <button class="chip ${filter.type==='image' ? 'active':''}" data-type="image">${t('search.images')}</button>
+          <button class="chip ${filter.type==='video' ? 'active':''}" data-type="video">${t('search.videos')}</button>
+          <button class="chip ${filter.type==='link'  ? 'active':''}" data-type="link">${t('search.links')}</button>
         </div>
         <div class="sp-filter-row">
-          <button class="chip ${!filter.source      ? 'active':''}" data-source="">All sources</button>
+          <button class="chip ${!filter.source      ? 'active':''}" data-source="">${t('search.all_sources')}</button>
           <button class="chip ${filter.source==='chrome' ? 'active':''}" data-source="chrome">Chrome</button>
-          <button class="chip ${filter.source==='local'  ? 'active':''}" data-source="local">Local</button>
+          <button class="chip ${filter.source==='local'  ? 'active':''}" data-source="local">${t('search.local')}</button>
         </div>
       </div>
       <div class="sp-results" id="sp-results"></div>

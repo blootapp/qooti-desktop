@@ -1,7 +1,7 @@
 import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
-import { getSetting, setSetting } from './settings.js'
+import { getSetting, setSetting, mirrorSetting } from './settings.js'
 
 // qooti's account comes from bloot apps (MD/bloot-apps-licensing.md §9): bloot apps
 // signs in and keeps a signed licence ticket in the shared Bloot Apps folder; the
@@ -59,11 +59,11 @@ async function apply(next) {
 
   if (nowIn) {
     // Mirror into preferences — only what changed (each write emits SETTINGS_CHANGED).
-    const want = { bloot_id: account.bloot_id, display_name: account.name || account.bloot_id, plan: getPlan() }
+    const want = { bloot_id: account.bloot_id, display_name: account.name || account.bloot_id }
     for (const [k, v] of Object.entries(want)) if (getSetting(k) !== v) await setSetting(k, v)
-  } else if (getSetting('plan') !== 'free') {
-    await setSetting('plan', 'free')
   }
+  // The plan is written by the Rust side from the verified ticket; just follow it here.
+  mirrorSetting('plan', getPlan())
 
   store.emit(events.LICENSE_STATUS_CHANGED, { plan: getPlan(), expiresAt: getExpiresAt(), account })
   if (wasIn && !nowIn) store.emit(events.SESSION_EXPIRED)   // signed out in bloot apps → sign-in screen

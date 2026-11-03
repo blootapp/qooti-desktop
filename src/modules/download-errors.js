@@ -17,6 +17,8 @@ export function friendlyDownloadError(raw) {
 
   if (l.includes('upgrade_required:download_limit'))
     return t('dl.err.limit', { n: FREE_DOWNLOAD_DAILY_LIMIT })
+  if (l.includes('private_address'))
+    return t('dl.err.private')
   if (l.includes("couldn't set up youtube"))
     return t('dl.err.youtube_setup')
   if (l.includes("couldn't read the video link"))

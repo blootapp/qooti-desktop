@@ -8,6 +8,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { api } from './tauri-api.js'
 import { makeLogger } from './logger.js'
+import { t } from './i18n.js'
 
 const log = makeLogger('SimCanvas')
 const IS_TAURI = '__TAURI_INTERNALS__' in window
@@ -36,6 +37,16 @@ const toSrc = it => { const p = it.thumbnail_path || it.stored_path; return IS_T
 
 function applyTransform() {
   if (_board) _board.style.transform = `translate(${_pan.x}px, ${_pan.y}px) scale(${_zoom})`
+  const z = _el?.querySelector('.simcanvas-zoom-val')
+  if (z) z.textContent = `${Math.round(_zoom * 100)}%`
+}
+
+// Header: "Similar to <title>" + match count (guide C4)
+function setHeader(item, count) {
+  const head = _el?.querySelector('.simcanvas-head')
+  if (!head) return
+  head.querySelector('.simcanvas-title').textContent = t('similar.title', { title: item.title || t('detail.untitled') })
+  head.querySelector('.simcanvas-sub').textContent = count == null ? '' : t('similar.sub', { n: count })
 }
 function animateBoard(on) {
   if (_board) _board.style.transition = on ? `transform 0.5s ${EASE}` : 'none'
@@ -100,9 +111,10 @@ async function loadFocus(item, { grow = false } = {}) {
       f.style.transform = 'translate(-50%, -50%) scale(1)'
     })
   }
+  setHeader(item, null)
   try {
     const sims = await api.findSimilar(item.id, MAX_SIMILAR)
-    if (_el) addSimilars(sims)
+    if (_el) { addSimilars(sims); setHeader(item, Math.min(sims.length, MAX_SIMILAR)) }
   } catch (e) { log.warn('findSimilar failed:', String(e)) }
 }
 
@@ -137,7 +149,7 @@ function wireInteractions() {
     if (e.button && e.button !== 0) return
     // Don't hijack the close button — pointer capture below would steal its pointerup and
     // kill the native click. Let it behave as a normal button.
-    if (e.target.closest?.('.simcanvas-close')) return
+    if (e.target.closest?.('.simcanvas-close, .simcanvas-zoom')) return
     dragging = true; moved = false; sx = e.clientX; sy = e.clientY; sp = { ..._pan }
     // Record the pressed tile NOW — setPointerCapture makes pointerup target the overlay,
     // so e.target on release would no longer be the tile.
@@ -223,8 +235,21 @@ export async function openSimilarCanvas(item, originRect, { onOpen } = {}) {
   closeBtn.setAttribute('aria-label', 'Close')
   closeBtn.innerHTML = `<span class="icon icon-18" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span>`
   closeBtn.addEventListener('click', () => close(true))
-  _el.append(_board, closeBtn)
+  const head = document.createElement('div')
+  head.className = 'simcanvas-head'
+  head.innerHTML = `<div class="simcanvas-title"></div><div class="simcanvas-sub"></div>`
+  // Zoom readout — click to reset to 100 %
+  const zoom = document.createElement('button')
+  zoom.className = 'simcanvas-zoom'
+  zoom.title = t('similar.reset_zoom')
+  zoom.innerHTML = `<span class="icon icon-14" style="mask-image:url('/icons/plus.svg');-webkit-mask-image:url('/icons/plus.svg')" aria-hidden="true"></span><span class="simcanvas-zoom-val">100%</span>`
+  zoom.addEventListener('click', () => { animateBoard(true); _pan = { x: 0, y: 0 }; _zoom = 1; applyTransform() })
+  const hint = document.createElement('div')
+  hint.className = 'simcanvas-hint'
+  hint.textContent = t('similar.hint')
+  _el.append(_board, head, closeBtn, zoom, hint)
   document.body.appendChild(_el)
+  setHeader(item, null)
 
   // Focus tile only at first; similar items fade in once fetched.
   _board.innerHTML = ''
@@ -252,6 +277,6 @@ export async function openSimilarCanvas(item, originRect, { onOpen } = {}) {
 
   try {
     const sims = await api.findSimilar(item.id, MAX_SIMILAR)
-    if (_el) addSimilars(sims)
+    if (_el) { addSimilars(sims); setHeader(item, Math.min(sims.length, MAX_SIMILAR)) }
   } catch (e) { log.warn('findSimilar failed:', String(e)) }
 }

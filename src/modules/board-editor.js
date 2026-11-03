@@ -87,34 +87,22 @@ function buildChrome() {
   root.className = 'board-editor'
   root.innerHTML = `
     <div class="board-topbar">
-      <button class="board-tb-btn board-done" title="${t('board.done')}">${I('arrow-left', 18)}<span>${t('board.done')}</span></button>
+      <button class="board-tb-btn board-back" title="${t('action.back')}" aria-label="${t('action.back')}">${I('arrow-left', 20)}</button>
       <input class="board-name-input" value="${escAttr(boardName)}" spellcheck="false" />
       <div class="board-tb-spacer"></div>
       <button class="board-tb-btn" data-act="undo" title="${t('board.undo')}">${I('arrow-u-up-left', 18)}</button>
       <button class="board-tb-btn" data-act="redo" title="${t('board.redo')}">${I('arrow-u-up-right', 18)}</button>
-      <div class="board-tb-sep"></div>
-      <button class="board-tb-btn" data-act="zoomout" title="−">${I('minus', 16)}</button>
-      <button class="board-tb-btn board-zoom-label" data-act="fit" title="${t('board.zoom_fit')}">100%</button>
-      <button class="board-tb-btn" data-act="zoomin" title="+">${I('plus', 16)}</button>
-      <div class="board-tb-sep"></div>
-      <button class="board-tb-btn" data-act="export" title="${t('boards.export')}">${I('arrow-square-out', 18)}</button>
+      <button class="board-tb-btn board-tb-text" data-act="export">${t('boards.export')}</button>
+      <button class="board-tb-btn board-done">${t('board.done')}</button>
     </div>
+    <!-- Guide D4: tools in one pill at the bottom centre, "Add image" last -->
     <div class="board-toolbar">
       ${toolBtn('select', 'cursor')}
       ${toolBtn('pan', 'hand')}
-      <div class="board-tool-sep"></div>
-      <div class="board-tool-wrap">
-        <button class="board-tool board-tool-main" data-wrap="image" title="${t('board.add_image')}">${I('image', 20)}</button>
-        <div class="board-tool-menu" data-menu="image">
-          <button data-src="library">${I('squares-four', 15)}<span>${t('board.from_library')}</span></button>
-          <button data-src="files">${I('upload-simple', 15)}<span>${t('board.from_files')}</span></button>
-          <button data-src="paste">${I('clipboard', 15)}<span>${t('board.paste')}</span></button>
-        </div>
-      </div>
       ${toolBtn('text', 'text-t')}
       ${toolBtn('note', 'note')}
       <div class="board-tool-wrap">
-        <button class="board-tool board-tool-main" data-wrap="shape" title="${t('board.tool.rect')}"><span class="board-shape-glyph board-shape-glyph--rect"></span></button>
+        <button class="board-tool board-tool-main" data-wrap="shape" title="${t('board.tool.rect')}">${I('frame-corners', 18)}</button>
         <div class="board-tool-menu" data-menu="shape">
           <button data-shape="rect"><span class="board-shape-glyph board-shape-glyph--rect"></span><span>${t('board.tool.rect')}</span></button>
           <button data-shape="ellipse"><span class="board-shape-glyph board-shape-glyph--ellipse"></span><span>${t('board.tool.ellipse')}</span></button>
@@ -123,6 +111,20 @@ function buildChrome() {
       </div>
       ${toolBtn('pen', 'pencil-simple')}
       ${toolBtn('connector', 'line-segment')}
+      <div class="board-tool-sep"></div>
+      <div class="board-tool-wrap">
+        <button class="board-tool board-tool-main board-tool--label" data-wrap="image">${t('board.add_image')}</button>
+        <div class="board-tool-menu" data-menu="image">
+          <button data-src="library">${I('squares-four', 15)}<span>${t('board.from_library')}</span></button>
+          <button data-src="files">${I('upload-simple', 15)}<span>${t('board.from_files')}</span></button>
+          <button data-src="paste">${I('clipboard', 15)}<span>${t('board.paste')}</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="board-zoom">
+      <button class="board-tb-btn" data-act="zoomout" title="−">${I('minus', 14)}</button>
+      <button class="board-tb-btn board-zoom-label" data-act="fit" title="${t('board.zoom_fit')}">100%</button>
+      <button class="board-tb-btn" data-act="zoomin" title="+">${I('plus', 14)}</button>
     </div>
     <div class="board-canvas">
       <div class="board-world">
@@ -148,6 +150,7 @@ function buildChrome() {
 
   // Topbar
   root.querySelector('.board-done').addEventListener('click', close)
+  root.querySelector('.board-back').addEventListener('click', close)
   const nameInput = root.querySelector('.board-name-input')
   nameInput.addEventListener('change', () => renameBoard(nameInput.value.trim() || 'Untitled board'))
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur() })
@@ -183,7 +186,7 @@ function buildChrome() {
 }
 
 function toolBtn(name, icon) {
-  return `<button class="board-tool" data-tool="${name}" title="${t('board.tool.' + name)}">${I(icon, 20)}</button>`
+  return `<button class="board-tool" data-tool="${name}" title="${t('board.tool.' + name)}">${I(icon, 18)}</button>`
 }
 
 // ─── Coordinate helpers ──────────────────────────────────────────
@@ -691,7 +694,7 @@ function createElementAt(kind, w) {
   else if (kind === 'note') el = { id: uid(), kind, x: w.x - 100, y: w.y - 80, w: 200, h: 160, text: '', color: NOTE_COLORS[0], z }
   else if (kind === 'rect') el = { id: uid(), kind, x: w.x - 100, y: w.y - 70, w: 200, h: 140, fill: 'rgba(255,255,255,0.05)', stroke: '#6BA3FF', z }
   else if (kind === 'ellipse') el = { id: uid(), kind, x: w.x - 90, y: w.y - 60, w: 180, h: 120, fill: 'rgba(255,255,255,0.05)', stroke: '#6BA3FF', z }
-  else if (kind === 'frame') el = { id: uid(), kind, x: w.x - 200, y: w.y - 150, w: 400, h: 300, label: 'Frame', z }
+  else if (kind === 'frame') el = { id: uid(), kind, x: w.x - 200, y: w.y - 150, w: 400, h: 300, label: t('board.tool.frame'), z }
   doc.elements.push(el)
   const node = buildDivNode(el)
   els.appendChild(node); nodeMap.set(el.id, node); applyGeom(el)
@@ -845,7 +848,7 @@ async function openLibraryPicker() {
             <span class="board-lib-color-dot"></span>
           </button>
         </div>
-        <button class="board-lib-close" aria-label="Close">${I('x', 16)}</button>
+        <button class="board-lib-close" aria-label="${escAttr(t('action.close'))}">${I('x', 16)}</button>
       </div>
       <div class="board-lib-scroll">
         <div class="board-lib-grid"></div>

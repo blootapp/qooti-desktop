@@ -11,6 +11,8 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
@@ -35,6 +37,7 @@ struct Ticket {
     iat: i64,
     exp: i64,
 }
+
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Account {
@@ -97,7 +100,61 @@ fn hub_installed() -> bool {
     shared("hub.json").exists() || hub_exe().is_some()
 }
 
+/// Pro as last read from the verified ticket. The free-plan limits in Rust read THIS —
+/// never the `plan` preference, which is only a display copy (a user could edit it).
+static VERIFIED_PRO: AtomicBool = AtomicBool::new(false);
+
+/// "pro" | "free", from the last verified ticket (free until one has been read).
+pub fn verified_plan() -> &'static str {
+    if VERIFIED_PRO.load(Ordering::SeqCst) { "pro" } else { "free" }
+}
+
+/// A valid ticket was read (signed in through bloot apps).
+static SIGNED_IN: AtomicBool = AtomicBool::new(false);
+
+/// The counts last handed to bloot apps this run — only changes are sent.
+static REPORTED_USAGE: Mutex<Option<(i64, i64)>> = Mutex::new(None);
+
+/// Signed in on the Free plan: hand the library's item and collection counts to bloot apps,
+/// which sends them with its next check-in for the bars on the account site's Free card.
+/// These two numbers are all that leaves the computer, and only when they change.
+pub fn report_usage(items: i64, collections: i64) {
+    if !SIGNED_IN.load(Ordering::SeqCst) || VERIFIED_PRO.load(Ordering::SeqCst) { return; }
+    {
+        let mut last = REPORTED_USAGE.lock().unwrap_or_else(|e| e.into_inner());
+        if *last == Some((items, collections)) { return; }
+        *last = Some((items, collections));
+    }
+    std::thread::spawn(move || {
+        let sent = hub_port().map(|port| {
+            ureq::post(&format!("http://127.0.0.1:{port}/v1/usage"))
+                .set("X-Bloot-Product", "qooti").set("Content-Type", "application/json")
+                .timeout(Duration::from_secs(5))
+                .send_string(&json!({ "product": "qooti", "items": items, "collections": collections }).to_string())
+                .is_ok()
+        });
+        // bloot apps isn't running: try again with the next count.
+        if sent != Some(true) { *REPORTED_USAGE.lock().unwrap_or_else(|e| e.into_inner()) = None; }
+    });
+}
+
+/// Read and verify the ticket, remember the tier for the limits, and keep the
+/// `plan` preference (shown in Settings) in step with it.
 pub fn account(app: &AppHandle) -> Account {
+    let a = read_account(app);
+    let pro = a.state == "signed_in" && a.tier == "pro";
+    VERIFIED_PRO.store(pro, Ordering::SeqCst);
+    SIGNED_IN.store(a.state == "signed_in", Ordering::SeqCst);
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(db) = state.db.lock() {
+            let _ = db.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES ('plan', ?1)",
+                               [if pro { "pro" } else { "free" }]);
+        }
+    }
+    a
+}
+
+fn read_account(app: &AppHandle) -> Account {
     let signed_out = |state: &str| Account {
         state: state.into(), name: None, bloot_id: None, tier: "free".into(), pro_until: None, hub_installed: hub_installed(),
     };
@@ -321,5 +378,57 @@ mod tests {
         println!("{} {:?} tier={} exp in {} h", t.bloot_id, t.name, t.tier, (t.exp - now_ms()) / 3_600_000);
         assert!(verify(&raw, "another-computer").is_none(), "a copied ticket must not verify");
         println!("hub installed: {}, running: {}, exe: {:?}", hub_installed(), hub_running(), hub_exe());
+    }
+
+    /// Against a stand-in bloot apps in a temporary Bloot folder (moves LOCALAPPDATA / HOME):
+    /// cargo test usage_report -- --ignored --test-threads=1
+    #[test]
+    #[ignore]
+    fn usage_reported_on_free_only_and_only_on_change() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let dir = std::env::temp_dir().join(format!("qooti-usage-test-{}", std::process::id()));
+        std::env::set_var(if cfg!(windows) { "LOCALAPPDATA" } else { "HOME" }, &dir);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::create_dir_all(bloot_dir()).unwrap();
+        std::fs::write(shared("hub.json"), json!({ "port": port }).to_string()).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        // The next request bloot apps would get within `ms`, answered 200.
+        let next = |ms: u64| -> Option<String> {
+            let until = std::time::Instant::now() + Duration::from_millis(ms);
+            while std::time::Instant::now() < until {
+                if let Ok((mut s, _)) = listener.accept() {
+                    s.set_nonblocking(false).unwrap();
+                    s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                    let mut buf = vec![0u8; 4096];
+                    let n = s.read(&mut buf).unwrap_or(0);
+                    let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}");
+                    return Some(String::from_utf8_lossy(&buf[..n]).into_owned());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            None
+        };
+
+        SIGNED_IN.store(false, Ordering::SeqCst);
+        report_usage(142, 2);
+        assert!(next(400).is_none(), "signed out: nothing sent");
+
+        SIGNED_IN.store(true, Ordering::SeqCst);
+        VERIFIED_PRO.store(false, Ordering::SeqCst);
+        report_usage(142, 2);
+        let req = next(3000).expect("Free: counts sent");
+        assert!(req.starts_with("POST /v1/usage "), "{req}");
+        assert!(req.contains(r#""items":142"#) && req.contains(r#""collections":2"#) && req.contains(r#""product":"qooti""#), "{req}");
+        report_usage(142, 2);
+        assert!(next(400).is_none(), "same counts: not sent again");
+        report_usage(143, 2);
+        assert!(next(3000).is_some(), "changed counts: sent");
+
+        VERIFIED_PRO.store(true, Ordering::SeqCst);
+        report_usage(150, 3);
+        assert!(next(400).is_none(), "Pro: nothing sent");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

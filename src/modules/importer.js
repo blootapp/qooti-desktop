@@ -61,6 +61,13 @@ export function init() {
 }
 
 // ─── Open / close ────────────────────────────────────────────────
+/** Files dropped on the library (guide B5): open Import and take them from there. */
+export function openWith(paths) {
+  if (!paths?.length) return
+  openModal()
+  handleDroppedPaths(paths)
+}
+
 export function openModal() {
   if (_isOpen) return
   _isOpen = true
@@ -131,7 +138,7 @@ function buildModal() {
       <!-- Pane: idle -->
       <div id="import-pane-idle" class="import-pane import-pane--active">
         <div class="import-drop-zone" id="import-drop-zone">
-          <span class="icon icon-28 import-drop-icon"
+          <span class="icon icon-16 import-drop-icon"
             style="mask-image:url('/icons/upload-simple.svg');-webkit-mask-image:url('/icons/upload-simple.svg')"
             aria-hidden="true"></span>
           <p class="import-drop-label" data-i18n="import.drop">${t('import.drop')}</p>
@@ -143,7 +150,7 @@ function buildModal() {
 
         <div class="import-url-row">
           <input class="import-url-input" id="import-url-input"
-            type="url" placeholder="https://youtube.com/watch?v=…"
+            type="url" placeholder="${t('import.link_ph')}"
             autocomplete="off" spellcheck="false" />
           <button class="import-url-go" id="import-url-go" disabled data-i18n="action.download">${t('action.download')}</button>
           <button class="import-url-icon-btn" id="import-url-video" hidden aria-label="${t('import.download_video')}" data-tooltip="${t('import.download_video')}">
@@ -266,8 +273,16 @@ function wireModal() {
   urlVideo.addEventListener('click', startVideoDownload)
   urlThumb.addEventListener('click', startThumbDownload)
 
-  // Drop zone visual feedback (actual paths come from FILES_DROPPED event)
+  // Drop zone feedback: it tints while files are held over it. In the desktop app the
+  // drag comes from Tauri (FILES_DRAG, with the pointer position); the page's own drag
+  // events below only fire in a browser. Actual paths come from FILES_DROPPED.
   const dz = _modal.querySelector('#import-drop-zone')
+  store.on(events.FILES_DRAG, ({ phase, x, y }) => {
+    if (!_isOpen) return
+    const r = dz.getBoundingClientRect()
+    const inside = x != null && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+    dz.classList.toggle('drag-over', (phase === 'enter' || phase === 'over') && inside)
+  })
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over') })
   dz.addEventListener('dragleave', e => {
     if (!dz.contains(e.relatedTarget)) dz.classList.remove('drag-over')
@@ -453,22 +468,44 @@ async function runFileImport(paths, collectionName) {
   setProgress(0, t('import.progress', { i: 0, n: paths.length }))
 
   const imported = []
+  const existing = []   // ids of items that were already in the library (same file)
+  let failed = 0
   for (let i = 0; i < paths.length; i++) {
     setProgress(i / paths.length, t('import.progress', { i: i + 1, n: paths.length }))
     try {
       const result = await api.importFiles([paths[i]])
       if (result.imported?.length) imported.push(...result.imported)
-    } catch { /* skip bad file */ }
+      if (result.existing?.length) existing.push(...result.existing)
+      failed += result.skipped?.length ?? 0
+    } catch { failed++ }
   }
 
-  setProgress(1, t(imported.length === 1 ? 'import.imported_one' : 'import.imported_many', { n: imported.length }))
+  // Everything was already here: say so right away (and offer to show it) instead of a
+  // silent "0 files" that looks like the import failed.
+  if (!imported.length && existing.length && !failed && !collectionName) {
+    closeModal()
+    const one = existing.length === 1
+    store.emit(events.SYSTEM_TOAST, {
+      type: 'info',
+      message: one ? t('import.already_one') : t('import.already_many', { n: existing.length }),
+      key: 'import-already',
+      action: one ? { label: t('import.show'), onClick: () => openExisting(existing[0]) } : null,
+    })
+    return
+  }
 
-  // Create collection and add items if a name was provided
-  if (collectionName && imported.length) {
+  const parts = [t(imported.length === 1 ? 'import.imported_one' : 'import.imported_many', { n: imported.length })]
+  if (existing.length) parts.push(t('import.already_suffix', { n: existing.length }))
+  if (failed) parts.push(t('import.failed_suffix', { n: failed }))
+  setProgress(1, parts.join(' · '))
+
+  // Create collection and add items if a name was provided — including ones that were
+  // already in the library, so the collection isn't missing them
+  if (collectionName && (imported.length || existing.length)) {
     try {
       const col = await api.createCollection(collectionName)
-      for (const item of imported) {
-        await api.addToCollection(col.id, item.id)
+      for (const id of [...imported.map(i => i.id), ...existing]) {
+        await api.addToCollection(col.id, id)
       }
       store.emit(events.COLLECTION_CREATED, { collection: col })
     } catch (err) {
@@ -481,8 +518,18 @@ async function runFileImport(paths, collectionName) {
     store.emit(events.GRID_RELOAD)
   }
 
-  // Stay on modal, close after a beat
-  setTimeout(() => { if (_isOpen) closeModal() }, 1800)
+  // Stay on modal, close after a beat (a little longer when there's more to read)
+  setTimeout(() => { if (_isOpen) closeModal() }, parts.length > 1 ? 3200 : 1800)
+}
+
+/** Open the item that's already in the library (from the "Already in your library" toast). */
+async function openExisting(id) {
+  try {
+    const item = await api.getInspiration(id)
+    if (item) store.emit(events.CARD_OPEN, { item })
+  } catch (err) {
+    console.warn('[importer] open existing failed:', err)
+  }
 }
 
 // ─── Drop zone thumbnail ─────────────────────────────────────────
@@ -537,6 +584,19 @@ async function startThumbDownload() {
 async function startVideoDownload() {
   const url = _modal.querySelector('#import-url-input').value.trim()
   if (!url) return
+
+  // Saved from this link before (also as a share link, youtu.be, …): no download, just say so
+  const existing = await api.checkUrlExists(url).catch(() => null)
+  if (existing) {
+    closeModal()
+    store.emit(events.SYSTEM_TOAST, {
+      type: 'info',
+      message: t('import.already_one'),
+      key: 'import-already',
+      action: { label: t('import.show'), onClick: () => store.emit(events.CARD_OPEN, { item: existing }) },
+    })
+    return
+  }
 
   showPane('progress')
   setProgress(0, t('import.starting'), true)

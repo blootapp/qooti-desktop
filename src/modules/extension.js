@@ -3,12 +3,14 @@ import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { makeLogger, createOp } from './logger.js'
 import { t } from './i18n.js'
+import { showConfirm, isDialogOpen } from './dialog.js'
 
 const log = makeLogger('ExtBridge')
 
 export function init() {
   store.on(events.EXTENSION_ITEM_RECEIVED,     handleItem)
   store.on(events.EXTENSION_ADD_TO_COLLECTION, handleAddToCollection)
+  store.on(events.EXTENSION_PAIR_REQUEST,      askToConnect)
   store.on(events.EXT_SAVE_QUEUED, ({ queued_count, used, limit }) => {
     store.emit(events.SYSTEM_TOAST, {
       type: 'info',
@@ -16,6 +18,28 @@ export function init() {
       duration: 6000,
     })
   })
+}
+
+// A browser extension asked to connect. It gets a key only if the user says Allow;
+// any other answer (Don't allow, Esc) leaves it unconnected, and qooti won't ask
+// about it again for a while.
+async function askToConnect({ origin, browser } = {}) {
+  if (!origin) return
+  while (isDialogOpen()) await new Promise(r => setTimeout(r, 800))   // after whatever is open
+  const name = browser || t('extpair.browser_fallback')
+  const allow = await showConfirm({
+    title:        t('extpair.title'),
+    message:      t('extpair.msg', { browser: name }),
+    confirmLabel: t('extpair.allow'),
+    cancelLabel:  t('extpair.deny'),
+  })
+  try {
+    await api.answerExtensionPair(origin, !!allow)
+    log.info('pair_answered', { allow: !!allow })
+    if (allow) store.emit(events.SYSTEM_TOAST, { type: 'success', message: t('extpair.done', { browser: name }), duration: 4000 })
+  } catch (err) {
+    log.warn('pair_answer_failed', { error: err })
+  }
 }
 
 async function handleItem(payload) {
@@ -37,8 +61,12 @@ async function handleItem(payload) {
     }
 
     if (file_path) {
-      await api.importFiles([file_path], importSource ?? null)
+      const res = await api.importFiles([file_path], importSource ?? null)
       store.emit(events.GRID_RELOAD, {})
+      // Already saved before: say so rather than staying silent
+      if (!res?.imported?.length && res?.existing?.length) {
+        store.emit(events.SYSTEM_TOAST, { type: 'info', message: t('import.already_one'), key: 'import-already' })
+      }
       return
     }
 

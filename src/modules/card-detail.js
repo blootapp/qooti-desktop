@@ -6,6 +6,7 @@ import { sfx } from './sfx.js'
 import { getSetting } from './settings.js'
 import { openSimilarCanvas } from './similar-canvas.js'
 import { makeLogger } from './logger.js'
+import { confirmDeleteItem, isDialogOpen } from './dialog.js'
 // `tr`, not `t`: this module uses `t` for tags / toggle elements in local scopes.
 import { t as tr, currentLang } from './i18n.js'
 
@@ -51,6 +52,7 @@ export function init() {
 
   document.addEventListener('keydown', e => {
     if (!modalEl.classList.contains('open')) return
+    if (isDialogOpen()) return   // the dialog on top owns the keyboard
 
     if (e.key === 'Escape') {
       if (debugEl.classList.contains('open')) { closeDebugModal(); return }
@@ -177,34 +179,52 @@ function render() {
     <aside class="dp-panel">
       <div class="dp-panel-top">
         ${item.source_url
-          ? `<button class="dp-source" id="dp-orig-btn" title="${tr('detail.go_original')}"><span>${escHtml(sourceLabel)}</span>${I('arrow-square-out', 14)}</button>`
-          : `<span class="dp-source dp-source--local">${tr('detail.local')}</span>`}
-        <button class="detail-close" id="dp-close" aria-label="${tr('action.close')}">${I('x', 18)}</button>
+          ? `<button class="dp-source" id="dp-orig-btn" title="${tr('detail.go_original')}"><span class="dp-source-dot" style="background:${platformColor(item.source_platform)}"></span><span>${escHtml(sourceLabel)}</span>${I('arrow-square-out', 14)}</button>`
+          : `<span class="dp-source dp-source--local"><span class="dp-source-dot"></span><span>${tr('detail.local')}</span></span>`}
+        <button class="detail-close" id="dp-close" aria-label="${tr('action.close')}">${I('x', 16)}</button>
       </div>
 
       <div class="detail-info">
         <!-- Read-only view (default) -->
         <div class="detail-read" id="dp-read">
-          <h2 class="detail-read-title${item.title ? '' : ' is-empty'}" id="dp-read-title">${escHtml(item.title || tr('detail.untitled'))}</h2>
-
-          <div class="dp-actions">
-            ${item.type === 'image' ? `<button class="dp-action" id="dp-similar-btn">${I('magnifying-glass', 14)}<span>${tr('detail.find_similar')}</span></button>` : ''}
-            <button class="dp-action${currentCollectionIds.size > 0 ? ' active' : ''}" id="dp-coll-btn" title="${tr('detail.add_to_collection')}">${I('folders', 14)}<span>${tr('detail.collection')}</span></button>
-            <button class="dp-action" id="dp-edit-toggle" title="${tr('detail.edit')}">${I('pencil-simple', 14)}<span>${tr('action.edit')}</span></button>
+          <div class="dp-head">
+            <h2 class="detail-read-title${item.title ? '' : ' is-empty'}" id="dp-read-title">${escHtml(item.title || tr('detail.untitled'))}</h2>
+            <p class="dp-meta">${tr('detail.added')} ${dateStr} · <span id="dp-meta-type">${escHtml(typeLabel(item))}</span></p>
           </div>
 
-          <div class="detail-read-tags" id="dp-read-tags"></div>
+          <div class="dp-actions">
+            ${item.type === 'image' ? `<button class="dp-action" id="dp-similar-btn">${tr('detail.find_similar')}</button>` : ''}
+            <button class="dp-action" id="dp-coll-btn">${tr('detail.add_to_collection')}</button>
+            <button class="dp-action" id="dp-edit-toggle">${tr('action.edit')}</button>
+          </div>
+
+          <hr class="dp-divider" />
 
           ${swatches.length ? `
-            <div class="dp-colors">
-              <div class="dp-section-label">${tr('detail.colors')}</div>
-              <div class="dp-swatches">${swatches.map(h => `<span class="dp-swatch" style="background:${escHtml(h)}" title="${escHtml(h)}"></span>`).join('')}</div>
-            </div>` : ''}
+            <section class="dp-section">
+              <h3 class="dp-section-label">${tr('detail.colors')}</h3>
+              <div class="dp-swatches">${swatches.map(h => `
+                <button class="dp-swatch-cell" data-hex="${escHtml(h)}" title="${escHtml(tr('detail.copy_hex'))}">
+                  <span class="dp-swatch" style="background:${escHtml(h)}"></span>
+                  <span class="dp-hex">${escHtml(h.toUpperCase())}</span>
+                </button>`).join('')}</div>
+            </section>` : ''}
 
-          <dl class="dp-facts">
-            <dt>${tr('detail.added')}</dt><dd>${dateStr}</dd>
-            <dt>${tr('detail.type')}</dt><dd id="dp-type">${escHtml(typeLabel(item))}</dd>
-          </dl>
+          <section class="dp-section">
+            <h3 class="dp-section-label">${tr('detail.tags')}</h3>
+            <div class="detail-read-tags" id="dp-read-tags"></div>
+            <button class="dp-add-tag" id="dp-add-tag">${I('plus', 14)}<span>${tr('detail.add_tag')}</span></button>
+          </section>
+
+          <section class="dp-section">
+            <h3 class="dp-section-label">${tr('detail.details')}</h3>
+            <dl class="dp-facts">
+              <dt>${tr('detail.type')}</dt><dd id="dp-type">${escHtml(typeLabel(item))}</dd>
+              ${item.source_url ? `<dt>${tr('detail.source')}</dt><dd><a href="#" class="dp-fact-link" id="dp-fact-source">${escHtml(hostOf(item.source_url))}</a></dd>` : ''}
+              <dt>${tr('detail.added')}</dt><dd>${dateStr}</dd>
+              <dt>${tr('detail.collection')}</dt><dd id="dp-fact-coll">${escHtml(collectionNames() || '—')}</dd>
+            </dl>
+          </section>
         </div>
 
         <!-- Edit panel (hidden by default) -->
@@ -233,16 +253,14 @@ function render() {
             </div>` : ''}
 
           <div class="detail-edit-actions">
-            <button class="detail-delete-btn" id="dp-delete">
-              ${I('trash', 14)}
-              ${tr('action.delete')}
-            </button>
+            <button class="detail-delete-btn" id="dp-delete">${tr('action.delete')}</button>
             <div style="flex:1"></div>
             <button class="detail-cancel-btn" id="dp-cancel">${tr('action.cancel')}</button>
             <button class="detail-save-btn"   id="dp-save">${tr('action.save')}</button>
           </div>
         </div>
       </div>
+      <p class="dp-hint">${I('arrow-left', 12)}${I('arrow-right', 12)} ${tr('detail.hint_browse')} · <kbd>Esc</kbd> ${tr('detail.hint_close')}</p>
     </aside>
   `
 
@@ -261,8 +279,10 @@ function render() {
   if (item.type === 'video') {
     mediaWrap.appendChild(makeVideoPlayer(mediaSrc, (w, h, dur) => {
       nat = { w, h, cap: MAX_UPSCALE }; refit()
-      const typeEl = modalEl.querySelector('#dp-type')
-      if (typeEl && dur) typeEl.textContent = typeLabel(item, dur)
+      for (const sel of ['#dp-type', '#dp-meta-type']) {
+        const typeEl = modalEl.querySelector(sel)
+        if (typeEl && dur) typeEl.textContent = typeLabel(item, dur)
+      }
     }))
   } else {
     const img = document.createElement('img')
@@ -329,6 +349,23 @@ function render() {
 
   const origBtn = modalEl.querySelector('#dp-orig-btn')
   if (origBtn) origBtn.addEventListener('click', () => api.openUrl(item.source_url))
+  modalEl.querySelector('#dp-fact-source')?.addEventListener('click', e => {
+    e.preventDefault()
+    api.openUrl(item.source_url)
+  })
+
+  // "Add tag" jumps into edit with the tag field focused
+  modalEl.querySelector('#dp-add-tag').addEventListener('click', () => {
+    openEdit()
+    setTimeout(() => modalEl.querySelector('#dp-tag-search')?.focus(), 220)
+  })
+
+  // Click a colour to copy its hex — repeated clicks reuse one toast instead of stacking
+  modalEl.querySelectorAll('.dp-swatch-cell').forEach(cell => cell.addEventListener('click', () => {
+    navigator.clipboard?.writeText(cell.dataset.hex).then(() =>
+      store.emit(events.SYSTEM_TOAST, { type: 'success', message: tr('detail.hex_copied', { hex: cell.dataset.hex.toUpperCase() }), duration: 2000, key: 'hex-copied' })
+    ).catch(() => {})
+  }))
 
   // Find similar — expand into the fullscreen similarity canvas (animates out from the
   // media). Clicking the centred item there re-opens the normal player for it.
@@ -364,6 +401,7 @@ function render() {
 
   // Delete (inside edit panel)
   modalEl.querySelector('#dp-delete').addEventListener('click', async () => {
+    if (!(await confirmDeleteItem())) return
     try {
       await api.deleteInspiration(item.id)
       log.info('deleted', { id: item.id, type: item.type, title: item.title ?? '—' })
@@ -437,9 +475,9 @@ function bindCollectionPicker() {
     } else {
       popover.innerHTML = allCollections.map(c => `
         <button class="dp-coll-item${currentCollectionIds.has(c.id) ? ' is-active' : ''}${c.locked ? ' is-locked' : ''}" data-coll-id="${escHtml(c.id)}" data-locked="${c.locked ? '1' : '0'}">
-          <span class="dp-coll-check">${I('check', 12)}</span>
+          <span class="dp-coll-folder">${I('folder', 16)}</span>
           <span class="dp-coll-name">${escHtml(c.name)}</span>
-          ${c.locked ? `<span class="dp-coll-lock">${I('lock', 11)}</span>` : ''}
+          ${c.locked ? `<span class="dp-coll-lock">${I('lock', 11)}</span>` : `<span class="dp-coll-check">${I('check', 14)}</span>`}
         </button>
       `).join('')
     }
@@ -447,7 +485,7 @@ function bindCollectionPicker() {
     document.getElementById('overlays').appendChild(popover)
 
     const rect = btn.getBoundingClientRect()
-    popover.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;z-index:500`
+    popover.style.cssText = `position:fixed;top:${rect.bottom + 6}px;left:${rect.left}px;z-index:500`
 
     popover.querySelectorAll('.dp-coll-item').forEach(row => {
       row.addEventListener('click', async e => {
@@ -456,8 +494,10 @@ function bindCollectionPicker() {
           closePicker()
           store.emit(events.SYSTEM_TOAST, {
             type: 'info',
-            message: tr('collection.readonly_free'),
-            duration: 4000,
+            message: tr('collection.readonly_toast'),
+            duration: 5000,
+            key: 'collection-locked',
+            action: { label: tr('collections.upgrade'), onClick: () => api.openUrl('https://account.bloot.app/') },
           })
           return
         }
@@ -474,7 +514,8 @@ function bindCollectionPicker() {
             log.info('collection_added', { id: currentItem.id, collection: allCollections.find(c => c.id === collId)?.name ?? collId })
           }
           row.classList.toggle('is-active', !inColl)
-          btn.classList.toggle('active', currentCollectionIds.size > 0)
+          const fact = modalEl.querySelector('#dp-fact-coll')
+          if (fact) fact.textContent = collectionNames() || '—'
         } catch (err) { console.error('[detail] toggle collection failed:', err) }
       })
     })
@@ -613,7 +654,7 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
 
   const ctrl = document.createElement('div')
   ctrl.className = 'enh-ctrl'
-  mediaWrap.appendChild(ctrl)
+  ;(mediaWrap.closest('.dp-stage') ?? mediaWrap).appendChild(ctrl)
 
   function applyView() {
     const es = item.enhanced_path ? toSrc(item.enhanced_path) : null
@@ -671,7 +712,7 @@ function setupEnhanceUI(item, img, mediaWrap, origSrc) {
       <button class="enh-btn" title="${tr('enhance.title')}">
         <span class="enh-btn-shine" aria-hidden="true"></span>
         <span class="spinner-ring enh-btn-spinner" aria-hidden="true"></span>
-        <span class="icon icon-14" style="mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')" aria-hidden="true"></span>
+        <span class="icon icon-16" style="mask-image:url('/icons/upscale.svg');-webkit-mask-image:url('/icons/upscale.svg')" aria-hidden="true"></span>
         <span class="enh-btn-label">${tr('enhance.label')}</span>
       </button>`
     ctrl.querySelector('.enh-btn').addEventListener('click', onEnhance)
@@ -917,6 +958,16 @@ function typeLabel(item, durationSecs) {
   const d = durationSecs ?? item.duration_secs
   if (kind === 'video' && d) parts.push(fmtDuration(d))
   return parts.join(' · ')
+}
+
+/** Names of the collections this item is in, comma-separated. */
+function collectionNames() {
+  return allCollections.filter(c => currentCollectionIds.has(c.id)).map(c => c.name).join(', ')
+}
+
+/** Brand dot for the source line. */
+function platformColor(p) {
+  return { pinterest: '#E60023', youtube: '#FF0000', instagram: '#E1306C', tiktok: '#25F4EE', behance: '#1769FF', dribbble: '#EA4C89', telegram: '#2AABEE' }[(p || '').toLowerCase()] ?? 'var(--text-muted)'
 }
 
 function hostOf(url) {

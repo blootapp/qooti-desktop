@@ -1,11 +1,16 @@
 // Local HTTP server on port 1420 — bound on all interfaces so the mobile app can reach it.
 // Receives payloads from the Chrome extension and mobile app.
 //
+// Web pages get nothing here: a request a browser marks as coming from a web page
+// (Sec-Fetch-Site), or sent to a name instead of an address (DNS rebinding), is
+// answered like an address that doesn't exist — so a site can't even tell qooti is
+// installed. The extension's own requests are marked "none"; the phone sends no mark.
+//
 // Endpoints
-//   GET  /extension/ping            — returns version/platform, no auth required
-//   POST /extension/pair            — auto-generates connection key on first call, returns it
-//                                     (only to the browser extension on this computer — never
-//                                     to a web page or another device on the network)
+//   GET  /extension/ping            — returns version/platform/language, no auth required
+//   POST /extension/pair            — a browser extension asks to connect: 202 while the user
+//                                     is being asked in the app, then 200 with that browser's
+//                                     own key (403 when the user said no)
 //   GET  /extension/collections     — returns [{id, name}] list    (requires X-Qooti-Key)
 //   POST /extension/save            — queues media for download     (requires X-Qooti-Key)
 //   POST /extension/add-to-collection — adds item to collection    (requires X-Qooti-Key)
@@ -15,9 +20,9 @@
 
 use crate::AppState;
 use base64::Engine as _;
-use rusqlite::OptionalExtension as _;
-#[allow(unused_imports)]
+use std::collections::HashMap;
 use std::io::Read;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 use tiny_http::{Header, Method, Response, Server};
 
@@ -45,9 +50,24 @@ pub fn start(app: AppHandle) {
         let url    = request.url().to_string();
         let method = request.method().clone();
 
+        let phone_path = url.starts_with("/mobile/");
+        if from_web_page(header_value(&request, "sec-fetch-site").as_deref())
+            || !host_ok(header_value(&request, "host").as_deref(), phone_path) {
+            respond_error(request, 404, "Not Found");
+            continue;
+        }
+
         // CORS preflight — respond immediately, no auth needed
         if method == Method::Options {
             respond_cors(request);
+            continue;
+        }
+
+        // We listen on the network only for the phone app. Everything else — the browser
+        // extension's endpoints — answers this computer only.
+        let local = request.remote_addr().is_some_and(|a| a.ip().is_loopback());
+        if !local && !phone_path {
+            respond_error(request, 403, "Forbidden");
             continue;
         }
 
@@ -55,40 +75,65 @@ pub fn start(app: AppHandle) {
 
             // ── Ping (no auth) ────────────────────────────────────
             ("GET", "/extension/ping") => {
+                // The language qooti is set to: the extension speaks it too (unless the
+                // user picked another one there).
+                let lang: Option<String> = {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    db.query_row("SELECT value FROM preferences WHERE key = 'language'", [], |r| r.get(0)).ok()
+                };
                 respond_json(request, &serde_json::json!({
                     "app":      "qooti",
                     "version":  app.package_info().version.to_string(),
                     "platform": std::env::consts::OS,
+                    "lang":     lang,
                 }));
             }
 
-            // ── Pair (no auth — generates key on first call) ──────
+            // ── Pair: a browser extension asks to connect ─────────
+            // Only a browser extension on this computer may ask (never a web page, a
+            // program without an extension's origin, or another device), and it gets a
+            // key only once the user has said Allow in the app.
             ("POST", "/extension/pair") => {
-                // The key unlocks saving into the library, so only hand it to the browser
-                // extension on this machine: a web page could otherwise fetch it
-                // (Origin: https://…) and a LAN device could, since we listen on 0.0.0.0.
-                if !pair_allowed(&request) {
+                let Some(origin) = extension_origin(&request) else {
                     log::warn!(target: "ExtServer", "pair_refused origin={:?} remote={:?}",
                                header_value(&request, "origin"), request.remote_addr());
                     respond_error(request, 403, "Forbidden");
                     continue;
+                };
+                let known = {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    load_clients(&db).into_iter().find(|c| c.origin == origin).map(|c| c.key)
+                };
+                if let Some(key) = known {
+                    respond_json(request, &serde_json::json!({ "key": key }));
+                    continue;
                 }
-                match do_pair(&app) {
-                    Ok(key) => {
-                        log::info!(target: "ExtServer", "paired");
-                        let _ = app.emit("extension-paired", serde_json::json!({}));
-                        respond_json(request, &serde_json::json!({ "key": key }));
-                    }
-                    Err(e) => {
-                        log::error!(target: "ExtServer", "pair_failed error={e}");
-                        respond_error(request, 500, &e);
+                // "Connect again" in the extension's menu asks once more after a no.
+                let body = read_body(&mut request, MAX_SMALL_BODY);
+                let ask_again = serde_json::from_str::<serde_json::Value>(&body).ok()
+                    .and_then(|v| v.get("ask_again").and_then(|a| a.as_bool())).unwrap_or(false);
+                let browser = browser_name(&request);
+                match pairing_step(&origin, &browser, ask_again) {
+                    PairStep::Refused => respond_error(request, 403, "denied"),
+                    PairStep::Waiting => respond_json_status(request, 202, &serde_json::json!({ "status": "pending" })),
+                    PairStep::AskNow => {
+                        log::info!(target: "ExtServer", "pair_requested browser={browser}");
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                        let _ = app.emit("extension-pair-request", serde_json::json!({ "origin": origin, "browser": browser }));
+                        respond_json_status(request, 202, &serde_json::json!({ "status": "pending" }));
                     }
                 }
             }
 
             // ── Collections (auth required) ───────────────────────
             ("GET", "/extension/collections") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
@@ -100,14 +145,28 @@ pub fn start(app: AppHandle) {
 
             // ── Save (auth required) ──────────────────────────────
             ("POST", "/extension/save") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
-                let mut body = String::new();
-                request.as_reader().read_to_string(&mut body).ok();
+                let body = read_body(&mut request, MAX_SAVE_BODY);
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(mut payload) => {
+                        // A caller never names a file on this computer: the app would import
+                        // whatever path it was given. Frames arrive as data and are saved
+                        // by us (file_path is set again below for those).
+                        if let Some(obj) = payload.as_object_mut() { obj.remove("file_path"); }
+
+                        // The page chose this address: never fetch from the user's own network
+                        // (router, NAS, other programs here). The download checks again after
+                        // looking the name up — this is the instant, no-DNS part.
+                        let target = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        if crate::net_guard::is_private_literal(target) {
+                            log::warn!(target: "ExtServer", "save_refused_private_address");
+                            respond_error(request, 400, "private_address");
+                            continue;
+                        }
+
                         // Duplicate check: if this URL is already in the library,
                         // return immediately with the existing inspiration_id — no download needed.
                         let check_url = payload.get("url")
@@ -119,11 +178,7 @@ pub fn start(app: AppHandle) {
                             let state = app.state::<crate::AppState>();
                             let existing: Option<String> = {
                                 let db = state.db.lock().unwrap();
-                                db.query_row(
-                                    "SELECT id FROM inspirations WHERE source_url = ?1 LIMIT 1",
-                                    [&check_url],
-                                    |row| row.get::<_, String>(0),
-                                ).optional().unwrap_or(None)
+                                crate::commands::find_by_link(&db, &check_url)
                             };
                             if let Some(existing_id) = existing {
                                 log::info!(target: "ExtServer", "save_duplicate url={check_url:?} id={existing_id}");
@@ -254,7 +309,7 @@ pub fn start(app: AppHandle) {
 
             // ── Download progress polling (auth required) ─────────
             ("GET", url) if url.starts_with("/extension/download-progress/") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
@@ -278,11 +333,13 @@ pub fn start(app: AppHandle) {
                         prog.updated_at = std::time::Instant::now();
                         log::warn!(target: "ExtServer", "watchdog_expired ext_id={ext_id} was={old}");
                     }
+                    let code = if prog.status == "error" { crate::commands::ext_error_code(&prog.message) } else { "" };
                     respond_json(request, &serde_json::json!({
                         "status":         prog.status,
                         "pct":            prog.pct,
                         "speed":          prog.speed,          // stage label while pct is 0
-                        "message":        prog.message,        // already user-facing wording
+                        "message":        prog.message,        // English wording, for older extensions
+                        "code":           code,                // what the extension words in its language
                         "friendly":       true,
                         "inspiration_id": prog.inspiration_id,
                     }));
@@ -299,12 +356,11 @@ pub fn start(app: AppHandle) {
 
             // ── Open item in app (auth required) ──────────────────
             ("POST", "/extension/open-item") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
-                let mut body = String::new();
-                request.as_reader().read_to_string(&mut body).ok();
+                let body = read_body(&mut request, MAX_SMALL_BODY);
                 if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
                     let insp_id = payload.get("inspiration_id")
                         .and_then(|v| v.as_str())
@@ -324,7 +380,7 @@ pub fn start(app: AppHandle) {
 
             // ── Cancel download (auth required) ───────────────────
             ("POST", url) if url.starts_with("/extension/cancel/") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
@@ -337,7 +393,7 @@ pub fn start(app: AppHandle) {
             // App queues a URL here when yt-dlp fails due to missing auth cookies.
             // Extension polls every few seconds; claiming pops the slot (one-shot).
             ("GET", "/extension/pending-download") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
@@ -354,26 +410,39 @@ pub fn start(app: AppHandle) {
 
             // ── Add to collection (auth required) ─────────────────
             ("POST", "/extension/add-to-collection") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
-                let mut body = String::new();
-                request.as_reader().read_to_string(&mut body).ok();
-                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
-                    app.emit("extension-add-to-collection", payload).ok();
+                let body = read_body(&mut request, MAX_SMALL_BODY);
+                let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) else {
+                    respond_error(request, 400, "Bad request");
+                    continue;
+                };
+                // A locked collection (free plan) takes no new items — say so instead of
+                // pretending it worked.
+                let collection_id = payload.get("collection_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let locked = {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    crate::commands::is_collection_locked(&db, &collection_id)
+                };
+                if locked {
+                    log::info!(target: "ExtServer", "add_to_collection_locked");
+                    respond_error(request, 403, "collection_locked");
+                    continue;
                 }
+                app.emit("extension-add-to-collection", payload).ok();
                 respond_json(request, &serde_json::json!({ "ok": true }));
             }
 
             // ── Set app preference from extension popup ───────────
             ("POST", "/extension/set-pref") => {
-                if !check_auth(&request, &app) {
+                if !check_extension_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
-                let mut body = String::new();
-                request.as_reader().read_to_string(&mut body).ok();
+                let body = read_body(&mut request, MAX_SMALL_BODY);
                 let payload: serde_json::Value = match serde_json::from_str(&body) {
                     Ok(v)  => v,
                     Err(_) => { respond_error(request, 400, "Bad JSON"); continue; }
@@ -403,19 +472,21 @@ pub fn start(app: AppHandle) {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_millis() as u64)
                     .unwrap_or(0);
-                app.emit("mobile-connected", serde_json::json!({ "ts": ts })).ok();
+                // Only the paired phone (it sends the key) shows as connected.
+                if check_phone_auth(&request, &app) {
+                    app.emit("mobile-connected", serde_json::json!({ "ts": ts })).ok();
+                }
                 respond_json(request, &serde_json::json!({
                     "version": "2.0.0", "platform": "desktop"
                 }));
             }
 
             ("POST", "/mobile/queue") => {
-                if !check_auth(&request, &app) {
+                if !check_phone_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
-                let mut body = String::new();
-                request.as_reader().read_to_string(&mut body).ok();
+                let body = read_body(&mut request, MAX_SMALL_BODY);
                 let payload: serde_json::Value = match serde_json::from_str(&body) {
                     Ok(v)  => v,
                     Err(_) => { respond_error(request, 400, "Bad JSON"); continue; }
@@ -430,15 +501,24 @@ pub fn start(app: AppHandle) {
             }
 
             ("POST", "/mobile/upload") => {
-                if !check_auth(&request, &app) {
+                if !check_phone_auth(&request, &app) {
                     respond_error(request, 401, "Unauthorized");
                     continue;
                 }
-                let item_id = header_value(&request, "x-item-id").unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                // The id ends up in a file name: keep letters, digits and dashes only.
+                let item_id: String = header_value(&request, "x-item-id")
+                    .unwrap_or_default()
+                    .chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(64).collect();
+                let item_id = if item_id.is_empty() { uuid::Uuid::new_v4().to_string() } else { item_id };
                 let mime    = header_value(&request, "content-type").unwrap_or_else(|| "application/octet-stream".to_string());
                 let ext = if mime.contains("video") { "mp4" } else { "jpg" };
                 let mut bytes = Vec::new();
-                request.as_reader().read_to_end(&mut bytes).ok();
+                let limit = MAX_UPLOAD_BODY;
+                request.as_reader().take(limit + 1).read_to_end(&mut bytes).ok();
+                if bytes.len() as u64 > limit {
+                    respond_error(request, 413, "File too large");
+                    continue;
+                }
                 if bytes.is_empty() {
                     respond_error(request, 400, "Empty body");
                     continue;
@@ -465,12 +545,9 @@ pub fn start(app: AppHandle) {
 
 const FREE_EXT_DAILY_LIMIT: u32 = 10;
 
-fn get_plan(db: &rusqlite::Connection) -> String {
-    db.query_row(
-        "SELECT value FROM preferences WHERE key = 'plan'",
-        [],
-        |r| r.get::<_, String>(0),
-    ).unwrap_or_else(|_| "free".to_string())
+/// From the verified licence ticket — see bloot_hub::verified_plan.
+fn get_plan(_db: &rusqlite::Connection) -> String {
+    crate::bloot_hub::verified_plan().to_string()
 }
 
 fn is_free_plan(plan: &str) -> bool {
@@ -549,6 +626,29 @@ fn save_mobile_file(app: &AppHandle, bytes: &[u8], item_id: &str, ext: &str) -> 
     Ok(dest.to_string_lossy().into_owned())
 }
 
+/// A request a browser sent on behalf of a web page. Browsers mark every request with
+/// where it comes from; the extension's own requests are "none" (no page asked), and
+/// programs like the phone app send no mark at all.
+fn from_web_page(sec_fetch_site: Option<&str>) -> bool {
+    sec_fetch_site.is_some_and(|s| !s.trim().eq_ignore_ascii_case("none"))
+}
+
+/// The Host a request was sent to must be an address, not a name: a site that points
+/// its own name at this computer (DNS rebinding) could otherwise read our answers. This
+/// computer only for the extension; any IP for the phone on the network.
+fn host_ok(host: Option<&str>, phone: bool) -> bool {
+    let Some(host) = host.map(str::trim) else { return true };   // not a browser
+    let name = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    if name.eq_ignore_ascii_case("localhost") { return true }
+    match name.parse::<std::net::IpAddr>() {
+        Ok(ip) => phone || ip.is_loopback(),
+        Err(_) => false,
+    }
+}
+
 fn header_value(request: &tiny_http::Request, name: &str) -> Option<String> {
     for h in request.headers() {
         if h.field.as_str().as_str().eq_ignore_ascii_case(name) {
@@ -570,46 +670,200 @@ fn stored_key(app: &AppHandle) -> Option<String> {
     ).ok()
 }
 
-fn check_auth(request: &tiny_http::Request, app: &AppHandle) -> bool {
+/// The phone's key (shown as the QR code). Browsers have their own keys since 1.2.
+fn check_phone_auth(request: &tiny_http::Request, app: &AppHandle) -> bool {
     let expected = match stored_key(app) {
         Some(k) => k,
         None    => return false,
     };
     for header in request.headers() {
         if header.field.as_str().as_str().eq_ignore_ascii_case("x-qooti-key") {
-            return header.value.as_str() == expected;
+            return same_secret(header.value.as_str().as_bytes(), expected.as_bytes());
         }
     }
     false
 }
 
-// ── Pairing ──────────────────────────────────────────────────────
-
-/// Pairing is allowed from this computer only, and not from web pages: browsers
-/// always send the page's Origin, extensions send chrome-extension:// (or none).
-fn pair_allowed(request: &tiny_http::Request) -> bool {
-    let local = request.remote_addr().is_some_and(|a| a.ip().is_loopback());
-    let origin = header_value(request, "origin").unwrap_or_default().to_ascii_lowercase();
-    local && !(origin.starts_with("http://") || origin.starts_with("https://") || origin == "null")
+/// Compare without stopping at the first different byte (no timing hint).
+fn same_secret(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn do_pair(app: &AppHandle) -> Result<String, String> {
+// Request bodies are read up to these sizes and no further.
+const MAX_SAVE_BODY:  u64 = 32 * 1024 * 1024;   // a captured video frame arrives as a data URL
+const MAX_SMALL_BODY: u64 = 1024 * 1024;
+const MAX_UPLOAD_BODY: u64 = 2 * 1024 * 1024 * 1024;  // a phone video, read into memory
+
+fn read_body(request: &mut tiny_http::Request, limit: u64) -> String {
+    let mut body = String::new();
+    request.as_reader().take(limit).read_to_string(&mut body).ok();
+    body
+}
+
+// ── Pairing ──────────────────────────────────────────────────────
+// Each browser extension gets its own key, and only once the user has said Allow in
+// the app. Up to 1.0.6 any program or extension on the computer could ask for the key
+// and got it at once — and it was the key the phone uses too. The phone keeps that
+// original key (`extension_connection_key`, the QR code); browsers are listed in
+// `extension_clients` and can be removed one by one in Settings → Downloads.
+
+const CLIENTS_PREF: &str = "extension_clients";
+/// After a "Don't allow", the same extension isn't asked again for this long…
+const DENIED_FOR: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// …unless the user presses "Connect again" in it, which asks right away (a mis-click
+/// is undone at once) — but no more than this many questions in that time, so nothing
+/// can keep asking until the user gives in.
+const MAX_ASKS: u32 = 3;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct ExtClient {
+    origin: String,
+    key: String,
+    browser: String,
+    approved_at: i64,
+}
+
+enum PairState {
+    /// The user is being asked right now (`asks`: questions shown this round).
+    Pending { browser: String, asks: u32 },
+    /// The user said no (or closed the question) at this moment.
+    Denied { at: std::time::Instant, asks: u32 },
+}
+
+enum PairStep { AskNow, Waiting, Refused }
+
+fn pairing() -> &'static Mutex<HashMap<String, PairState>> {
+    static PAIRING: OnceLock<Mutex<HashMap<String, PairState>>> = OnceLock::new();
+    PAIRING.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// What to do with a pairing request from an extension that has no key yet.
+fn pairing_step(origin: &str, browser: &str, ask_again: bool) -> PairStep {
+    let mut map = pairing().lock().unwrap();
+    let asks = match map.get(origin) {
+        Some(PairState::Pending { .. }) => return PairStep::Waiting,
+        Some(PairState::Denied { at, .. }) if at.elapsed() >= DENIED_FOR => 1,   // an old no is forgotten
+        Some(PairState::Denied { asks, .. }) if ask_again && *asks < MAX_ASKS => asks + 1,
+        Some(PairState::Denied { .. }) => return PairStep::Refused,
+        None => 1,
+    };
+    map.insert(origin.to_string(), PairState::Pending { browser: browser.to_string(), asks });
+    PairStep::AskNow
+}
+
+/// The user answered the question: it's over; a no is remembered for a while. Returns
+/// the browser's name, or None when this extension wasn't being asked.
+fn settle_question(origin: &str, allow: bool) -> Option<String> {
+    let mut map = pairing().lock().unwrap();
+    match map.remove(origin) {
+        Some(PairState::Pending { browser, asks }) => {
+            if !allow { map.insert(origin.to_string(), PairState::Denied { at: std::time::Instant::now(), asks }); }
+            Some(browser)
+        }
+        other => {
+            if let Some(state) = other { map.insert(origin.to_string(), state); }
+            None
+        }
+    }
+}
+
+/// `chrome-extension://<32 letters a–p>` (Chrome, Edge, Brave, Opera…) or
+/// `moz-extension://<uuid>` (Firefox), from this computer — the only callers that
+/// may pair. Browsers set Origin themselves; a web page can't pretend to be one.
+fn extension_origin(request: &tiny_http::Request) -> Option<String> {
+    if !request.remote_addr().is_some_and(|a| a.ip().is_loopback()) { return None }
+    let origin = header_value(request, "origin")?.trim().to_ascii_lowercase();
+    let chrome = origin.strip_prefix("chrome-extension://")
+        .is_some_and(|id| id.len() == 32 && id.bytes().all(|b| (b'a'..=b'p').contains(&b)));
+    let firefox = origin.strip_prefix("moz-extension://")
+        .is_some_and(|id| id.len() == 36 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'));
+    (chrome || firefox).then_some(origin)
+}
+
+/// The browser's everyday name, for the question and the Settings list.
+fn browser_name(request: &tiny_http::Request) -> String {
+    let ua = header_value(request, "user-agent").unwrap_or_default();
+    let name = if ua.contains("Edg/") { "Edge" }
+        else if ua.contains("OPR/") { "Opera" }
+        else if ua.contains("YaBrowser/") { "Yandex Browser" }
+        else if ua.contains("Firefox/") { "Firefox" }
+        else { "Chrome" };
+    name.to_string()
+}
+
+fn load_clients(db: &rusqlite::Connection) -> Vec<ExtClient> {
+    db.query_row("SELECT value FROM preferences WHERE key = ?1", [CLIENTS_PREF], |r| r.get::<_, String>(0))
+        .ok()
+        .and_then(|v| serde_json::from_str(&v).ok())
+        .unwrap_or_default()
+}
+
+fn save_clients(db: &rusqlite::Connection, clients: &[ExtClient]) -> Result<(), String> {
+    let value = serde_json::to_string(clients).map_err(|e| e.to_string())?;
+    db.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)", rusqlite::params![CLIENTS_PREF, value])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// A request from a connected browser: its own key, and when the browser says who it
+/// is (Origin), the key must be that browser's.
+fn check_extension_auth(request: &tiny_http::Request, app: &AppHandle) -> bool {
+    let Some(given) = header_value(request, "x-qooti-key") else { return false };
+    let origin = extension_origin(request);
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    // INSERT OR IGNORE preserves any existing key — prevents invalidating mobile pairing
-    // when the browser extension reconnects and calls this endpoint again.
-    let candidate = uuid::Uuid::new_v4().to_string();
-    db.execute(
-        "INSERT OR IGNORE INTO preferences (key, value) VALUES ('extension_connection_key', ?1)",
-        [&candidate],
-    ).map_err(|e| e.to_string())?;
-    // Return the actual stored key (existing or newly inserted)
-    let key: String = db.query_row(
-        "SELECT value FROM preferences WHERE key = 'extension_connection_key'",
-        [],
-        |r| r.get(0),
-    ).map_err(|e| e.to_string())?;
-    Ok(key)
+    load_clients(&db).iter().any(|c|
+        same_secret(given.as_bytes(), c.key.as_bytes()) && origin.as_deref().map_or(true, |o| o == c.origin))
+}
+
+/// The user's answer to "Connect your browser?" in the app.
+#[tauri::command]
+pub fn answer_extension_pair(origin: String, allow: bool, app: AppHandle) -> Result<(), String> {
+    let origin = origin.to_ascii_lowercase();
+    let Some(browser) = settle_question(&origin, allow) else {
+        return Err("No connection request from this browser".into());
+    };
+    if !allow {
+        log::info!(target: "ExtServer", "pair_denied browser={browser}");
+        return Ok(());
+    }
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let mut clients = load_clients(&db);
+    clients.retain(|c| c.origin != origin);
+    clients.push(ExtClient {
+        origin,
+        key: uuid::Uuid::new_v4().to_string(),
+        browser: browser.clone(),
+        approved_at: chrono::Utc::now().timestamp_millis(),
+    });
+    save_clients(&db, &clients)?;
+    drop(db);
+    log::info!(target: "ExtServer", "pair_allowed browser={browser} browsers={}", clients.len());
+    let _ = app.emit("extension-paired", serde_json::json!({ "browser": browser }));
+    Ok(())
+}
+
+/// Connected browsers for Settings (never their keys).
+#[tauri::command]
+pub fn list_extension_clients(app: AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    Ok(load_clients(&db).into_iter().map(|c| serde_json::json!({
+        "origin": c.origin, "browser": c.browser, "approved_at": c.approved_at,
+    })).collect())
+}
+
+/// Disconnect one browser: its key stops working at once; it asks again next time.
+#[tauri::command]
+pub fn remove_extension_client(origin: String, app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let mut clients = load_clients(&db);
+    let before = clients.len();
+    clients.retain(|c| c.origin != origin.to_ascii_lowercase());
+    save_clients(&db, &clients)?;
+    log::info!(target: "ExtServer", "browser_removed removed={} left={}", before - clients.len(), clients.len());
+    Ok(())
 }
 
 // ── Collections ──────────────────────────────────────────────────
@@ -618,28 +872,48 @@ fn get_collections(app: &AppHandle) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     let mut stmt = db.prepare(
-        "SELECT id, name FROM collections ORDER BY created_at DESC"
+        "SELECT id, name, created_at FROM collections ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let cols: Vec<serde_json::Value> = stmt.query_map([], |row| {
-        Ok(serde_json::json!({
-            "id":   row.get::<_, String>(0)?,
-            "name": row.get::<_, String>(1)?,
-        }))
+    let rows: Vec<(String, String, i64)> = stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
     }).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())
     .collect();
+
+    // Free plan: only the FREE_COLLECTION_LIMIT oldest collections take new items —
+    // the same rule as the app (commands::is_collection_locked). The extension shows
+    // the others as locked.
+    let cutoff = if is_free_plan(&get_plan(&db)) {
+        let mut ages: Vec<i64> = rows.iter().map(|r| r.2).collect();
+        ages.sort_unstable();
+        ages.get(crate::commands::FREE_COLLECTION_LIMIT as usize).copied()
+    } else {
+        None
+    };
+    let cols: Vec<serde_json::Value> = rows.into_iter().map(|(id, name, created_at)| {
+        serde_json::json!({
+            "id":     id,
+            "name":   name,
+            "locked": cutoff.is_some_and(|cut| created_at >= cut),
+        })
+    }).collect();
     Ok(serde_json::Value::Array(cols))
 }
 
 // ── Response helpers ─────────────────────────────────────────────
 
+// No Access-Control-Allow-Origin: the browser extension (host permission) and the phone
+// app don't need it, and without it a web page can't read anything this server says.
 fn cors_headers() -> Vec<Header> {
     vec![
-        Header::from_bytes(b"Content-Type",                     b"application/json").unwrap(),
-        Header::from_bytes(b"Access-Control-Allow-Origin",      b"*").unwrap(),
-        Header::from_bytes(b"Access-Control-Allow-Methods",     b"GET, POST, OPTIONS").unwrap(),
-        Header::from_bytes(b"Access-Control-Allow-Headers",     b"Content-Type, X-Qooti-Key").unwrap(),
+        Header::from_bytes(b"Content-Type", b"application/json").unwrap(),
     ]
+}
+
+fn respond_json_status(request: tiny_http::Request, code: u16, value: &serde_json::Value) {
+    let mut r = Response::from_string(value.to_string()).with_status_code(code);
+    for h in cors_headers() { r = r.with_header(h); }
+    request.respond(r).ok();
 }
 
 fn respond_json(request: tiny_http::Request, value: &serde_json::Value) {
@@ -660,4 +934,60 @@ fn respond_error(request: tiny_http::Request, code: u16, msg: &str) {
     let mut r = Response::from_string(body).with_status_code(code);
     for h in cors_headers() { r = r.with_header(h); }
     request.respond(r).ok();
+}
+
+#[cfg(test)]
+mod pairing_tests {
+    use super::*;
+
+    #[test]
+    fn web_pages_and_rebound_names_get_nothing() {
+        // What browsers send: the extension's own requests, and web pages'
+        assert!(!from_web_page(Some("none")));
+        assert!(!from_web_page(None));                       // the phone app, other programs
+        assert!(from_web_page(Some("cross-site")));
+        assert!(from_web_page(Some("same-site")));
+        assert!(from_web_page(Some("same-origin")));
+        // Host: an address, never a name
+        assert!(host_ok(Some("127.0.0.1:1420"), false));
+        assert!(host_ok(Some("localhost:1420"), false));
+        assert!(host_ok(Some("[::1]:1420"), false));
+        assert!(host_ok(None, false));
+        assert!(!host_ok(Some("evil.example:1420"), false));
+        assert!(!host_ok(Some("127.0.0.1.nip.io:1420"), false));
+        assert!(!host_ok(Some("192.168.1.20:1420"), false));  // the network: the phone only
+        assert!(host_ok(Some("192.168.1.20:1420"), true));
+        assert!(host_ok(Some("[fe80::1]:1420"), true));
+        assert!(!host_ok(Some("my-pc.local:1420"), true));
+    }
+
+    #[test]
+    fn a_new_browser_is_asked_once_then_waits() {
+        let o = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab";
+        assert!(matches!(pairing_step(o, "Edge", false), PairStep::AskNow));
+        assert!(matches!(pairing_step(o, "Edge", false), PairStep::Waiting));
+        assert!(matches!(pairing_step(o, "Edge", true), PairStep::Waiting));
+    }
+
+    #[test]
+    fn after_a_no_only_connect_again_asks_and_not_endlessly() {
+        let o = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac";
+        assert!(matches!(pairing_step(o, "Chrome", false), PairStep::AskNow));
+        assert_eq!(settle_question(o, false).as_deref(), Some("Chrome"));
+        assert!(matches!(pairing_step(o, "Chrome", false), PairStep::Refused));  // not by itself
+        assert!(matches!(pairing_step(o, "Chrome", true), PairStep::AskNow));    // "Connect again", at once
+        settle_question(o, false);
+        assert!(matches!(pairing_step(o, "Chrome", true), PairStep::AskNow));    // a third question
+        settle_question(o, false);
+        assert!(matches!(pairing_step(o, "Chrome", true), PairStep::Refused));   // then it rests
+        assert!(settle_question(o, true).is_none());                             // nothing to answer
+    }
+
+    #[test]
+    fn a_no_expires_on_its_own() {
+        let o = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaad";
+        let long_ago = std::time::Instant::now() - DENIED_FOR - std::time::Duration::from_secs(1);
+        pairing().lock().unwrap().insert(o.into(), PairState::Denied { at: long_ago, asks: MAX_ASKS });
+        assert!(matches!(pairing_step(o, "Chrome", false), PairStep::AskNow));
+    }
 }

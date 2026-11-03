@@ -6,6 +6,9 @@ import { openImageCropper } from './image-cropper.js'
 import { sfx } from './sfx.js'
 import { getLocalVocabVersion, getLatestVocabVersion, checkForVocabUpdate, forceSyncTagVocab } from './tag-sync.js'
 import { openHub } from './licensing.js'
+import { enhanceSelect } from './select-menu.js'
+import * as motion from './motion.js'
+import { setPageBar } from './page-bar.js'
 
 let container = null
 let settings = {}
@@ -93,19 +96,31 @@ export async function setSetting(key, value) {
   if (['theme', 'grid_density', 'accent_color', 'show_platform_label', 'show_collection_label'].includes(key)) applyVisualSettings(settings)
 }
 
+/** A setting the backend owns (the plan, from the licence ticket): update the local
+ *  copy and tell listeners, without writing it. */
+export function mirrorSetting(key, value) {
+  if (settings[key] === value) return
+  settings[key] = value
+  store.emit(events.SETTINGS_CHANGED, { key, value })
+}
+
 export function getSetting(key, fallback = null) {
   return settings[key] ?? fallback
 }
 
 async function render() {
   if (!container) return
+  // Top bar (guide I1): no search and no Import — just "Settings" in the centre
+  if (!container.hidden) setPageBar({ title: tr('settings.title') })
 
-  const [vaultInfo, appInfo, tags, autostartEnabled] = await Promise.all([
+  const [vaultInfo, appInfo, tags, autostartEnabled, browsers] = await Promise.all([
     api.getVaultInfo().catch(() => null),
     api.getAppInfo().catch(() => null),
     api.listTags().catch(() => []),
     api.getAutostart().catch(() => false),
+    api.listExtensionClients().catch(() => []),
   ])
+  const addedOn = ms => new Date(ms).toLocaleDateString(settings.language === 'uz' ? 'uz-UZ' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
   const localVocabVersion  = getLocalVocabVersion()
   const latestVocabVersion = getLatestVocabVersion()
@@ -115,12 +130,12 @@ async function render() {
   if (!VALID_TABS.includes(activeTab)) activeTab = 'general'
 
   const tabs = [
-    { key: 'general',    label: tr('settings.tab.general')    },
-    { key: 'appearance', label: tr('settings.tab.appearance') },
-    { key: 'library',    label: tr('settings.tab.library')    },
-    { key: 'downloads',  label: tr('settings.tab.downloads')  },
-    { key: 'system',     label: tr('settings.tab.system')     },
-    { key: 'mobile',     label: 'Mobile'                      },
+    { key: 'general',    label: tr('settings.tab.general'),    icon: 'user-circle'     },
+    { key: 'appearance', label: tr('settings.tab.appearance'), icon: 'sun'             },
+    { key: 'library',    label: tr('settings.tab.library'),    icon: 'folder'          },
+    { key: 'downloads',  label: tr('settings.tab.downloads'),  icon: 'download-simple' },
+    { key: 'system',     label: tr('settings.tab.system'),     icon: 'sliders'         },
+    { key: 'mobile',     label: tr('settings.tab.mobile'),     icon: 'device-mobile'   },
   ]
 
   const curLang = settings.language ?? 'en'
@@ -132,7 +147,7 @@ async function render() {
       </div>
       <div class="settings-tabs">
         ${tabs.map(tab => `
-          <button class="stab-btn ${tab.key === activeTab ? 'active' : ''}" data-tab="${tab.key}">${tab.label}</button>
+          <button class="stab-btn ${tab.key === activeTab ? 'active' : ''}" data-tab="${tab.key}"><span class="icon icon-16" style="mask-image:url('/icons/${tab.icon}.svg');-webkit-mask-image:url('/icons/${tab.icon}.svg')" aria-hidden="true"></span>${tab.label}</button>
         `).join('')}
       </div>
 
@@ -208,7 +223,7 @@ async function render() {
             <div class="settings-row-control">
               <select class="settings-select" id="s-lang">
                 <option value="en" ${curLang === 'en' ? 'selected' : ''}>English</option>
-                <option value="uz" ${curLang === 'uz' ? 'selected' : ''}>O'zbek</option>
+                <option value="uz" ${curLang === 'uz' ? 'selected' : ''}>O‘zbekcha</option>
               </select>
             </div>
           </div>
@@ -357,17 +372,17 @@ async function render() {
         </section>
 
         <section class="settings-section">
-          <h2 class="settings-section-title">Cookies</h2>
+          <h2 class="settings-section-title">${tr('settings.cookies')}</h2>
           <div class="settings-row" style="align-items:flex-start;padding-top:10px;padding-bottom:10px">
             <div class="settings-row-label">
-              <span class="settings-row-name">Cookies file</span>
-              <span class="settings-row-sub">For sites like Instagram that require login. Export via "Get cookies.txt LOCALLY" Chrome extension. Used only when the qooti browser extension isn't available.</span>
+              <span class="settings-row-name">${tr('settings.cookies_file')}</span>
+              <span class="settings-row-sub">${escHtml(tr('settings.cookies_file.sub'))}</span>
             </div>
             <div class="settings-row-control" style="flex-direction:column;align-items:flex-end;gap:6px">
-              <div id="s-cookies-path" style="font-size:11px;color:var(--clr-text-muted,#888);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${settings.cookies_txt_path ? settings.cookies_txt_path.replace(/.*[\\/]/, '') : 'No file selected'}</div>
+              <div id="s-cookies-path" style="font-size:12px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${settings.cookies_txt_path ? settings.cookies_txt_path.replace(/.*[\\/]/, '') : tr('settings.no_file')}</div>
               <div style="display:flex;gap:6px">
-                <button class="settings-save-btn" id="s-cookies-browse-btn">Browse</button>
-                ${settings.cookies_txt_path ? '<button class="settings-save-btn" id="s-cookies-clear-btn" style="background:transparent;border:1px solid var(--clr-border,#2a2a2e)">Clear</button>' : ''}
+                <button class="settings-save-btn" id="s-cookies-browse-btn">${tr('settings.browse')}</button>
+                ${settings.cookies_txt_path ? `<button class="settings-save-btn settings-save-btn--ghost" id="s-cookies-clear-btn">${tr('settings.clear')}</button>` : ''}
               </div>
             </div>
           </div>
@@ -387,6 +402,27 @@ async function render() {
               </label>
             </div>
           </div>
+        </section>
+
+        <!-- Browsers the qooti extension is connected in (each was allowed once) -->
+        <section class="settings-section">
+          <h2 class="settings-section-title">${tr('settings.section.browsers')}</h2>
+          ${browsers.length ? browsers.map(b => `
+          <div class="settings-row">
+            <div class="settings-row-label">
+              <span class="settings-row-name">${escHtml(b.browser)}</span>
+              <span class="settings-row-sub">${escHtml(tr('settings.browser_added', { date: addedOn(b.approved_at) }))}</span>
+            </div>
+            <div class="settings-row-control">
+              <button class="settings-save-btn s-browser-remove" data-origin="${escHtml(b.origin)}" data-browser="${escHtml(b.browser)}">${tr('settings.browser_remove')}</button>
+            </div>
+          </div>`).join('') : `
+          <div class="settings-row">
+            <div class="settings-row-label">
+              <span class="settings-row-name">${tr('settings.browsers_none')}</span>
+              <span class="settings-row-sub">${tr('settings.browsers_none.sub')}</span>
+            </div>
+          </div>`}
         </section>
       </div>
 
@@ -453,34 +489,44 @@ async function render() {
       </div>
 
       <!-- Mobile tab -->
-      <div class="stab-panel ${activeTab === 'mobile' ? 'active' : ''}" data-panel="mobile">
+      <div class="stab-panel stab-panel--soon ${activeTab === 'mobile' ? 'active' : ''}" data-panel="mobile">
+        <!-- Not ready yet: the page shows through, dimmed, under a "Coming soon" note -->
+        <div class="soon-overlay" role="note">
+          <div class="soon-card">
+            <span class="soon-icon icon" style="mask-image:url('/icons/device-mobile.svg');-webkit-mask-image:url('/icons/device-mobile.svg')" aria-hidden="true"></span>
+            <span class="soon-badge">${tr('settings.mobile_soon_badge')}</span>
+            <h3>${tr('settings.mobile_soon_title')}</h3>
+            <p>${tr('settings.mobile_soon_body')}</p>
+          </div>
+        </div>
+        <div class="soon-content" inert>
 
         <section class="settings-section">
-          <h2 class="settings-section-title">Sync</h2>
+          <h2 class="settings-section-title">${tr('settings.sync')}</h2>
           <div class="settings-row">
             <div class="settings-row-label">
-              <span class="settings-row-name">Mobile device</span>
-              <span class="settings-row-sub">Connected over your local Wi-Fi</span>
+              <span class="settings-row-name">${tr('settings.mobile_device')}</span>
+              <span class="settings-row-sub">${tr('settings.mobile_device.sub')}</span>
             </div>
             <div id="s-mobile-conn-pill">${buildConnectionPill(mobileConnectedAt())}</div>
           </div>
 
           <!-- Pending items -->
           <div id="s-mobile-pending-row" style="${mobileInboxCount() === 0 ? 'display:none' : ''}">
-            <div style="border-top:0.5px solid var(--border-subtle);padding:16px 18px 18px">
+            <div style="padding:16px 18px 18px">
               <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
-                <div style="width:34px;height:34px;border-radius:50%;background:var(--accent-tint);border:1px solid rgba(37,99,235,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                  <span class="icon icon-16" style="mask-image:url('/icons/download-simple.svg');-webkit-mask-image:url('/icons/download-simple.svg');background:var(--accent-link)" aria-hidden="true"></span>
+                <div style="width:32px;height:32px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <span class="icon icon-16" style="mask-image:url('/icons/download-simple.svg');-webkit-mask-image:url('/icons/download-simple.svg');background:var(--text-secondary)" aria-hidden="true"></span>
                 </div>
                 <div style="padding-top:2px">
-                  <span class="settings-row-name" id="s-mobile-pending-label">${mobileInboxCount()} item${mobileInboxCount() === 1 ? '' : 's'} ready to sync</span>
-                  <span class="settings-row-sub" style="display:block;margin-top:3px">Shared from your phone — ready to add to your library.</span>
+                  <span class="settings-row-name" id="s-mobile-pending-label">${readyToSync(mobileInboxCount())}</span>
+                  <span class="settings-row-sub" style="display:block;margin-top:3px">${tr('settings.mobile_ready.sub')}</span>
                 </div>
               </div>
               <div style="display:flex;gap:8px">
-                <button id="s-mobile-sync-yes" style="flex:1;height:34px;background:var(--accent);border:none;border-radius:var(--radius-md);color:#fff;font:inherit;font-size:13px;font-weight:500;cursor:pointer;letter-spacing:-0.01em;transition:background 0.15s" onmouseover="this.style.background='var(--accent-hover)'" onmouseout="this.style.background='var(--accent)'">Sync now</button>
-                <button id="s-mobile-sync-no" class="settings-save-btn">Dismiss</button>
-                <button class="settings-save-btn s-mobile-refresh-btn" title="Refresh" style="width:34px;padding:0;display:flex;align-items:center;justify-content:center">
+                <button id="s-mobile-sync-yes" class="btn btn-primary btn-sm" style="flex:1">${tr('settings.sync_now')}</button>
+                <button id="s-mobile-sync-no" class="settings-save-btn">${tr('update.dismiss')}</button>
+                <button class="settings-save-btn s-mobile-refresh-btn" title="${tr('settings.refresh')}" style="width:34px;padding:0;display:flex;align-items:center;justify-content:center">
                   <span class="icon icon-14" style="mask-image:url('/icons/arrow-clockwise.svg');-webkit-mask-image:url('/icons/arrow-clockwise.svg')" aria-hidden="true"></span>
                 </button>
               </div>
@@ -489,90 +535,89 @@ async function render() {
 
           <!-- Idle (no items) -->
           <div id="s-mobile-idle-row" style="${mobileInboxCount() > 0 ? 'display:none' : ''}">
-            <div style="border-top:0.5px solid var(--border-subtle);padding:28px 18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
-              <div style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--bg-raised);border:0.5px solid var(--border-default);display:flex;align-items:center;justify-content:center">
+            <div style="padding:28px 18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--bg-hover);display:flex;align-items:center;justify-content:center">
                 <span class="icon icon-18" style="mask-image:url('/icons/wifi-high.svg');-webkit-mask-image:url('/icons/wifi-high.svg');background:var(--text-muted)" aria-hidden="true"></span>
               </div>
               <div>
-                <p style="margin:0 0 4px;font-size:13.5px;font-weight:500;color:var(--text-primary)">No items pending</p>
-                <p style="margin:0;font-size:11.5px;color:var(--text-muted);line-height:1.5">Items shared from your phone will appear here</p>
+                <p style="margin:0 0 4px;font-size:13.5px;font-weight:500;color:var(--text-primary)">${tr('settings.no_pending')}</p>
+                <p style="margin:0;font-size:11.5px;color:var(--text-muted);line-height:1.5">${tr('settings.no_pending.sub')}</p>
               </div>
-              <button class="settings-save-btn s-mobile-refresh-btn" style="margin-top:2px">Refresh</button>
+              <button class="settings-save-btn s-mobile-refresh-btn" style="margin-top:2px">${tr('settings.refresh')}</button>
             </div>
           </div>
         </section>
 
         <section class="settings-section">
-          <h2 class="settings-section-title">Pairing</h2>
-          <div id="s-mobile-qr-wrap" style="display:flex;flex-direction:column;align-items:center;padding:24px 24px 22px;gap:18px;border-top:0.5px solid var(--border-subtle)">
-            <div style="background:#fff;border-radius:12px;padding:12px;display:inline-flex;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 6px 28px rgba(0,0,0,0.5)">
+          <h2 class="settings-section-title">${tr('settings.pairing')}</h2>
+          <div id="s-mobile-qr-wrap" style="display:flex;flex-direction:column;align-items:center;padding:24px 24px 22px;gap:18px">
+            <div style="background:#fff;border-radius:8px;padding:10px;display:inline-flex">
               <div id="s-mobile-qr">
-                <span class="settings-row-sub">Loading…</span>
+                <span class="settings-row-sub">${tr('vault.loading')}</span>
               </div>
             </div>
             <p style="margin:0;font-size:12.5px;color:var(--text-secondary);text-align:center;line-height:1.65;max-width:300px">
-              Open qooti on your phone → <strong style="color:var(--text-primary)">Settings</strong> → <strong style="color:var(--text-primary)">Pair with desktop</strong> → scan this code
+              ${tr('settings.pair_how', {
+                settings: `<strong style="color:var(--text-primary)">${tr('nav.settings')}</strong>`,
+                pair: `<strong style="color:var(--text-primary)">${tr('settings.pair_with_desktop')}</strong>`,
+              })}
             </p>
-            <div style="width:100%;background:var(--bg-raised);border:0.5px solid var(--border-subtle);border-radius:var(--radius-md);padding:10px 12px">
+            <div style="width:100%;background:var(--bg-raised);border-radius:var(--radius-sm);padding:10px 12px">
               <span id="s-mobile-uri" style="display:block;font-family:'Geist Mono',ui-monospace,monospace;font-size:9.5px;color:var(--text-muted);word-break:break-all;line-height:1.7"></span>
             </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-label">
+              <span class="settings-row-name">${tr('settings.mobile_qr_reset')}</span>
+              <span class="settings-row-sub">${tr('settings.mobile_qr_reset_sub')}</span>
+            </div>
+            <button id="s-mobile-qr-reset" class="settings-save-btn">${tr('settings.mobile_qr_reset_ok')}</button>
           </div>
         </section>
 
         <section class="settings-section">
-          <h2 class="settings-section-title">Network</h2>
+          <h2 class="settings-section-title">${tr('settings.network')}</h2>
           <div class="settings-row">
             <div class="settings-row-label">
-              <span class="settings-row-name">Desktop port</span>
-              <span class="settings-row-sub">Your phone and desktop must be on the same Wi-Fi network.</span>
+              <span class="settings-row-name">${tr('settings.desktop_port')}</span>
+              <span class="settings-row-sub">${tr('settings.desktop_port.sub')}</span>
             </div>
             <span class="settings-row-value">1420</span>
           </div>
         </section>
+        </div>
       </div>
 
     </div>
   `
 
+  // Guide I: the section title sits above a card that holds the rows
+  container.querySelectorAll('.settings-section').forEach(sec => {
+    const title = sec.querySelector(':scope > .settings-section-title')
+    const card  = document.createElement('div')
+    card.className = 'settings-card'
+    ;[...sec.children].filter(c => c !== title).forEach(c => card.appendChild(c))
+    sec.appendChild(card)
+  })
+
   // ── Tab switching (cross-fade) ────────────────────────────────
-  let _tabBusy = false
+  // Switching tabs: the old panel goes at once and the new one fades in rising 4 px.
+  // (The old crossfade pinned the outgoing panel across the whole page, so both could
+  // show on top of each other — for seconds when the app was busy.)
   container.querySelectorAll('.stab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const newTab = btn.dataset.tab
-      if (newTab === activeTab || _tabBusy) return
+      if (newTab === activeTab) return
 
-      const oldPanel = container.querySelector('.stab-panel.active')
       const newPanel = container.querySelector(`[data-panel="${newTab}"]`)
       if (!newPanel) return
 
       container.querySelectorAll('.stab-btn').forEach(b => b.classList.toggle('active', b === btn))
+      container.querySelectorAll('.stab-panel.active').forEach(p => p.classList.remove('active'))
       activeTab = newTab
-
-      if (!oldPanel) { newPanel.classList.add('active'); return }
-
-      _tabBusy = true
-      const DUR = 160
-
-      // Pin old panel absolutely so new panel can appear in normal flow beneath it
-      oldPanel.style.cssText = `position:absolute;top:${oldPanel.offsetTop}px;left:0;right:0;` +
-        `opacity:1;pointer-events:none;transition:opacity ${DUR}ms ease`
-
-      newPanel.style.cssText = `opacity:0;transition:opacity ${DUR}ms ease`
       newPanel.classList.add('active')
-
-      // Trigger both fades on the next paint
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        oldPanel.style.opacity = '0'
-        newPanel.style.opacity = '1'
-      }))
-
-      setTimeout(() => {
-        oldPanel.classList.remove('active')
-        oldPanel.style.cssText = ''
-        newPanel.style.cssText = ''
-        _tabBusy = false
-        if (newTab === 'mobile') loadMobileQr()
-      }, DUR + 20)
+      motion.fadeIn(newPanel)
+      if (newTab === 'mobile') loadMobileQr()
     })
   })
 
@@ -598,9 +643,11 @@ async function render() {
       })
     })
 
-    container.querySelector('#s-lang').addEventListener('change', e => {
+    const langSelect = container.querySelector('#s-lang')
+    langSelect.addEventListener('change', e => {
       setSetting('language', e.target.value)
     })
+    enhanceSelect(langSelect)   // app-styled list instead of the OS one
 
     container.querySelector('#s-autostart')?.addEventListener('change', async e => {
       await api.setAutostart(e.target.checked)
@@ -809,7 +856,7 @@ async function render() {
   container.querySelector('#s-cookies-clear-btn')?.addEventListener('click', async () => {
     await setSetting('cookies_txt_path', '')
     const nameEl = container.querySelector('#s-cookies-path')
-    if (nameEl) nameEl.textContent = 'No file selected'
+    if (nameEl) nameEl.textContent = tr('settings.no_file')
     container.querySelector('#s-cookies-clear-btn')?.remove()
     sfx.success()
   })
@@ -842,6 +889,49 @@ async function render() {
   }
   loadMobileQr()
 
+  // ── Downloads tab: disconnect a browser ───────────────────────
+  container.querySelectorAll('.s-browser-remove').forEach(btn => btn.addEventListener('click', async () => {
+    const { showConfirm } = await import('./dialog.js')
+    const browser = btn.dataset.browser
+    const ok = await showConfirm({
+      title: tr('settings.browser_remove_title', { browser }),
+      message: tr('settings.browser_remove_msg', { browser }),
+      danger: true,
+      confirmLabel: tr('settings.browser_remove'),
+    })
+    if (!ok) return
+    try {
+      await api.removeExtensionClient(btn.dataset.origin)
+      store.emit(events.SYSTEM_TOAST, { type: 'success', message: tr('settings.browser_removed', { browser }) })
+      render()
+    } catch (err) {
+      console.error('[settings] remove browser failed:', err)
+      store.emit(events.SYSTEM_TOAST, { type: 'error', message: tr('settings.browser_remove_failed') })
+    }
+  }))
+
+  // ── Mobile tab: new QR code (new connection key) ──────────────
+  container.querySelector('#s-mobile-qr-reset')?.addEventListener('click', async () => {
+    const { showConfirm } = await import('./dialog.js')
+    const ok = await showConfirm({
+      title: tr('settings.mobile_qr_reset_title'),
+      message: tr('settings.mobile_qr_reset_msg'),
+      danger: true,
+      confirmLabel: tr('settings.mobile_qr_reset_ok'),
+    })
+    if (!ok) return
+    try {
+      await api.resetMobileConnectionKey()
+      const qrEl = container.querySelector('#s-mobile-qr')
+      if (qrEl) delete qrEl.dataset.loaded
+      loadMobileQr()
+      store.emit(events.SYSTEM_TOAST, { type: 'success', message: tr('settings.mobile_qr_reset_done') })
+    } catch (err) {
+      console.error('[settings] QR reset failed:', err)
+      store.emit(events.SYSTEM_TOAST, { type: 'error', message: tr('settings.mobile_qr_reset_failed') })
+    }
+  })
+
   // ── Mobile tab: pending sync row ──────────────────────────────
   function updatePendingRow(count) {
     const pendingRow = container.querySelector('#s-mobile-pending-row')
@@ -851,8 +941,13 @@ async function render() {
     const hasPending = count > 0
     pendingRow.style.display = hasPending ? '' : 'none'
     idleRow.style.display    = hasPending ? 'none' : ''
-    if (label) label.textContent = `${count} item${count === 1 ? '' : 's'} ready to sync`
+    if (label) label.textContent = readyToSync(count)
   }
+
+// "3 items ready to sync"
+function readyToSync(n) {
+  return n === 1 ? tr('settings.mobile_ready_one') : tr('settings.mobile_ready_many', { n })
+}
 
   // Live update when new items arrive from phone
   const _unlistenMobile = store.on(events.MOBILE_ITEMS_PENDING, ({ count }) => {
@@ -1025,7 +1120,7 @@ function buildPlanBadge(plan) {
 function buildPlanAction(plan) {
   const cooldownLeft = _lastManualRefresh ? Math.max(0, REFRESH_COOLDOWN - (Date.now() - _lastManualRefresh)) : 0
   const refreshDisabled = cooldownLeft > 0 ? 'disabled' : ''
-  const refreshBtn = `<button class="settings-save-btn" id="s-plan-refresh" ${refreshDisabled} title="Check subscription status">↻</button>`
+  const refreshBtn = `<button class="settings-save-btn" id="s-plan-refresh" ${refreshDisabled} title="${tr('settings.plan_refresh')}">↻</button>`
 
   return `<button class="settings-save-btn" id="s-hub-manage">${tr('settings.account.manage')}</button>${refreshBtn}`
 }
@@ -1035,18 +1130,18 @@ function buildConnectionPill(ts) {
   const connected = ts > 0 && (Date.now() - ts) < CONNECTED_WINDOW_MS
   if (connected) {
     return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#22c55e;font-weight:500">
-      <span style="width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0"></span>Connected
+      <span style="width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0"></span>${tr('settings.mobile.connected')}
     </span>`
   }
   if (ts > 0) {
     const mins = Math.round((Date.now() - ts) / 60000)
-    const label = mins < 2 ? 'just now' : `${mins}m ago`
+    const label = mins < 2 ? tr('settings.mobile.seen_now') : tr('settings.mobile.seen_min', { n: mins })
     return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--clr-text-muted,#6e6e76)">
-      <span style="width:6px;height:6px;border-radius:50%;background:var(--clr-text-muted,#6e6e76);flex-shrink:0"></span>Last seen ${label}
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--clr-text-muted,#6e6e76);flex-shrink:0"></span>${label}
     </span>`
   }
   return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--clr-text-muted,#6e6e76)">
-    <span style="width:6px;height:6px;border-radius:50%;background:#3a3a40;flex-shrink:0"></span>Not detected
+    <span style="width:6px;height:6px;border-radius:50%;background:#3a3a40;flex-shrink:0"></span>${tr('settings.mobile.not_found')}
   </span>`
 }
 
@@ -1070,7 +1165,8 @@ function buildVaultFolderSection(info) {
   const totalBytes = usedBytes + freeBytes
   const usedPct    = totalBytes > 0 ? Math.min(100, (usedBytes / totalBytes) * 100) : 0
   const lowDisk    = freeBytes < 5 * 1024 * 1024 * 1024 && freeBytes > 0
-  const barColor   = usedPct > 90 ? 'var(--error)' : usedPct > 70 ? '#D97706' : 'var(--accent)'
+  // White like the rest of the UI; amber / red only when the disk is getting full
+  const barColor   = usedPct > 90 ? 'var(--error)' : usedPct > 70 ? '#D97706' : 'var(--text-primary)'
 
   return `
     ${lowDisk ? `
@@ -1080,7 +1176,7 @@ function buildVaultFolderSection(info) {
     </div>` : ''}
 
     <div class="vault-path-row">
-      <span class="icon icon-16" style="mask-image:url('/icons/folder.svg');-webkit-mask-image:url('/icons/folder.svg');flex-shrink:0;color:var(--accent)" aria-hidden="true"></span>
+      <span class="icon icon-16" style="mask-image:url('/icons/folder.svg');-webkit-mask-image:url('/icons/folder.svg');flex-shrink:0;color:var(--text-primary)" aria-hidden="true"></span>
       <span class="vault-path-text" title="${escHtml(info.path)}">${escHtml(truncatePath(info.path, 52))}</span>
       <div class="vault-path-actions">
         ${!info.is_default ? `<button class="vault-reset-btn" id="s-vault-reset-btn">${tr('vault.reset')}</button>` : ''}

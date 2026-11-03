@@ -8,7 +8,7 @@
 const tasks = new Map()
 
 const NS  = 'http://www.w3.org/2000/svg'
-const RX  = 8   // border-radius matching --radius-md
+let RX = 20     // corner radius — set from the bar's height (the search bar is a pill)
 const SW  = 2   // stroke width
 
 let _svg  = null
@@ -32,7 +32,8 @@ function initSvg() {
     position: 'absolute', inset: '0',
     width: '100%', height: '100%',
     overflow: 'visible', pointerEvents: 'none',
-    zIndex: '0', opacity: '0',
+    // Above the bar (z-index 1): its solid fill used to hide all but a faint edge
+    zIndex: '2', opacity: '0',
     transition: 'opacity 0.3s',
   })
 
@@ -41,7 +42,7 @@ function initSvg() {
   _arc.setAttribute('stroke-linecap', 'round')
   _arc.setAttribute('stroke-width', SW)
   _arc.setAttribute('fill', 'none')
-  _arc.style.stroke = 'var(--accent)'
+  _arc.style.stroke = 'var(--text-primary)'
   _arc.style.transition = 'stroke-dasharray 0.4s, stroke 0.15s'
 
   _svg.appendChild(_arc)
@@ -60,6 +61,8 @@ function recomputeGeometry() {
   // Inset the rect by SW/2 on each side so the centered stroke sits on the border
   const rw = W - SW
   const rh = H - SW
+  RX = rh / 2
+  _arc.setAttribute('rx', RX)
   _arc.setAttribute('x',      SW / 2)
   _arc.setAttribute('y',      SW / 2)
   _arc.setAttribute('width',  rw)
@@ -67,17 +70,11 @@ function recomputeGeometry() {
 
   _peri = _arc.getTotalLength()
 
-  // SVG rect path starts at (x+RX, y) and traverses CLOCKWISE:
-  //   top-straight → top-right corner → right-straight → bottom-right corner
-  //   → bottom-straight → [BOTTOM-LEFT CORNER] → left-straight → top-left corner → …
-  //
-  // Distance to the bottom-left corner from the path start:
-  //   2*(rw - 2*RX)   top straight + bottom straight
-  // + (rh - 2*RX)     right straight
-  // + π*RX            top-right corner arc + bottom-right corner arc  (each = π*RX/2)
-  const D = 2 * (rw - 2 * RX) + (rh - 2 * RX) + Math.PI * RX
+  // The rect's path starts at (x+RX, y) — the left end of the top edge — and runs
+  // clockwise. Start the fill at the top centre, half-way along that straight edge.
+  const D = (rw - 2 * RX) / 2
 
-  // dashoffset = _peri - D  →  filled dash begins at path position D (bottom-left corner)
+  // dashoffset = _peri - D  →  the filled dash begins at path position D
   _off = _peri - D
 }
 
@@ -146,7 +143,7 @@ function sync() {
   _svg.style.opacity = '1'
   _arc.style.stroke = hasError
     ? 'var(--error)'
-    : (active.color ?? 'var(--accent)')
+    : (active.color ?? 'var(--text-primary)')
 
   if (hasIndeterminate) {
     startIndeterminate()

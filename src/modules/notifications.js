@@ -1,6 +1,7 @@
 import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
+import { t } from './i18n.js'
 import { sfx } from './sfx.js'
 
 const I = (name, size = 16) =>
@@ -40,19 +41,20 @@ function render(notifs) {
   const unread = notifs.filter(n => !n.read)
 
   container.innerHTML = `
-    <div class="notif-page">
-      <div class="notif-header">
-        <h1 class="notif-title">Notifications</h1>
-        ${unread.length
-          ? `<button class="btn btn-ghost notif-mark-all">Mark all as read</button>`
-          : ''}
+    <div class="view-page notif-page">
+      <div class="view-head view-head--row">
+        <div>
+          <h1>${t('notif.title')}</h1>
+          ${unread.length ? `<p>${t('notif.n_new', { n: unread.length })}</p>` : ''}
+        </div>
+        ${unread.length ? `<button class="btn btn-ghost btn-sm notif-mark-all">${t('notif.mark_all')}</button>` : ''}
       </div>
       ${notifs.length
         ? `<div class="notif-list" id="notif-list"></div>`
-        : `<div class="empty-state" style="height:calc(100% - 64px)">
-             ${I('bell', 32)}
-             <span class="empty-state-title">All caught up</span>
-             <p class="empty-state-body">No notifications yet.</p>
+        : `<div class="empty-state">
+             <span class="empty-state-icon">${I('bell', 20)}</span>
+             <span class="empty-state-title">${t('notif.empty_title')}</span>
+             <p class="empty-state-body">${t('notif.empty_body')}</p>
            </div>`}
     </div>
   `
@@ -77,21 +79,18 @@ function makeItem(n) {
   const el = document.createElement('div')
   el.className = `notif-item${n.read ? '' : ' unread'}`
   el.innerHTML = `
-    <div class="notif-icon-wrap notif-type-${n.type ?? 'info'}">
-      ${I(icon, 16)}
-    </div>
+    <span class="notif-unread-dot"></span>
+    <span class="notif-icon-wrap notif-type-${n.type ?? 'info'}">${I(icon, 16)}</span>
     <div class="notif-body">
-      <div class="notif-item-title">${n.title}</div>
-      ${n.body ? `<div class="notif-item-body">${n.body}</div>` : ''}
-      <div class="notif-time">${relTime(n.created_at)}</div>
+      <div class="notif-item-title">${escHtml(n.title)}</div>
+      ${n.body ? `<div class="notif-item-body">${escHtml(n.body)}</div>` : ''}
     </div>
-    ${!n.read ? '<div class="notif-unread-dot"></div>' : ''}
+    <span class="notif-time">${relTime(n.created_at)}</span>
   `
   if (!n.read) {
     el.addEventListener('click', async () => {
       await api.markNotificationRead(n.id).catch(() => {})
       el.classList.remove('unread')
-      el.querySelector('.notif-unread-dot')?.remove()
       await updateBadge()
     }, { once: true })
   }
@@ -107,4 +106,8 @@ function relTime(ts) {
   const days = Math.floor(h / 24)
   if (days < 7) return `${days}d ago`
   return new Date(ts).toLocaleDateString()
+}
+
+function escHtml(str) {
+  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }

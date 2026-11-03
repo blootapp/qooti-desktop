@@ -61,7 +61,8 @@ function resolveTitle(entry) {
   if (entry.stored_path) {
     const base = entry.stored_path.replace(/\\/g, '/').split('/').pop() ?? ''
     const name = base.replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim()
-    if (name && name.length < 80) return name
+    // Stored files are usually named by id — that's no better than no title
+    if (name && name.length < 80 && !RE_UUID.test(name) && !(RE_HASH.test(name) && !/\s/.test(name))) return name
   }
   if (entry.source_platform) return entry.source_platform
   return tr('activity.untitled')
@@ -70,10 +71,10 @@ function resolveTitle(entry) {
 // ─── Thumbnail icon ───────────────────────────────────────────────
 
 function thumbIcon(type) {
-  if (type === 'video') return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><polygon points="10,9 16,12 10,15" fill="currentColor" stroke="none"/></svg>`
-  if (type === 'gif')   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M8 12h4M12 12v-3"/><text x="14" y="14" font-size="6" fill="currentColor" stroke="none">GIF</text></svg>`
+  if (type === 'video') return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M192,72V184a16,16,0,0,1-16,16H32a16,16,0,0,1-16-16V72A16,16,0,0,1,32,56H176A16,16,0,0,1,192,72Zm58,.25a8.23,8.23,0,0,0-6.63,1.22L209.78,95.86A4,4,0,0,0,208,99.19v57.62a4,4,0,0,0,1.78,3.33l33.78,22.52a8,8,0,0,0,8.58.19,8.33,8.33,0,0,0,3.86-7.17V80A8,8,0,0,0,250,72.25Z"/></svg>`
+  if (type === 'gif')   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM112,144a32,32,0,0,1-64,0V112a32,32,0,0,1,55.85-21.33,8,8,0,1,1-11.92,10.66A16,16,0,0,0,64,112v32a16,16,0,0,0,32,0v-8H88a8,8,0,0,1,0-16h16a8,8,0,0,1,8,8Zm32,24a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Zm60-72H176v24h20a8,8,0,0,1,0,16H176v32a8,8,0,0,1-16,0V88a8,8,0,0,1,8-8h36a8,8,0,0,1,0,16Z"/></svg>`
   // image / link / default
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/><path d="M21 15l-5-5L5 21"/></svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM156,88a12,12,0,1,1-12,12A12,12,0,0,1,156,88Zm60,112H40V160.69l46.34-46.35a8,8,0,0,1,11.32,0h0L165,181.66a8,8,0,0,0,11.32-11.32l-17.66-17.65L173,138.34a8,8,0,0,1,11.31,0L216,170.07V200Z"/></svg>`
 }
 
 function setThumb(thumb, entry) {
@@ -214,7 +215,7 @@ function buildFailedRow(entry) {
 
   const icon = document.createElement('div')
   icon.className = 'activity-thumb activity-thumb--error'
-  icon.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>'
+  icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z"/></svg>'
   row.appendChild(icon)
 
   const body = document.createElement('div')
@@ -293,27 +294,40 @@ function dayLabel(ts) {
 
 // ─── Render ───────────────────────────────────────────────────────
 
+// Guide E4: page head, then one card of rows per day.
 async function render() {
   if (!_root) return
-  _root.innerHTML = `<div class="activity-loading">${tr('activity.loading')}</div>`
+  _root.innerHTML = `
+    <div class="view-page">
+      <div class="view-head"><h1>${tr('nav.activity')}</h1><p>${tr('activity.subtitle')}</p></div>
+      <div id="activity-list"><div class="activity-loading">${tr('activity.loading')}</div></div>
+    </div>`
+  const list = _root.querySelector('#activity-list')
   let data
   try {
     data = await api.listActivity(300)
   } catch (err) {
     console.error('[activity] listActivity failed:', err)
-    _root.innerHTML = `<div class="activity-empty">${tr('activity.load_failed')}</div>`
+    list.innerHTML = `<div class="activity-empty">${tr('activity.load_failed')}</div>`
     return
   }
 
   const entries = data?.entries ?? []
   if (!entries.length) {
-    _root.innerHTML = `<div class="activity-empty">${tr('activity.empty')}</div>`
+    list.innerHTML = `
+      <div class="empty-state">
+        <span class="empty-state-icon"><span class="icon icon-20" style="mask-image:url('/icons/clock-counter-clockwise.svg');-webkit-mask-image:url('/icons/clock-counter-clockwise.svg')" aria-hidden="true"></span></span>
+        <span class="empty-state-title">${tr('activity.empty_title')}</span>
+        <p class="empty-state-body">${tr('activity.empty')}</p>
+        <button class="empty-state-btn" id="activity-import">${tr('action.import')}</button>
+      </div>`
+    list.querySelector('#activity-import').addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
     return
   }
 
-  _root.innerHTML = ''
+  list.innerHTML = ''
 
-  let lastDay = null
+  let lastDay = null, group = null
   for (const entry of entries) {
     const day = dayLabel(entry.created_at)
     if (day !== lastDay) {
@@ -321,12 +335,14 @@ async function render() {
       const sep = document.createElement('div')
       sep.className = 'activity-day-sep'
       sep.textContent = day
-      _root.appendChild(sep)
+      group = document.createElement('div')
+      group.className = 'activity-group'
+      list.append(sep, group)
     }
 
-    if (entry.kind === 'media')  _root.appendChild(buildMediaRow(entry))
-    if (entry.kind === 'pack')   _root.appendChild(buildPackRow(entry))
-    if (entry.kind === 'failed') _root.appendChild(buildFailedRow(entry))
+    if (entry.kind === 'media')  group.appendChild(buildMediaRow(entry))
+    if (entry.kind === 'pack')   group.appendChild(buildPackRow(entry))
+    if (entry.kind === 'failed') group.appendChild(buildFailedRow(entry))
   }
 }
 

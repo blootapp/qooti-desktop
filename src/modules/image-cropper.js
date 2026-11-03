@@ -1,6 +1,8 @@
 // Canvas-based circular image cropper.
 // Usage: openImageCropper({ onSave(dataUrl), onCancel })
 
+import { t } from './i18n.js'
+
 const CANVAS_W = 380
 const CANVAS_H = 320
 const CROP_R   = 128   // radius → 256 px diameter output
@@ -43,10 +45,10 @@ function showCropper(img, { onSave, onCancel }) {
         Crop photo
       </div>
       <canvas class="cropper-canvas" width="${CANVAS_W}" height="${CANVAS_H}"></canvas>
-      <div class="cropper-hint">Drag to reposition · scroll to zoom</div>
+      <div class="cropper-hint">${t('cropper.hint')}</div>
       <div class="cropper-actions">
-        <button class="btn btn-ghost cropper-cancel">Cancel</button>
-        <button class="btn btn-primary cropper-save">Save photo</button>
+        <button class="btn btn-ghost cropper-cancel">${t('action.cancel')}</button>
+        <button class="btn btn-primary cropper-save">${t('cropper.save')}</button>
       </div>
     </div>
   `

@@ -64,6 +64,13 @@ fn board_assets_dir(app: &AppHandle, board_id: &str) -> Result<PathBuf, String> 
     Ok(d)
 }
 
+/// A bare file name we create ourselves (`<hex>.<ext>`): letters, digits, `.`, `-`, `_`,
+/// not starting with a dot. Rejects anything that could be a path on any OS.
+fn is_safe_asset_name(name: &str) -> bool {
+    !name.is_empty() && name.len() <= 100 && !name.starts_with('.') && !name.contains("..")
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
 fn norm(p: &std::path::Path) -> String {
     p.to_string_lossy().replace('\\', "/")
 }
@@ -282,8 +289,14 @@ pub fn import_board(src_path: String, app: AppHandle, state: State<AppState>) ->
     };
     let name = manifest.get("board").and_then(|b| b.get("name")).and_then(|n| n.as_str())
         .unwrap_or("Imported board").to_string();
-    let doc_val = manifest.get("board").and_then(|b| b.get("doc")).cloned()
+    let mut doc_val = manifest.get("board").and_then(|b| b.get("doc")).cloned()
         .unwrap_or(serde_json::json!({}));
+    // An asset name from the file is joined onto the board's folder, so only plain
+    // file names are allowed — a path ("C:\…", "\\server\…", "..") would point
+    // outside it. Elements that reference anything else are dropped.
+    if let Some(arr) = doc_val.get_mut("elements").and_then(|e| e.as_array_mut()) {
+        arr.retain(|el| el.get("asset").and_then(|a| a.as_str()).map_or(true, is_safe_asset_name));
+    }
     let doc = serde_json::to_string(&doc_val).map_err(|e| e.to_string())?;
     let element_count = doc_val.get("elements").and_then(|e| e.as_array()).map(|a| a.len() as i64).unwrap_or(0);
     let thumb = doc_val.get("elements").and_then(|e| e.as_array())
@@ -301,7 +314,7 @@ pub fn import_board(src_path: String, app: AppHandle, state: State<AppState>) ->
         let mut file = match archive.by_index(i) { Ok(f) => f, Err(_) => continue };
         let fname = file.name().to_string();
         if let Some(rel) = fname.strip_prefix("assets/") {
-            if rel.is_empty() || rel.contains("..") || rel.contains('/') { continue; }
+            if !is_safe_asset_name(rel) { continue; }
             let mut bytes = Vec::new();
             if std::io::Read::read_to_end(&mut file, &mut bytes).is_ok() {
                 let _ = std::fs::write(dir.join(rel), &bytes);
@@ -322,4 +335,21 @@ pub fn import_board(src_path: String, app: AppHandle, state: State<AppState>) ->
     let thumb_abs = thumb.map(|t| norm(&dir.join(t)));
     log::info!(target: "Boards", "imported board={name:?} id={id}");
     Ok(BoardMeta { id, name, created_at: now, updated_at: now, thumb: thumb_abs, element_count })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_safe_asset_name;
+
+    #[test]
+    fn asset_names_are_plain_file_names() {
+        assert!(is_safe_asset_name("3f2a9c0d1e.png"));
+        assert!(!is_safe_asset_name(r"C:\Users\x\Startup\a.bat"));
+        assert!(!is_safe_asset_name(r"\\server\share\a.png"));
+        assert!(!is_safe_asset_name(r"\Windows\a.png"));
+        assert!(!is_safe_asset_name("../a.png"));
+        assert!(!is_safe_asset_name(r"..\a.png"));
+        assert!(!is_safe_asset_name(".hidden"));
+        assert!(!is_safe_asset_name(""));
+    }
 }

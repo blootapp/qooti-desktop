@@ -1,14 +1,16 @@
 // Duplicates view — surfaces exact and near-duplicate items so the same file
 // isn't kept many times. Detection lives in Rust (find_duplicates): exact = same
-// file bytes; near = perceptual-hash (dHash) Hamming distance, so re-encoded /
-// resized / lightly-edited copies are caught even when title + tags differ.
+// file bytes; otherwise what the picture shows (CLIP), its layout and colours, the
+// words in it and a video's length all have to agree, so re-encoded / resized /
+// padded copies are caught even when title + tags differ.
 
 import { convertFileSrc } from '@tauri-apps/api/core'
 import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
 import { t } from './i18n.js'
-import { showConfirm } from './dialog.js'
+import { showConfirm, confirmDeleteItem } from './dialog.js'
+import * as motion from './motion.js'
 
 let _root   = null
 let _loaded = false
@@ -34,7 +36,9 @@ function niceTitle(it) {
 }
 
 function reasonLabel(reason) {
-  if (reason === 'exact') return t('duplicates.reason.exact')
+  if (reason === 'exact')      return t('duplicates.reason.exact')
+  if (reason === 'identical')  return t('duplicates.reason.identical')
+  if (reason === 'same_video') return t('duplicates.reason.same_video')
   return t('duplicates.reason.potential')
 }
 
@@ -43,13 +47,16 @@ function reasonLabel(reason) {
 async function render() {
   if (!_root) return
   _root.innerHTML = `
-    <div class="dup-view">
-      <div class="dup-head">
-        <h1 class="dup-title">${esc(t('duplicates.title'))}</h1>
-        <p class="dup-sub" id="dup-sub">${esc(t('duplicates.scanning'))}</p>
+    <div class="view-page dup-view">
+      <div class="view-head">
+        <h1>${esc(t('duplicates.title'))}</h1>
+        <p id="dup-sub">${esc(t('duplicates.checking'))}</p>
       </div>
       <div class="dup-body" id="dup-body">
-        <div class="dup-loading"><span class="spinner-ring"></span>${esc(t('duplicates.scanning'))}</div>
+        <div class="dup-loading">
+          <span>${esc(t('duplicates.scanning'))}</span>
+          <span class="dup-progress"><span></span></span>
+        </div>
       </div>
     </div>
   `
@@ -62,13 +69,13 @@ async function render() {
   } catch (err) {
     console.error('[duplicates] scan failed:', err)
     sub.textContent = ''
-    body.innerHTML = `<div class="dup-empty">${I('warning', 28)}<p>${esc(t('duplicates.error'))}</p></div>`
+    body.innerHTML = emptyHtml('warning', t('duplicates.error'), '')
     return
   }
 
   if (!groups || groups.length === 0) {
-    sub.textContent = ''
-    body.innerHTML = `<div class="dup-empty">${I('check-circle', 32)}<p>${esc(t('duplicates.empty'))}</p></div>`
+    sub.textContent = t('duplicates.checked_now')
+    body.innerHTML = emptyHtml('check-circle', t('duplicates.empty_title'), t('duplicates.empty'))
     return
   }
 
@@ -76,7 +83,19 @@ async function render() {
   sub.textContent = t('duplicates.summary', { groups: groups.length, files: totalDupes })
 
   body.innerHTML = ''
-  for (const group of groups) body.appendChild(renderGroup(group))
+  groups.forEach((group, i) => {
+    const el = renderGroup(group)
+    body.appendChild(el)
+    if (i < 6) motion.fadeIn(el, { delay: i * 24 })   // short cascade for what's on screen
+  })
+}
+
+function emptyHtml(icon, title, body) {
+  return `<div class="empty-state">
+    <span class="empty-state-icon">${I(icon, 20)}</span>
+    <span class="empty-state-title">${esc(title)}</span>
+    ${body ? `<p class="empty-state-body">${esc(body)}</p>` : ''}
+  </div>`
 }
 
 function renderGroup(group) {
@@ -86,19 +105,17 @@ function renderGroup(group) {
   const head = document.createElement('div')
   head.className = 'dup-group-head'
   head.innerHTML = `
-    <span class="dup-badge dup-badge--${group.reason}">${esc(reasonLabel(group.reason))}</span>
-    <span class="dup-group-count">${t('duplicates.copies', { n: group.items.length })}</span>
-    ${group.reason !== 'exact' ? `<button class="dup-notsame-btn" title="${esc(t('duplicates.not_same'))}">${I('x', 14)}${esc(t('duplicates.not_same'))}</button>` : ''}
-    <button class="dup-keep-btn">${I('trash', 14)}${esc(t('duplicates.keep_oldest', { n: group.items.length - 1 }))}</button>
+    <span class="dup-group-title">${esc(niceTitle(group.items[0]) || t('duplicates.untitled'))}</span>
+    <span class="dup-badge">${esc(reasonLabel(group.reason))}</span>
+    ${group.reason !== 'exact' ? `<button class="dup-notsame-btn">${esc(t('duplicates.not_same'))}</button>` : ''}
+    <button class="dup-keep-btn">${esc(t('duplicates.keep_oldest', { n: group.items.length - 1 }))}</button>
   `
   el.appendChild(head)
 
   // "Not duplicates" — tell the app these aren't the same so it never regroups them.
   head.querySelector('.dup-notsame-btn')?.addEventListener('click', async () => {
     try { await api.markNotDuplicates(group.items.map(i => i.id)) } catch (err) { console.warn('mark_not_duplicates failed:', String(err)) }
-    el.style.transition = 'opacity 0.2s ease'
-    el.style.opacity = '0'
-    setTimeout(() => el.remove(), 200)
+    motion.collapseOut(el, refreshSummary)
   })
 
   const grid = document.createElement('div')
@@ -139,12 +156,10 @@ function renderItem(item, isOriginal, groupEl) {
     <div class="dup-thumb">
       <img loading="lazy" decoding="async" src="${esc(convertFileSrc(item.thumb))}" alt="" />
       ${item.kind === 'video' ? `<span class="dup-play">${I('play', 14)}</span>` : ''}
-      ${isOriginal ? `<span class="dup-original">${esc(t('duplicates.original'))}</span>` : ''}
       <button class="dup-del" title="${esc(t('duplicates.delete'))}" aria-label="${esc(t('duplicates.delete'))}">${I('trash', 14)}</button>
     </div>
     <div class="dup-item-meta">
-      ${niceTitle(item) ? `<span class="dup-item-title">${esc(niceTitle(item))}</span>` : ''}
-      <span class="dup-item-date">${esc(shortDate(item.created_at))}${colLabel}</span>
+      <span class="dup-item-date">${esc(isOriginal ? t('duplicates.original') : t('duplicates.copy'))} · ${esc(shortDate(item.created_at))}${colLabel}</span>
     </div>
   `
 
@@ -159,6 +174,7 @@ function renderItem(item, isOriginal, groupEl) {
   // Delete this specific copy.
   el.querySelector('.dup-del').addEventListener('click', async e => {
     e.stopPropagation()
+    if (!(await confirmDeleteItem())) return
     await deleteItem(item.id, groupEl)
     reconcileGroup(groupEl)
   })
@@ -169,7 +185,7 @@ function renderItem(item, isOriginal, groupEl) {
 async function deleteItem(id, groupEl) {
   try {
     await api.deleteInspiration(id)
-    groupEl.querySelector(`.dup-item[data-id="${id}"]`)?.remove()
+    motion.removeWithFlow(groupEl.querySelector(`.dup-item[data-id="${id}"]`))
     store.emit(events.GRID_ITEM_DELETED, { id })
   } catch (err) {
     console.error('[duplicates] delete failed:', err)
@@ -177,9 +193,10 @@ async function deleteItem(id, groupEl) {
 }
 
 // After deletions, drop groups that no longer have ≥2 items and refresh the summary.
+// Items still animating out (data-leaving) no longer count.
 function reconcileGroup(groupEl) {
-  const left = groupEl.querySelectorAll('.dup-item').length
-  if (left < 2) groupEl.remove()
+  const left = groupEl.querySelectorAll('.dup-item:not([data-leaving])').length
+  if (left < 2) { motion.collapseOut(groupEl, refreshSummary); return }
   else {
     // Re-mark the first remaining item as the original + refresh the count.
     groupEl.querySelectorAll('.dup-original').forEach(n => n.remove())
@@ -193,17 +210,23 @@ function reconcileGroup(groupEl) {
     const count = groupEl.querySelector('.dup-group-count')
     if (count) count.textContent = t('duplicates.copies', { n: left })
   }
+  refreshSummary()
+}
 
+// Summary line, or the empty state once the last group has gone.
+function refreshSummary() {
   const body = _root?.querySelector('#dup-body')
   const sub  = _root?.querySelector('#dup-sub')
-  if (body && !body.querySelector('.dup-group')) {
-    if (sub) sub.textContent = ''
-    body.innerHTML = `<div class="dup-empty">${I('check-circle', 32)}<p>${esc(t('duplicates.empty'))}</p></div>`
+  if (!body) return
+  const groups = [...body.querySelectorAll('.dup-group:not([data-leaving])')]
+  if (!groups.length) {
+    if (body.querySelector('.dup-group')) return   // the last one is still closing
+    if (sub) sub.textContent = t('duplicates.checked_now')
+    body.innerHTML = emptyHtml('check-circle', t('duplicates.empty_title'), t('duplicates.empty'))
+    motion.fadeIn(body.firstElementChild)
   } else if (sub) {
-    const groups = body.querySelectorAll('.dup-group').length
-    const files  = [...body.querySelectorAll('.dup-group')]
-      .reduce((n, g) => n + Math.max(0, g.querySelectorAll('.dup-item').length - 1), 0)
-    sub.textContent = t('duplicates.summary', { groups, files })
+    const files = groups.reduce((n, g) => n + Math.max(0, g.querySelectorAll('.dup-item:not([data-leaving])').length - 1), 0)
+    sub.textContent = t('duplicates.summary', { groups: groups.length, files })
   }
 }
 

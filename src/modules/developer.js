@@ -4,6 +4,7 @@ import { api } from './tauri-api.js'
 import { forceSyncTagVocab, getLocalVocabVersion } from './tag-sync.js'
 import { showConfirm } from './dialog.js'
 import { startWalkthrough } from './walkthrough.js'
+import { startStarterPreview } from './starter.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 
@@ -492,6 +493,14 @@ export async function runDevCommand(cmd) {
     return true
   }
 
+  // Preview the app as a brand-new user (first-run flow over an empty-looking library)
+  // without deleting or changing anything — see starter.js. Exit from the pill.
+  if (cmd === 'blt_starter') {
+    clear()
+    startStarterPreview()
+    return true
+  }
+
   // Boards (storyboarding) — hidden from the nav drawer; reachable only via this command.
   if (cmd === 'blt_boards') {
     clear()
@@ -505,7 +514,7 @@ export async function runDevCommand(cmd) {
     clear()
     store.emit(events.NAVIGATE, { view: 'grid' })   // bar lives in the home grid
     store.emit(events.UPDATE_AVAILABLE, {
-      version: '1.0.6',
+      version: '1.2.0',
       notes:   'Preview — mock update to test the update bar.',
     })
     return true
@@ -548,7 +557,7 @@ export async function runDevCommand(cmd) {
     } catch (err) {
       console.error('[blt_reset] failed:', err)
       searchInput.placeholder = 'Reset failed'
-      setTimeout(() => { searchInput.placeholder = 'Search...' }, 3000)
+      setTimeout(() => { searchInput.placeholder = 'Search your library' }, 3000)
     }
     return true
   }
@@ -567,11 +576,11 @@ export async function runDevCommand(cmd) {
       searchInput.placeholder = 'Exporting library…'
       const count = await api.exportAllItems(savePath)
       searchInput.placeholder = `Exported ${count} item${count !== 1 ? 's' : ''} ✓`
-      setTimeout(() => { searchInput.placeholder = 'Search...' }, 4000)
+      setTimeout(() => { searchInput.placeholder = 'Search your library' }, 4000)
     } catch (err) {
       console.error('[blt_exportall] failed:', err)
       searchInput.placeholder = 'Export failed'
-      setTimeout(() => { searchInput.placeholder = 'Search...' }, 3000)
+      setTimeout(() => { searchInput.placeholder = 'Search your library' }, 3000)
     }
     return true
   }

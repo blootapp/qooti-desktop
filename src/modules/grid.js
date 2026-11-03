@@ -5,13 +5,15 @@ import { api } from './tauri-api.js'
 import { sfx } from './sfx.js'
 import { open as openDetail } from './card-detail.js'
 import { openSimilarCanvas } from './similar-canvas.js'
-import { isOpen as isImporterOpen } from './importer.js'
+import { isOpen as isImporterOpen, openWith as openImporterWith } from './importer.js'
 import { getTagLabel } from './auto-tag.js'
-import { showPrompt } from './dialog.js'
+import { showPrompt, confirmDeleteItem } from './dialog.js'
 import { t } from './i18n.js'
 import { getSetting } from './settings.js'
 import { getPlan } from './licensing.js'
 import { makeLogger } from './logger.js'
+import * as motion from './motion.js'
+import { setPageBar, setPageBarCount } from './page-bar.js'
 
 const log = makeLogger('Grid')
 
@@ -22,6 +24,7 @@ const FREE_ITEM_TEASER = 40
 const PRO_ITEM_LIMIT   = 100000
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
+const EXT_URL  = 'https://chromewebstore.google.com/detail/feopgkjmnlaokclcpphaejjlpgdncdjf'
 
 let _saveDialog  = null
 async function getSaveDialog() {
@@ -73,10 +76,10 @@ let gridEls         = []     // all masonry sections, created dynamically each r
 let currentColCount = 4
 let _resizeObserver = null
 let _resizeTimer    = null
-let importing       = false
 let renderedItems   = []
 
-let _reloadGen = 0        // incremented on every reload; stale async callbacks bail out when gen differs
+let _shuffleN  = 0        // qootify presses — each one asks reco.rs for a fresh order
+let _reloadGen = 0       // incremented on every reload; stale async callbacks bail out when gen differs
 let _parallaxCleanup = null  // removes the teaser scroll listener on next render
 
 // Snapshot of the last reload() result, used by relayout() so a resize can
@@ -90,6 +93,7 @@ let _lastView = null
 let _animateCards = true
 
 let _ctxMenu = null
+let _hoverItem = null   // card under the pointer — Ctrl+C copies it
 let _ctxListeners = null
 
 // Set when the backend emits update-available (30 s after launch). Drives the
@@ -116,8 +120,19 @@ const filter = {
 export function init(el, _settings) {
   container = el
   renderShell()
+  const syncOffline = () => { const b = container.querySelector('#offline-bar'); if (b) b.hidden = navigator.onLine }
+  window.addEventListener('online', syncOffline)
+  window.addEventListener('offline', syncOffline)
   loadFilters()
   bindDragDrop()
+
+  // Ctrl/⌘+C copies the hovered item to the clipboard (Copy left the card menu)
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'c' || !_hoverItem) return
+    if (e.target.closest?.('input, textarea, [contenteditable]') || String(window.getSelection())) return
+    e.preventDefault()
+    handleCopy(_hoverItem, null)
+  })
 
   store.on(events.GRID_RELOAD,       ()           => reload())
   store.on(events.GRID_ITEM_ADDED,   ()           => reload())
@@ -125,7 +140,8 @@ export function init(el, _settings) {
   store.on(events.GRID_ITEM_UPDATED, ({ inspiration }) => updateCardTitle(inspiration))
   store.on(events.TAG_CREATED,       ()           => refreshTagChips())
   store.on(events.TAG_DELETED,       ()           => refreshTagChips())
-  store.on(events.FILES_DROPPED, ({ paths }) => { if (!isImporterOpen()) importPaths(paths) })
+  // Guide B5 → F1: a drop opens Import with the files already listed.
+  store.on(events.FILES_DROPPED, ({ paths }) => { if (!isImporterOpen()) openImporterWith(paths) })
   store.on(events.SEARCH_QUERY_CHANGED, ({ query }) => {
     // No-op resets (e.g. the search bar clearing itself after a download) must not
     // reload — on the shuffled home view that reshuffled the whole grid.
@@ -156,7 +172,11 @@ export function init(el, _settings) {
     else reload()
   })
   store.on(events.NAV_CHANGE, ({ view }) => {
-    if (view !== 'grid' && filter.collectionId) exitCollectionMode(false)
+    if (view !== 'grid') _suggestTip?.hide()
+    // Leaving for another page: that page owns the bar now, so don't reset it here
+    if (view !== 'grid' && filter.collectionId) exitCollectionMode(false, { keepBar: true })
+    // main.js resets the bar on every page change — put the collection's back
+    if (view === 'grid' && _collectionBar) setPageBar(_collectionBar)
   })
   store.on(events.AUTO_TAG_BATCH_DONE, ({ ids }) => refreshCardPills(ids))
   store.on(events.UPDATE_AVAILABLE, (info) => {
@@ -190,108 +210,140 @@ export function init(el, _settings) {
 }
 
 // ─── Collection mode ─────────────────────────────────────────────
+// Inside a collection the top bar keeps its layout (guide D2): only the centre changes to
+// "Collections › <name> · N items" and the action becomes Export.
+let _collectionBar = null   // the page-bar spec while a collection is open
+
 function enterCollectionMode(id, name) {
   filter.collectionId = id
   filter.tagIds = []
   filter.page   = 0
 
-  const topbar     = document.getElementById('collection-topbar')
-  const nameEl     = document.getElementById('collection-topbar-name')
-  const searchWrap = document.querySelector('.top-bar-search-wrap')
-  const chipsBar   = container?.querySelector('#filter-chips-bar')
-
-  if (nameEl) nameEl.textContent = name
-  if (topbar) topbar.hidden = false
-  if (searchWrap) searchWrap.hidden = true
+  const chipsBar = container?.querySelector('#filter-chips-bar')
   if (chipsBar) chipsBar.hidden = true
+  container?.classList.add('in-collection')   // grid keeps a gap under the top bar
   renderUpdateBar()  // hides the update bar while in collection mode
 
-  // Swap left bar
-  document.getElementById('top-bar-left').hidden = true
-  document.getElementById('col-left-nav').hidden = false
-
-  // Swap right bar
-  document.getElementById('top-bar-right').hidden = true
-  document.getElementById('col-right-nav').hidden = false
-
-  // Wire nav buttons (clone to clear previous listeners)
-  function rewire(id, handler) {
-    const el = document.getElementById(id)
-    if (!el) return
-    const fresh = el.cloneNode(true)
-    el.replaceWith(fresh)
-    fresh.addEventListener('click', handler)
+  _collectionBar = {
+    crumb:  { label: t('nav.collections'), onClick: () => exitCollectionMode(true) },
+    title:  name,
+    action: { label: t('action.export'), onClick: () => exportCollection(id, name) },
   }
-
-  rewire('col-nav-home',        () => exitCollectionMode(false))
-  rewire('col-nav-collections', () => exitCollectionMode(true))
-  rewire('col-nav-export', async () => {
-    const save = await getSaveDialog()
-    if (!save) return
-    const savePath = await save({
-      title: t('collection.export_title'),
-      defaultPath: `${name}.qooti`,
-      filters: [{ name: 'qooti Pack', extensions: ['qooti'] }],
-    })
-    if (!savePath) return
-    try {
-      await api.exportCollection(id, savePath)
-      sfx.success()
-    } catch (err) {
-      console.error('[grid] export collection failed:', err)
-    }
-  })
+  setPageBar(_collectionBar)
+  api.listCollections().then(cols => {
+    const col = cols.find(c => c.id === id)
+    if (!col || filter.collectionId !== id) return
+    _collectionBar.count = t(col.item_count === 1 ? 'collections.items_one' : 'collections.items_many', { n: col.item_count ?? 0 })
+    setPageBarCount(_collectionBar.count)
+  }).catch(() => {})
 
   reload()
 }
 
-function exitCollectionMode(navigateToCollections) {
+async function exportCollection(id, name) {
+  const save = await getSaveDialog()
+  if (!save) return
+  const savePath = await save({
+    title: t('collection.export_title'),
+    defaultPath: `${name}.qooti`,
+    filters: [{ name: 'qooti Pack', extensions: ['qooti'] }],
+  })
+  if (!savePath) return
+  try {
+    await api.exportCollection(id, savePath)
+    sfx.success()
+  } catch (err) {
+    console.error('[grid] export collection failed:', err)
+  }
+}
+
+function exitCollectionMode(navigateToCollections, { keepBar = false } = {}) {
   filter.collectionId = null
   filter.tagIds = []
   filter.page   = 0
+  _collectionBar = null
 
-  const topbar     = document.getElementById('collection-topbar')
-  const searchWrap = document.querySelector('.top-bar-search-wrap')
-  const chipsBar   = container?.querySelector('#filter-chips-bar')
-
-  if (topbar) topbar.hidden = true
-  if (searchWrap) searchWrap.hidden = false
+  const chipsBar = container?.querySelector('#filter-chips-bar')
   if (chipsBar) chipsBar.hidden = false
+  container?.classList.remove('in-collection')
   renderUpdateBar()  // restore the update bar (if a version is pending)
-
-  document.getElementById('top-bar-left').hidden = false
-  document.getElementById('col-left-nav').hidden = true
-  document.getElementById('top-bar-right').hidden = false
-  document.getElementById('col-right-nav').hidden = true
 
   if (navigateToCollections) {
     store.emit(events.NAVIGATE, { view: 'collections' })
   } else {
+    if (!keepBar) setPageBar(null)
     reload()
   }
 }
 
+// Colour / media-type filters on (guide G2): the tag row becomes removable filter chips
+// The colour / media-type filters show as removable chips at the start of the tag row,
+// so the tags stay available while a filter is on (no count, no "Clear all").
+function renderActiveFilters() {
+  const bar = container?.querySelector('#active-filters')
+  if (!bar) return
+  const on = !filter.collectionId && !filter.query && (filter.color || filter.mediaTypes)
+  bar.hidden = !on
+  if (!on) return
+  const chips = []
+  if (filter.color) chips.push(`<button class="chip active-filter" data-clear="color"><span class="af-swatch" style="background:${escHtml(filter.color)}"></span>${escHtml(filter.color.toUpperCase())}${I('x', 12)}</button>`)
+  if (filter.mediaTypes) chips.push(`<button class="chip active-filter" data-clear="media">${I(filter.mediaTypes.includes('video') ? 'video-camera' : 'image', 14)}${t(filter.mediaTypes.includes('video') ? 'media.videos' : 'media.images')}${I('x', 12)}</button>`)
+  bar.innerHTML = chips.join('')
+  bar.querySelectorAll('[data-clear]').forEach(b => b.addEventListener('click', () => {
+    const which = b.dataset.clear
+    if (which === 'color' && filter.color) store.emit(events.FILTER_CLEAR_REQUESTED, { which: 'color' })
+    if (which === 'media' && filter.mediaTypes) store.emit(events.FILTER_CLEAR_REQUESTED, { which: 'media' })
+  }))
+}
+
+// Filters other than the collection itself (search, colour, tags, media type)
+function hasNarrowingFilter() {
+  return !!(filter.query || filter.color || filter.tagIds.length || filter.mediaTypes)
+}
+
 // ─── Shell ───────────────────────────────────────────────────────
+// Placeholder tiles shown until the first page arrives (guide B0); render() replaces them.
+function skeletonHtml() {
+  const cols = Math.max(1, Math.floor((container.clientWidth - 48 + 8) / (220 + 8)) || 6)
+  const heights = [130, 230, 210, 225, 100, 240, 180, 150, 260, 120, 200, 170]
+  const col = c => `<div class="masonry-col">${[0, 1, 2, 3].map(r =>
+    `<div class="skel-tile" style="height:${heights[(c * 5 + r * 7) % heights.length]}px"></div>`).join('')}</div>`
+  return `<div class="masonry skel-grid">${Array.from({ length: cols }, (_, c) => col(c)).join('')}</div>`
+}
+
 function renderShell() {
   container.innerHTML = `
     <div class="filter-chips-bar" id="filter-chips-bar">
+      <span class="active-filters" id="active-filters" hidden></span>
       <button class="chip active" data-filter="all"><span class="icon icon-14" style="mask-image:url('/icons/shuffle.svg');-webkit-mask-image:url('/icons/shuffle.svg')" aria-hidden="true"></span>qootify</button>
       <button class="chip" data-filter="recent" data-i18n="filter.recent">${t('filter.recent')}</button>
+      ${[70, 44, 64, 90, 76].map(w => `<span class="chip-skel" style="width:${w}px"></span>`).join('')}
+    </div>
+
+    <div class="search-head" id="search-head" hidden>
+      <span class="search-head-count" id="search-head-count"></span>
+      <span class="search-head-sub">${t('search.matches_in')}</span>
     </div>
 
     <div class="update-bar" id="update-bar" hidden>
-      <span class="update-bar-badge">${I('download-simple', 16)}</span>
+      <span class="update-bar-badge">${I('bell', 16)}</span>
       <span class="update-bar-text" id="update-bar-text"></span>
+      <button class="update-bar-dismiss" id="update-bar-dismiss">${t('update.later')}</button>
       <button class="update-bar-btn" id="update-bar-btn"></button>
-      <button class="update-bar-dismiss" id="update-bar-dismiss" aria-label="">${I('x', 12)}</button>
     </div>
 
-    <div class="grid-scroll" id="grid-scroll"></div>
+    <div class="update-bar offline-bar" id="offline-bar" ${navigator.onLine ? 'hidden' : ''}>
+      <span class="update-bar-badge">${I('wifi-high', 16)}</span>
+      <span class="update-bar-text">${t('offline.bar')}</span>
+    </div>
+
+    <div class="grid-scroll" id="grid-scroll">${skeletonHtml()}</div>
 
     <div class="drop-overlay hidden" id="drop-overlay">
       <div class="drop-overlay-box">
-        ${I('upload-simple', 28)}
+        ${I('upload-simple', 20)}
         <span class="drop-overlay-label" data-i18n="grid.drop">${t('grid.drop')}</span>
+        <span class="drop-overlay-sub" data-i18n="grid.drop_sub">${t('grid.drop_sub')}</span>
       </div>
     </div>
 
@@ -361,6 +413,19 @@ function renderShell() {
 // ─── Update bar ──────────────────────────────────────────────────
 // Shown under the tag pills when the backend reports a newer version.
 // Clicking Update downloads + installs it, then the app restarts.
+// Guide H3b: while the update installs, the window shows the logo and a progress line
+// until qooti restarts itself.
+function showUpdatingScreen(version) {
+  const el = document.createElement('div')
+  el.className = 'splash splash--updating'
+  el.innerHTML = `
+    <img class="splash-logo" src="/assets/brand/lockup-white.svg" alt="qooti" />
+    <span class="splash-status">${t('update.updating_to', { version: escHtml(version ?? '') })}</span>
+    <span class="splash-bar"><span></span></span>`
+  document.body.appendChild(el)
+  return el
+}
+
 function renderUpdateBar() {
   const bar = container?.querySelector('#update-bar')
   if (!bar) return
@@ -387,9 +452,11 @@ function renderUpdateBar() {
     btn.disabled     = true
     dismiss.disabled = true
     log.info('update_install_started', { version })
+    const screen = showUpdatingScreen(version)
     try {
       await api.applyUpdate()   // backend downloads, installs, then restarts the app
     } catch (err) {
+      screen.remove()
       log.warn('update_install_failed', { error: String(err) })
       btn.classList.remove('is-loading')
       btn.textContent  = t('update.failed')
@@ -413,8 +480,11 @@ async function loadFilters() {
   const bar = container.querySelector('#filter-chips-bar')
   if (!bar) return
 
+  // qootify: every press deals a fresh order (a new shuffle number for reco.rs); other
+  // reloads keep the current number, so imports/deletes don't reshuffle the home grid.
   bar.querySelector('[data-filter="all"]').addEventListener('click', e => {
     filter.collectionId = null; filter.tagIds = []; filter.sort = null; filter.page = 0
+    _shuffleN++
     setActiveChip(e.currentTarget); reload()
   })
   bar.querySelector('[data-filter="recent"]').addEventListener('click', e => {
@@ -427,12 +497,14 @@ async function loadFilters() {
 
   try {
     const tags = await api.listTags()
+    bar.querySelectorAll('.chip-skel').forEach(el => el.remove())
 
     for (const tag of tags) {
       if ((tag.usage_count ?? 0) > 0) bar.appendChild(makeTagChip(tag))
     }
   } catch (err) {
     console.error('[grid] loadFilters failed:', err)
+    bar.querySelectorAll('.chip-skel').forEach(el => el.remove())
   }
 }
 
@@ -483,11 +555,30 @@ function setActiveChip(el) {
 }
 
 // ─── Drag-drop ───────────────────────────────────────────────────
+// Guide B5: files dragged anywhere over the window → the library dims under an 85% scrim
+// with one dashed outline. Not while the import window is open (its own drop zone
+// reacts then). In the desktop app the drag comes from Tauri (FILES_DRAG); the page's
+// own drag events below only fire in a browser.
 function bindDragDrop() {
   const overlay = container.querySelector('#drop-overlay')
+  let leaveTimer = null
 
-  const showOverlay = () => overlay.classList.remove('hidden')
-  const hideOverlay = () => overlay.classList.add('hidden')
+  const showOverlay = () => {
+    if (isImporterOpen()) return
+    clearTimeout(leaveTimer)
+    overlay.classList.remove('hidden', 'is-leaving')
+  }
+  // Fade out (is-leaving) before hiding, so it never just vanishes.
+  const hideOverlay = () => {
+    if (overlay.classList.contains('hidden') || overlay.classList.contains('is-leaving')) return
+    overlay.classList.add('is-leaving')
+    leaveTimer = setTimeout(() => overlay.classList.replace('is-leaving', 'hidden'), 160)
+  }
+
+  store.on(events.FILES_DRAG, ({ phase }) => {
+    if (phase === 'enter' || phase === 'over') showOverlay()
+    else hideOverlay()
+  })
 
   container.addEventListener('dragenter', e => {
     if (!hasFiles(e)) return
@@ -515,47 +606,12 @@ function hasFiles(e) {
   return e.dataTransfer?.types?.includes('Files') ?? false
 }
 
-// ─── Import ───────────────────────────────────────────────────────
-async function importPaths(paths) {
-  if (!paths.length || importing) return
-  importing = true
-
-  const total    = paths.length
-  const showRing = total > 1
-  const task     = showRing
-    ? window.__progressRing?.startTask('import', { label: 'Importing' })
-    : null
-
-  let anyImported = false
-
-  try {
-    for (let i = 0; i < total; i++) {
-      task?.update(i / total)
-      try {
-        const result = await api.importFiles([paths[i]])
-        if (result.imported.length) anyImported = true
-      } catch (err) {
-        console.error('[grid] import error:', paths[i], err)
-      }
-    }
-
-    if (anyImported) { sfx.success(); reload() }
-    task?.finish()
-  } catch (err) {
-    console.error('[grid] import failed:', err)
-    task?.fail('Import failed')
-  } finally {
-    importing = false
-  }
-}
-
 // ─── Data ────────────────────────────────────────────────────────
 async function reload() {
   const gen = ++_reloadGen
   try {
     const isFree = isFreePlan()
     const colCount = calcColCount()
-    const teaserSlots = colCount * 3
 
     const [items, planInfo] = await Promise.all([
       api.listInspirations({
@@ -606,17 +662,13 @@ async function reload() {
     let visibleItems = items.slice(0, totalSnap)
 
     // Qootify home: a taste-aware shuffle (reco.rs — items that look like what you've been
-    // opening/saving lately come up more, look-alikes kept apart, fresh order every launch)
-    // plus the "More to explore" shelves. Both are computed over the visible pool only.
+    // opening/saving lately come up more, look-alikes kept apart, fresh order every launch),
+    // computed over the visible pool only.
     const isHome = !isFilteredView && filter.sort === null
-    let explore = []
     let ordered = null
     if (isHome && visibleItems.length) {
       const ids = visibleItems.map(i => i.id)
-      const [order, sections] = await Promise.all([
-        api.tasteOrder(ids).catch(err => { log.warn('tasteOrder failed:', String(err)); return null }),
-        api.moreToExplore(ids).catch(err => { log.warn('moreToExplore failed:', String(err)); return [] }),
-      ])
+      const order = await api.tasteOrder(ids, _shuffleN).catch(err => { log.warn('tasteOrder failed:', String(err)); return null })
       if (gen !== _reloadGen) return
       if (order?.length) {
         const byId = new Map(visibleItems.map(i => [i.id, i]))
@@ -624,7 +676,6 @@ async function reload() {
         const placed = new Set(order)
         for (const i of visibleItems) if (!placed.has(i.id)) ordered.push(i)
       }
-      explore = (sections ?? []).filter(s => s.items?.length)
     }
     if (ordered) {
       visibleItems = ordered
@@ -633,20 +684,17 @@ async function reload() {
       visibleItems = visibleItems.slice().sort(() => Math.random() - 0.5)
     }
 
-    const teaserItems  = (isFree && items.length > totalSnap)
-      ? items.slice(totalSnap, totalSnap + teaserSlots)
-      : []
+    const teaserItems  = (isFree && items.length > totalSnap) ? items.slice(totalSnap) : []
     const extraCount = planInfo ? Math.max(0, planInfo.item_total - totalSnap) : 0
 
     render(visibleItems, colCount, applyFreeSnap)
-    if (explore.length) renderExplore(explore)
 
     const showTeaser = teaserItems.length > 0 && planInfo && planInfo.item_total > FREE_ITEM_LIMIT
     if (showTeaser) renderFreeTeaser(teaserItems, extraCount, colCount)
 
     // Cache the fully-resolved view so a resize can re-lay-out from it without
     // re-querying or re-shuffling. Order is preserved exactly as rendered.
-    _lastView = { visibleItems, explore, isFree, teaserItems, extraCount, showTeaser }
+    _lastView = { visibleItems, isFree, teaserItems, extraCount, showTeaser }
   } catch (err) {
     console.error('[grid] reload failed:', err)
   }
@@ -658,11 +706,10 @@ async function reload() {
 function relayout() {
   if (!_lastView) { reload(); return }
   const colCount = calcColCount()
-  const { visibleItems, explore, isFree, teaserItems, extraCount, showTeaser } = _lastView
+  const { visibleItems, isFree, teaserItems, extraCount, showTeaser } = _lastView
   _animateCards = false
   try {
     render(visibleItems, colCount, isFree)
-    if (explore.length) renderExplore(explore)
     if (showTeaser) renderFreeTeaser(teaserItems, extraCount, colCount)
   } finally {
     _animateCards = true
@@ -674,56 +721,63 @@ function relayout() {
 function _lastViewRemove(id) {
   if (!_lastView) return
   _lastView.visibleItems = _lastView.visibleItems.filter(i => i.id !== id)
-  _lastView.explore = _lastView.explore
-    .map(s => s.pivot?.id === id ? null : { ...s, items: s.items.filter(i => i.id !== id) })
-    .filter(s => s && s.items.length)
 }
 function _lastViewPatch(insp) {
   if (!_lastView) return
-  for (const arr of [_lastView.visibleItems, ..._lastView.explore.map(s => s.items)]) {
-    const i = arr.findIndex(x => x.id === insp.id)
-    if (i !== -1) arr[i] = { ...arr[i], ...insp }
-  }
+  const arr = _lastView.visibleItems
+  const i = arr.findIndex(x => x.id === insp.id)
+  if (i !== -1) arr[i] = { ...arr[i], ...insp }
 }
 
 function renderFreeTeaser(teaserItems, extraCount, colCount) {
-  const scrollEl = container?.querySelector('#grid-scroll')
-  if (!scrollEl) return
+  const masonry = gridEl
+  const state = _masonryState
+  if (!masonry?.classList.contains('masonry') || !state) return
 
   const openUpgrade = () => api.openUrl('https://account.bloot.app/')
 
-  const wrap = document.createElement('div')
-  wrap.className = 'free-teaser-wrap'
+  // Blurred real cards CONTINUE the main grid's columns (guide B-screens), so each
+  // column runs straight on from its last clear card. A separate grid below would
+  // start on one straight line and leave an empty band under the shorter columns.
+  // Source: the items past the cap first, then the visible ones in a fresh order,
+  // so a few items don't repeat over and over. Videos without a thumbnail render
+  // blank until the file loads, so they're left out.
+  const shows = i => i.type !== 'video' || i.thumbnail_path
+  const seen = new Set()
+  const pool = [...teaserItems, ...renderedItems.slice().sort(() => Math.random() - 0.5)]
+    .filter(i => shows(i) && !seen.has(i.id) && seen.add(i.id))
+  if (!pool.length) return
 
-  // Prefer items that already have a thumbnail — videos without one render blank
-  // until the video file loads, making the blurred teaser look broken.
-  const withThumbs = teaserItems.filter(i => i.thumbnail_path)
-  const teaserSource = withThumbs.length >= 3 ? withThumbs : teaserItems
+  // Fill every column past a fixed bottom edge, which then crops them evenly —
+  // no ragged ends with empty canvas between them.
+  // Measure the laid-out columns: the masonry's own heights are estimates and drift
+  // over 200 cards, which left the bottom edge below the real cards (blank band).
+  const scrollEl = container?.querySelector('#grid-scroll')
+  state.colEls.forEach((c, i) => { state.colHeight[i] = c.offsetHeight + state.gap })
+  state.colW = state.colEls[0].clientWidth || state.colW
+  const clearBottom = Math.max(...state.colHeight)
+  const bottom = clearBottom + Math.max(420, Math.round((scrollEl?.clientHeight ?? 600) * 0.7))
+  const before = new Set(masonry.querySelectorAll('.card'))
+  for (let n = 0; Math.min(...state.colHeight) < bottom && n < 400; n++) {
+    fillMasonryCols(state, [pool[n % pool.length]], -1)
+  }
+  masonry.querySelectorAll('.card').forEach(c => { if (!before.has(c)) c.classList.add('free-teaser-card') })
+  masonry.classList.add('has-free-teaser')
+  masonry.style.height = `${Math.round(bottom)}px`
 
-  // Real cards rendered blurred behind the upgrade banner, as a short waterfall.
-  const needed = colCount * 3
-  const padded = Array.from({ length: needed }, (_, i) => teaserSource[i % teaserSource.length])
-  const teaserGrid = buildMasonry(padded, -1)
-  teaserGrid.classList.add('free-teaser-grid')
-  teaserGrid.querySelectorAll('.card').forEach(c => c.classList.add('free-teaser-card'))
-  wrap.appendChild(teaserGrid)
-
-  // Centered overlay with frosted-glass banner
+  // Fade + banner start under the longest clear column, so no clear card is dimmed
   const overlay = document.createElement('div')
   overlay.className = 'free-teaser-overlay'
   overlay.innerHTML = `
     <div class="free-teaser-banner">
-      <div class="free-teaser-banner__lock">${I('lock', 20)}</div>
-      <p class="free-teaser-banner__count">${extraCount} more items in your vault</p>
-      <p class="free-teaser-banner__sub">Free plan shows your 200 most recent items.<br>Upgrade to Pro for unlimited access.</p>
-      <button class="free-teaser-banner__cta">Upgrade to Pro ${I('arrow-right', 14)}</button>
+      <p class="free-teaser-banner__count">${t('teaser.count', { n: extraCount.toLocaleString() })}</p>
+      <p class="free-teaser-banner__sub">${t('teaser.sub')}</p>
+      <button class="free-teaser-banner__cta">${t('teaser.cta')}</button>
     </div>
   `
+  overlay.style.top = `${Math.round(clearBottom)}px`
   overlay.querySelector('.free-teaser-banner__cta').addEventListener('click', openUpgrade)
-  wrap.appendChild(overlay)
-
-  scrollEl.appendChild(wrap)
-
+  masonry.appendChild(overlay)
 }
 
 // ─── Render ──────────────────────────────────────────────────────
@@ -743,22 +797,90 @@ function render(items, colCount, trimOrphans = false) {
   // load lazily after the relayout. deal-in is suppressed separately in JS.
   scrollEl.classList.toggle('no-card-anim', !_animateCards)
 
+  // Content change (not a resize): remember where the on-screen cards are, and fade out
+  // the ones that won't be in the new result, so the new grid can glide from the old one.
+  const before = _animateCards ? motion.snapshotCards(scrollEl) : null
+  if (before) motion.ghostOut(scrollEl, before, new Set(items.map(i => i.id)))
+
+  _suggestTip?.hide()   // its row is about to go
   scrollEl.innerHTML = ''
   gridEls = []
 
-  if (!items.length) {
+  renderActiveFilters()
+
+  // Search (guide E1): the tag row gives way to a result count
+  const searching = !!filter.query && !filter.collectionId
+  container.classList.toggle('is-searching', searching)
+  const head = container.querySelector('#search-head')
+  if (head) {
+    head.hidden = !searching || !items.length
+    container.querySelector('#search-head-count').textContent =
+      t(items.length === 1 ? 'search.result_one' : 'search.results', { n: items.length.toLocaleString() })
+  }
+
+  // An empty library hands the one primary action to the empty state, so the
+  // top-bar Import steps down to secondary (guide B4).
+  const filtered = !!(filter.collectionId || filter.query || filter.color || filter.tagIds.length || filter.mediaTypes)
+  document.body.classList.toggle('library-empty', !items.length && !filtered)
+
+  if (!items.length && searching) {
     const grid = _makeGridEl()
     grid.innerHTML = `
       <div class="empty-state">
-        ${I('image', 32)}
-        <span class="empty-state-title">${t('empty.grid.title')}</span>
-        <p class="empty-state-body">${t('empty.grid.body')}</p>
-        <button class="empty-state-btn" id="empty-add-btn">${I('plus', 16)}${t('empty.grid.btn')}</button>
+        <span class="empty-state-icon">${I('magnifying-glass', 20)}</span>
+        <span class="empty-state-title">${t('search.none_title', { q: escHtml(filter.query) })}</span>
+        <p class="empty-state-body">${t('search.none_body')}</p>
+        <button class="empty-state-btn empty-state-btn--secondary" id="empty-clear-search">${t('search.clear')}</button>
+      </div>
+    `
+    grid.querySelector('#empty-clear-search').addEventListener('click', () => {
+      const input = document.getElementById('top-bar-search')
+      if (input) input.value = ''
+      store.emit(events.SEARCH_QUERY_CHANGED, { query: null })
+    })
+    scrollEl.appendChild(grid)
+    gridEl = grid
+    if (before) motion.fadeIn(grid)
+    return
+  }
+
+  if (!items.length && filter.collectionId && !hasNarrowingFilter()) {
+    const grid = _makeGridEl()
+    const name = document.getElementById('page-bar-name')?.textContent ?? ''
+    grid.innerHTML = `
+      <div class="empty-state">
+        <span class="empty-state-icon">${I('folder', 20)}</span>
+        <span class="empty-state-title">${t('empty.collection.title', { name: escHtml(name) })}</span>
+        <p class="empty-state-body">${t('empty.collection.body')}</p>
+        <button class="empty-state-btn" id="empty-add-btn">${t('empty.collection.btn')}</button>
       </div>
     `
     grid.querySelector('#empty-add-btn')?.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
     scrollEl.appendChild(grid)
     gridEl = grid
+    if (before) motion.fadeIn(grid)
+    return
+  }
+
+  if (!items.length) {
+    const grid = _makeGridEl()
+    grid.innerHTML = `
+      <div class="empty-state">
+        <span class="empty-state-icon">${I('image', 20)}</span>
+        <span class="empty-state-title">${t('empty.grid.title')}</span>
+        <p class="empty-state-body">${t('empty.grid.body')}</p>
+        <button class="empty-state-btn" id="empty-add-btn">${t('empty.grid.btn')}</button>
+        <p class="empty-state-foot">${t('empty.grid.web')} <a href="#" id="empty-ext-link">${t('empty.grid.ext')}</a></p>
+      </div>
+    `
+    grid.querySelector('#empty-add-btn')?.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
+    grid.querySelector('#empty-ext-link')?.addEventListener('click', e => {
+      e.preventDefault()
+      api.openUrl(EXT_URL)
+    })
+    scrollEl.appendChild(grid)
+    gridEl = grid
+    if (before) motion.fadeIn(grid)
     return
   }
 
@@ -771,9 +893,18 @@ function render(items, colCount, trimOrphans = false) {
   currentColCount = Math.max(1, colCount ?? calcColCount())
   const masonry = buildMasonry(items, 0)
   masonry.classList.add('inspiration-grid')   // keep for context-menu + empty-state hooks
+  // Cards that were already on screen keep their image (no fade from the placeholder).
+  if (before?.size) {
+    for (const card of masonry.querySelectorAll('.card[data-id]')) {
+      if (before.has(card.dataset.id)) card.classList.add('no-fade')
+    }
+  }
   scrollEl.appendChild(masonry)
   gridEls.push(masonry)
   gridEl = masonry
+  if (before) motion.playGridChange(scrollEl, before)
+  // after the entrance motion has settled, so the tip points at the row's final spot
+  setTimeout(maybeShowSuggestTip, 500)
 }
 
 // Build a shortest-column masonry (waterfall) from `items`, each card at its
@@ -790,16 +921,12 @@ let _masonryState = null
 // Place `items` into the shortest column of an existing masonry, in order.
 function fillMasonryCols(state, items, idxBase) {
   const { colEls, colHeight, colW, gap } = state
-  let dealIdx = 0
   items.forEach((item, i) => {
     let s = 0
     for (let c = 1; c < colEls.length; c++) if (colHeight[c] < colHeight[s]) s = c
 
+    // Entrance motion is applied after layout, to on-screen cards only (motion.playGridChange).
     const card = makeCard(item, idxBase + i)
-    if (_animateCards) {
-      card.classList.add('deal-in')
-      card.style.animationDelay = `${Math.min(dealIdx++, 20) * 22}ms`
-    }
     // Card height at this column width → used only to balance the columns
     // (images still lazy-load natively via loading="lazy").
     const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
@@ -857,11 +984,11 @@ function makeShelf(shortItems, allItems, indexOfItem = null) {
 
   const title = document.createElement('span')
   title.className = 'shelf-title'
-  title.textContent = 'Short-form'
+  title.textContent = t('grid.shortform')
 
   const count = document.createElement('span')
   count.className = 'shelf-count'
-  count.textContent = `${shortItems.length} video${shortItems.length !== 1 ? 's' : ''}`
+  count.textContent = shortItems.length === 1 ? t('grid.n_videos_one') : t('grid.n_videos', { n: shortItems.length })
 
   titleWrap.append(title, count)
 
@@ -978,6 +1105,8 @@ function makeShelfCard(item, idx) {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, item, idx)
   })
+  card.addEventListener('mouseenter', () => { _hoverItem = item })
+  card.addEventListener('mouseleave', () => { if (_hoverItem === item) _hoverItem = null })
 
   card.append(media, titleEl)
   return card
@@ -994,6 +1123,14 @@ function displayTitle(item) {
   return raw
 }
 
+// The colour that covers most of the picture — the stored palette lists the most
+// frequent colour first (palette_from_path).
+function placeholderColor(palette) {
+  let list
+  try { list = typeof palette === 'string' ? JSON.parse(palette) : palette } catch { return null }
+  return Array.isArray(list) ? (list.find(c => /^#[0-9a-f]{6}$/i.test(c)) ?? null) : null
+}
+
 function makeCard(item, idx) {
   const card = document.createElement('div')
   card.className = 'card'
@@ -1007,6 +1144,9 @@ function makeCard(item, idx) {
   // Falls back to 1 for items whose ratio hasn't been computed/backfilled yet.
   const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
   media.style.aspectRatio = String(ar)
+  // Until the image arrives, show the picture's own main colour instead of grey.
+  const tint = placeholderColor(item.palette)
+  if (tint) media.style.backgroundColor = tint
 
   if (item.type === 'video') {
     if (item.thumbnail_path) {
@@ -1081,22 +1221,29 @@ function makeCard(item, idx) {
   if (item.type === 'image' && item.enhanced_path) {
     const eb = document.createElement('span')
     eb.className = 'card-enh-badge'
-    eb.title = 'Enhanced'
-    eb.innerHTML = `${I('sparkle', 11)}<span>Enhanced</span>`
+    eb.title = t('enhance.badge')
+    eb.innerHTML = `${I('sparkle', 11)}<span>${t('enhance.badge')}</span>`
     media.appendChild(eb)
   }
 
-  // ── Hover overlay (delete + model pills only — no title) ──
+  // ── Hover actions (top-right): save a copy, more (collecting lives in the card menu) ──
   const overlay = document.createElement('div')
   overlay.className = 'card-hover-overlay'
   overlay.innerHTML = `
     <div class="card-overlay-top">
-      <button class="card-action-btn" data-action="copy" title="${t('card.save_copy')}">${I('copy', 14)}</button>
+      <button class="card-action-btn" data-action="save" title="${t('card.save_copy')}">${I('download-simple', 14)}</button>
+      <button class="card-action-btn" data-action="more" title="${t('card.more')}">${I('dots-three', 14)}</button>
     </div>
   `
-  overlay.querySelector('[data-action="copy"]').addEventListener('click', e => {
-    e.stopPropagation()
-    handleCopy(item, e.currentTarget)
+  const menuAt = (btn, openCollect) => {
+    const r = btn.getBoundingClientRect()
+    showContextMenu(r.left, r.bottom, item, idx, { openCollect })
+  }
+  overlay.querySelector('[data-action="save"]').addEventListener('click', e => {
+    e.stopPropagation(); handleSaveCopy(item)
+  })
+  overlay.querySelector('[data-action="more"]').addEventListener('click', e => {
+    e.stopPropagation(); menuAt(e.currentTarget, false)
   })
 
   media.appendChild(overlay)
@@ -1158,6 +1305,8 @@ function makeCard(item, idx) {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, item, idx)
   })
+  card.addEventListener('mouseenter', () => { _hoverItem = item })
+  card.addEventListener('mouseleave', () => { if (_hoverItem === item) _hoverItem = null })
 
   card.appendChild(media)
   card.appendChild(caption)
@@ -1184,17 +1333,18 @@ function makeSuggestionRow(item, canonicalTag) {
 
   const sparkle = document.createElement('span')
   sparkle.className = 'icon icon-14 suggestion-sparkle'
-  sparkle.style.cssText = `mask-image:url('/icons/sparkle.svg');-webkit-mask-image:url('/icons/sparkle.svg')`
+  sparkle.style.cssText = `mask-image:url('/icons/tag.svg');-webkit-mask-image:url('/icons/tag.svg')`
   sparkle.setAttribute('aria-hidden', 'true')
 
+  // Just the tag — the one-time tip (maybeShowSuggestTip) explains what the row is
   const q = document.createElement('span')
   q.className = 'suggestion-q'
-  q.innerHTML = t('suggest.question', { name: `<strong>${displayName}</strong>` })
+  q.innerHTML = `<strong>${escHtml(displayName)}</strong>`
 
   const yes = document.createElement('button')
   yes.className = 'suggestion-yes'
   yes.title = t('suggest.yes_title', { name: displayName })
-  yes.textContent = t('suggest.yes')
+  yes.textContent = t('suggest.add')
 
   const no = document.createElement('button')
   no.className = 'suggestion-no'
@@ -1206,6 +1356,64 @@ function makeSuggestionRow(item, canonicalTag) {
 
   row.append(sparkle, q, yes, no)
   return row
+}
+
+// ─── One-time tip for tag suggestions ─────────────────────────────
+// The suggestion row is just "tag · Add · ×", so the first time one is on screen a small
+// tip explains it. Got it / Add / × mark it seen for good; scrolling or leaving only
+// hides it (it comes back next time).
+const SUGGEST_TIP_KEY = 'qooti-tip-tag-suggest'
+let _suggestTip = null
+
+function maybeShowSuggestTip() {
+  if (_suggestTip) return
+  try { if (localStorage.getItem(SUGGEST_TIP_KEY)) return } catch { return }
+  requestAnimationFrame(() => {
+    const scrollEl = container?.querySelector('#grid-scroll')
+    if (!scrollEl || container.hidden || _suggestTip) return
+    const vp = scrollEl.getBoundingClientRect()
+    const row = [...scrollEl.querySelectorAll('.card:not(.free-teaser-card) .suggestion-item')].find(r => {
+      const b = r.getBoundingClientRect()
+      return b.width > 0 && b.top > vp.top + 8 && b.bottom < vp.bottom - 8
+    })
+    if (!row) return
+
+    const tip = document.createElement('div')
+    tip.className = 'coach-tip'
+    tip.setAttribute('role', 'dialog')
+    tip.innerHTML = `
+      <p class="coach-tip-title">${t('suggest.tip_title')}</p>
+      <p class="coach-tip-body">${t('suggest.tip_body')}</p>
+      <button class="coach-tip-ok">${t('suggest.tip_ok')}</button>`
+    document.getElementById('overlays').appendChild(tip)
+    row.classList.add('is-coached')
+
+    // Above the row (below it if there's no room), arrow pointing at it
+    const b = row.getBoundingClientRect()
+    const w = tip.offsetWidth, h = tip.offsetHeight
+    const left = Math.min(Math.max(8, b.left + b.width / 2 - w / 2), window.innerWidth - w - 8)
+    let top = b.top - h - 10
+    const below = top < vp.top + 8
+    if (below) top = b.bottom + 10
+    tip.style.left = `${left}px`
+    tip.style.top = `${top}px`
+    tip.classList.toggle('is-below', below)
+    tip.style.setProperty('--arrow-x', `${b.left + b.width / 2 - left}px`)
+
+    const hide = () => {
+      tip.remove()
+      row.classList.remove('is-coached')
+      scrollEl.removeEventListener('scroll', hide)
+      window.removeEventListener('resize', hide)
+      _suggestTip = null
+    }
+    const seen = () => { try { localStorage.setItem(SUGGEST_TIP_KEY, '1') } catch {} ; hide() }
+    tip.querySelector('.coach-tip-ok').addEventListener('click', seen)
+    row.addEventListener('click', seen, { once: true })   // Add or × answers it too
+    scrollEl.addEventListener('scroll', hide, { passive: true })
+    window.addEventListener('resize', hide)
+    _suggestTip = { hide }
+  })
 }
 
 async function applySuggestion(item, canonicalTag, displayName, row) {
@@ -1278,176 +1486,6 @@ function itemSrc(item) {
 
 function videoSrc(item) {
   return IS_TAURI ? convertFileSrc(item.stored_path) : item.stored_path
-}
-
-// ─── "More to explore" band ──────────────────────────────────────
-// A compact strip above the qootify feed: one tab per shelf from reco.rs
-// ("Because you opened …" / "Forgotten gems"), a horizontally scrolling row of cards
-// and a collapse toggle. Rebuilt on every reload/relayout from the cached sections;
-// the active tab survives a relayout, the collapsed state survives restarts.
-const EXPLORE_COLLAPSED_KEY = 'qooti.explore.collapsed'
-let _exploreTab = 0
-
-function exploreCollapsed() {
-  try { return localStorage.getItem(EXPLORE_COLLAPSED_KEY) === '1' } catch { return false }
-}
-function setExploreCollapsed(v) {
-  try { localStorage.setItem(EXPLORE_COLLAPSED_KEY, v ? '1' : '0') } catch {}
-}
-
-function renderExplore(sections) {
-  const scrollEl = container?.querySelector('#grid-scroll')
-  if (!scrollEl || !sections.length) return
-  scrollEl.querySelector('.explore')?.remove()
-  if (_exploreTab >= sections.length) _exploreTab = 0
-
-  const band = document.createElement('section')
-  band.className = 'explore'
-  band.classList.toggle('is-collapsed', exploreCollapsed())
-
-  const head = document.createElement('div')
-  head.className = 'explore-head'
-
-  const toggle = document.createElement('button')
-  toggle.className = 'explore-toggle'
-  toggle.innerHTML = `${I('sparkle', 14)}<span class="explore-title">${t('explore.title')}</span><span class="explore-caret">${I('caret-down', 14)}</span>`
-  const syncToggle = () => {
-    const collapsed = band.classList.contains('is-collapsed')
-    toggle.setAttribute('aria-expanded', String(!collapsed))
-    toggle.title = collapsed ? t('explore.expand') : t('explore.collapse')
-  }
-  toggle.addEventListener('click', () => {
-    band.classList.toggle('is-collapsed')
-    setExploreCollapsed(band.classList.contains('is-collapsed'))
-    syncToggle()
-    updateNav()
-  })
-
-  const tabs = document.createElement('div')
-  tabs.className = 'explore-tabs'
-  tabs.setAttribute('role', 'tablist')
-
-  const actions = document.createElement('div')
-  actions.className = 'explore-actions'
-  const seeAll = document.createElement('button')
-  seeAll.className = 'explore-see-all'
-  seeAll.innerHTML = `<span class="label">${t('explore.see_all')}</span>${I('arrow-right', 14)}`
-  seeAll.title = t('explore.see_all')
-  const prevBtn = document.createElement('button')
-  prevBtn.className = 'shelf-nav-btn'
-  prevBtn.title = t('grid.scroll_left')
-  prevBtn.innerHTML = I('caret-left', 14)
-  const nextBtn = document.createElement('button')
-  nextBtn.className = 'shelf-nav-btn'
-  nextBtn.title = t('grid.scroll_right')
-  nextBtn.innerHTML = I('caret-right', 14)
-  actions.append(seeAll, prevBtn, nextBtn)
-
-  head.append(toggle, tabs, actions)
-
-  const track = document.createElement('div')
-  track.className = 'explore-track'
-  track.setAttribute('role', 'tabpanel')
-
-  function updateNav() {
-    prevBtn.disabled = track.scrollLeft <= 0
-    nextBtn.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1
-  }
-
-  function show(k) {
-    _exploreTab = k
-    const sec = sections[k]
-    tabs.querySelectorAll('.explore-tab').forEach((b, j) => {
-      b.classList.toggle('active', j === k)
-      b.setAttribute('aria-selected', String(j === k))
-    })
-    seeAll.hidden = !(sec.kind === 'because' && sec.pivot)
-    track.innerHTML = ''
-    sec.items.forEach((item, i) => track.appendChild(makeExploreCard(item, sec.items, i)))
-    track.scrollLeft = 0
-    requestAnimationFrame(updateNav)
-  }
-
-  sections.forEach((sec, k) => {
-    const tab = document.createElement('button')
-    tab.className = 'explore-tab'
-    tab.setAttribute('role', 'tab')
-    if (sec.kind === 'because' && sec.pivot) {
-      const thumb = document.createElement('img')
-      thumb.className = 'explore-tab-thumb'
-      thumb.src = itemSrc(sec.pivot)
-      thumb.alt = ''
-      thumb.draggable = false
-      const label = document.createElement('span')
-      label.textContent = t('explore.because')
-      tab.append(thumb, label)
-      tab.title = displayTitle(sec.pivot) || t('explore.because')
-    } else {
-      tab.innerHTML = `${I('clock-counter-clockwise', 14)}<span>${t('explore.forgotten')}</span>`
-    }
-    tab.addEventListener('click', () => { if (_exploreTab !== k) show(k) })
-    tabs.appendChild(tab)
-  })
-
-  seeAll.addEventListener('click', () => {
-    const sec = sections[_exploreTab]
-    if (!sec?.pivot) return
-    const rect = tabs.querySelectorAll('.explore-tab')[_exploreTab]?.querySelector('img')?.getBoundingClientRect()
-    openSimilarCanvas(sec.pivot, rect, { onOpen: it => openDetail(it) })
-  })
-
-  const STEP = () => Math.max(240, track.clientWidth * 0.8)
-  prevBtn.addEventListener('click', () => track.scrollBy({ left: -STEP(), behavior: 'smooth' }))
-  nextBtn.addEventListener('click', () => track.scrollBy({ left:  STEP(), behavior: 'smooth' }))
-  track.addEventListener('scroll', updateNav, { passive: true })
-
-  band.append(head, track)
-  scrollEl.prepend(band)
-  syncToggle()
-  show(_exploreTab)
-}
-
-function makeExploreCard(item, list, idx) {
-  const card = document.createElement('button')
-  card.className = 'explore-card'
-  card.dataset.id = item.id
-  card.dataset.type = item.type
-  // Fixed row height; width follows the item's shape (clamped so panoramas and tall
-  // phone shots don't dominate the row).
-  const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
-  card.style.setProperty('--ar', String(Math.min(1.9, Math.max(0.56, ar))))
-  card.title = displayTitle(item) || ''
-
-  if (item.type === 'video' && !item.thumbnail_path) {
-    const vid = document.createElement('video')
-    vid.src = `${videoSrc(item)}#t=1`
-    vid.muted = true
-    vid.preload = 'metadata'
-    vid.playsInline = true
-    card.appendChild(vid)
-  } else {
-    const img = document.createElement('img')
-    img.loading = 'lazy'
-    img.decoding = 'async'
-    img.draggable = false
-    img.alt = item.title ?? ''
-    img.src = itemSrc(item)
-    img.addEventListener('load',  () => img.classList.add('loaded'), { once: true })
-    img.addEventListener('error', () => img.classList.add('loaded'), { once: true })
-    card.appendChild(img)
-  }
-  if (item.type === 'video' && item.duration_secs != null) {
-    const badge = document.createElement('span')
-    badge.className = 'card-duration'
-    badge.textContent = formatDuration(item.duration_secs)
-    card.appendChild(badge)
-  }
-  if (_animateCards) {
-    card.classList.add('deal-in')
-    card.style.animationDelay = `${Math.min(idx, 12) * 22}ms`
-  }
-  card.addEventListener('click', () => openDetail(item, list, idx))
-  return card
 }
 
 // ─── Video thumbnail generation (one-time per item) ──────────────
@@ -1569,13 +1607,13 @@ function calcColCount() {
   const style = getComputedStyle(document.documentElement)
   const minW  = parseFloat(style.getPropertyValue('--grid-min-width')) || 300
   const gap   = parseFloat(style.getPropertyValue('--grid-gap'))       || 4
-  // 12px = .inspiration-grid padding (6px × 2 sides). scrollbar-gutter:stable
+  // 48px = .inspiration-grid padding (24px × 2 sides). scrollbar-gutter:stable
   // keeps clientWidth constant regardless of overflow, so this is reliable.
   // While the grid view is hidden (e.g. on the Settings page) clientWidth is 0.
   // Don't recompute to 1 column then — it corrupts the cached layout and flashes
   // the first card full-width for a moment when the grid is shown again.
   if (scrollEl.clientWidth === 0) return Math.max(1, currentColCount)
-  const availW = Math.max(0, scrollEl.clientWidth - 12)
+  const availW = Math.max(0, scrollEl.clientWidth - 48)
   const cols = Math.max(1, Math.floor((availW + gap) / (minW + gap)))
 
   // Write back to CSS so .inspiration-grid uses exactly this count —
@@ -1630,7 +1668,7 @@ function closeCtxMenu() {
   setTimeout(() => bothGrids().forEach(g => g.classList.remove('ctx-open')), 320)
 }
 
-function showContextMenu(x, y, item, idx) {
+function showContextMenu(x, y, item, idx, { openCollect = false } = {}) {
   closeCtxMenu()
 
   // Measure card rect BEFORE applying ctx classes — ctx-selected adds scale(1.03)
@@ -1655,13 +1693,13 @@ function showContextMenu(x, y, item, idx) {
   function addBtn(icon, label, danger, onClick) {
     const btn = document.createElement('button')
     btn.className = 'ctx-item' + (danger ? ' ctx-item--danger' : '')
-    btn.innerHTML = `${I(icon, 14)}<span>${label}</span>`
+    btn.innerHTML = `${I(icon, 16)}<span>${label}</span>`
     btn.addEventListener('click', () => { closeCtxMenu(); onClick() })
     menu.appendChild(btn)
   }
 
-  addBtn('pencil-simple', t('action.edit'),   false, () => openDetail(item, renderedItems, idx))
-  addBtn('copy',          t('action.copy'),   false, () => handleCopy(item, null))
+  // Guide B6: Source · Collect · Delete. Opening and copying live on the card itself
+  // (click opens it; the hover actions save a copy).
   if (item.source_url) {
     addBtn('arrow-square-out', t('ctx.source'), false, () => api.openUrl(item.source_url))
   }
@@ -1670,7 +1708,7 @@ function showContextMenu(x, y, item, idx) {
   const colRow = document.createElement('div')
   colRow.className = 'ctx-item ctx-item-has-sub'
   colRow.tabIndex = 0
-  colRow.innerHTML = `${I('plus', 14)}<span>${t('ctx.collect')}</span><span class="ctx-sub-arrow">${I('caret-up', 14)}</span>`
+  colRow.innerHTML = `${I('plus', 16)}<span>${t('ctx.collect')}</span>`
 
   const submenu = document.createElement('div')
   submenu.className = 'ctx-submenu'
@@ -1683,8 +1721,16 @@ function showContextMenu(x, y, item, idx) {
 
   // JS-driven open/close so scrolling inside the submenu can't break the hover chain
   let _subCloseTimer = null
-  const openSub  = () => { clearTimeout(_subCloseTimer); submenu.style.display = 'flex' }
-  const closeSub = () => { _subCloseTimer = setTimeout(() => { submenu.style.display = 'none' }, 80) }
+  const openSub  = () => {
+    clearTimeout(_subCloseTimer)
+    submenu.style.display = 'flex'
+    colRow.classList.add('sub-open')
+    // Centre the list over the card, just inside its ring (the bar is centred on the card)
+    const rr = colRow.getBoundingClientRect(), mr = menu.getBoundingClientRect()
+    submenu.style.left = `${mr.left + mr.width / 2 - rr.left}px`
+    if (cardRect) submenu.style.width = `${Math.max(200, cardRect.width - 10)}px`
+  }
+  const closeSub = () => { _subCloseTimer = setTimeout(() => { submenu.style.display = 'none'; colRow.classList.remove('sub-open') }, 80) }
   colRow.addEventListener('mouseenter', openSub)
   colRow.addEventListener('mouseleave', e => { if (!submenu.contains(e.relatedTarget)) closeSub() })
   submenu.addEventListener('mouseenter', openSub)
@@ -1709,25 +1755,25 @@ function showContextMenu(x, y, item, idx) {
       btn.className = 'ctx-item ctx-col-row' + (col.locked ? ' ctx-col-row--locked' : '')
       btn.dataset.member = inCol ? '1' : '0'
       btn.innerHTML = `
-        <span class="ctx-col-icon ${inCol ? 'ctx-col-icon--in' : ''}">${I(inCol ? 'check-circle' : 'plus-circle', 14)}</span>
-        <span>${escHtml(col.name)}</span>
-        ${col.locked ? `<span class="ctx-col-lock">${I('lock', 11)}</span>` : ''}
+        <span class="ctx-col-icon">${I('folder', 16)}</span>
+        <span class="ctx-col-name">${escHtml(col.name)}</span>
+        ${col.locked ? `<span class="ctx-col-lock">${I('lock', 12)}</span>` : `<span class="ctx-col-check">${I('check', 14)}</span>`}
       `
       btn.addEventListener('click', () => {
         if (col.locked) {
+          // One toast however often it's tried — a retry keeps it up longer
           store.emit(events.SYSTEM_TOAST, {
             type: 'info',
-            message: t('collection.readonly_free'),
-            duration: 4000,
+            message: t('collection.readonly_toast'),
+            duration: 5000,
+            key: 'collection-locked',
+            action: { label: t('collections.upgrade'), onClick: () => api.openUrl('https://account.bloot.app/') },
           })
           return
         }
         const wasMember = btn.dataset.member === '1'
-        const iconEl    = btn.querySelector('.ctx-col-icon')
         const nowMember = !wasMember
         btn.dataset.member = nowMember ? '1' : '0'
-        iconEl.className = 'ctx-col-icon' + (nowMember ? ' ctx-col-icon--in' : '')
-        iconEl.innerHTML = I(nowMember ? 'check-circle' : 'plus-circle', 14)
         if (nowMember) { memberSet.add(col.id);    log.info('collection_added',   { id: item.id, collection: col.name }); api.addToCollection(col.id, item.id).catch(e => log.error('collection_add_failed', { error: e })) }
         else           { memberSet.delete(col.id); log.info('collection_removed', { id: item.id, collection: col.name }); api.removeFromCollection(col.id, item.id).catch(e => log.error('collection_remove_failed', { error: e })) }
         updateCardCollectionPill(cardEl, collections, memberSet)
@@ -1741,7 +1787,7 @@ function showContextMenu(x, y, item, idx) {
     createWrap.className = 'ctx-submenu-create'
     const createBtn = document.createElement('button')
     createBtn.className = 'ctx-item ctx-col-create'
-    createBtn.innerHTML = `${I('plus', 14)}<span>${t('collection.new_title')}</span>`
+    createBtn.innerHTML = `${I('folder-plus', 16)}<span>${t('collection.new_title')}</span>`
     createBtn.addEventListener('click', async () => {
       closeCtxMenu()
       const name = await showPrompt({ title: t('collection.new_title'), placeholder: t('collection.name_ph'), icon: 'folder' })
@@ -1765,10 +1811,6 @@ function showContextMenu(x, y, item, idx) {
     submenu.appendChild(err)
   })
 
-  const divider = document.createElement('div')
-  divider.className = 'ctx-divider'
-  menu.appendChild(divider)
-
   addBtn('trash', t('action.delete'), true, () => handleDelete(item.id))
 
   document.body.appendChild(menu)
@@ -1788,8 +1830,10 @@ function showContextMenu(x, y, item, idx) {
     left = Math.max(gap, Math.min(left, window.innerWidth - menuW - gap))
 
     let top = cardRect.bottom + gap
-    if (top + menuH > window.innerHeight - gap)
+    if (top + menuH > window.innerHeight - gap) {
       top = cardRect.top - menuH - gap
+      menu.classList.add('ctx-menu--above')   // the Collect list then opens downward, over the card
+    }
 
     menu.style.left = `${left}px`
     menu.style.top  = `${top}px`
@@ -1801,10 +1845,7 @@ function showContextMenu(x, y, item, idx) {
   }
 
 
-  // Flip submenu right-to-left if the bar is near the right edge
-  const barLeft = parseFloat(menu.style.left)
-  if (barLeft + 175 > window.innerWidth - gap)
-    submenu.classList.add('ctx-submenu--left')
+  if (openCollect) openSub()
 
   // Close on outside click, Escape, or scroll (but not scroll inside the menu itself)
   const down   = e => { if (!menu.contains(e.target)) closeCtxMenu() }
@@ -1819,6 +1860,21 @@ function showContextMenu(x, y, item, idx) {
 }
 
 // ─── Actions ─────────────────────────────────────────────────────
+// "Save a copy" — copies the original file into a folder the user picks.
+async function handleSaveCopy(item) {
+  if (!IS_TAURI || !item.stored_path) return
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const dir = await open({ directory: true, title: t('card.save_copy') }).catch(() => null)
+  if (!dir) return
+  try {
+    await api.copyFileToFolder(item.stored_path, dir)
+    store.emit(events.SYSTEM_TOAST, { type: 'success', message: t('card.saved_copy') })
+  } catch (err) {
+    log.error('save_copy_failed', { error: err })
+    store.emit(events.SYSTEM_TOAST, { type: 'error', message: t('card.save_copy_failed') })
+  }
+}
+
 async function handleCopy(item, btn) {
   const prev = btn?.innerHTML
   try {
@@ -1852,6 +1908,7 @@ async function handleCopy(item, btn) {
 }
 
 async function handleDelete(id) {
+  if (!(await confirmDeleteItem())) return
   try {
     await api.deleteInspiration(id)
     log.info('deleted', { id })
@@ -1870,28 +1927,22 @@ function removeCard(id) {
 
   // Remove from short-form shelves (shelf cards don't participate in cascade)
   scrollEl.querySelectorAll(`.short-form-shelf [data-id="${id}"]`).forEach(el => el.remove())
-  // …and from the "More to explore" band (re-rendered, so tabs/empty shelves stay right)
-  if (scrollEl.querySelector(`.explore [data-id="${id}"]`)) {
-    _lastViewRemove(id)
-    scrollEl.querySelector('.explore')?.remove()
-    if (_lastView?.explore.length) renderExplore(_lastView.explore)
-  }
 
-  // Find and remove the card from whichever grid segment holds it
-  let fromIdx = -1
+  // Find the card in whichever grid segment holds it: it fades and shrinks a touch, then
+  // the cards below it glide up into the gap (motion.removeWithFlow).
   for (let i = 0; i < gridEls.length; i++) {
     const c = gridEls[i].querySelector(`.card[data-id="${id}"]`)
-    if (c) { c.remove(); fromIdx = i; break }
-  }
-
-  // Cascade: pull the first card from each subsequent segment to fill
-  // the empty slot left at the bottom of the segment where the deletion occurred.
-  // This prevents a visual gap at segment boundaries (between shelves).
-  if (fromIdx !== -1) {
-    for (let i = fromIdx; i < gridEls.length - 1; i++) {
-      const first = gridEls[i + 1].querySelector('.card')
-      if (first) gridEls[i].appendChild(first)
-    }
+    if (!c) continue
+    motion.removeWithFlow(c, () => {
+      // Cascade: pull the first card from each subsequent segment to fill the empty
+      // slot left at the bottom of the segment where the deletion occurred.
+      for (let k = i; k < gridEls.length - 1; k++) {
+        const first = gridEls[k + 1].querySelector('.card')
+        if (first) gridEls[k].appendChild(first)
+      }
+      checkEmpty()
+    })
+    break
   }
 
   // Keep in-memory list in sync for detail-modal arrow navigation
@@ -1934,6 +1985,7 @@ async function refreshCardPills(ids) {
     card.querySelector('.card-caption')?.appendChild(suggestionsEl)
     card.classList.add('has-suggestion')
   })
+  maybeShowSuggestTip()   // suggestions can arrive after the grid was drawn
 }
 
 function checkEmpty() {

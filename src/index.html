@@ -24,40 +24,34 @@
     <!-- Top navigation bar -->
     <header id="top-bar" class="top-bar" data-tauri-drag-region>
 
-      <!-- Left: hamburger + logo (hidden in collection mode) -->
+      <!-- Left: hamburger + logo (the same on every page) -->
       <div id="top-bar-left" class="top-bar-left">
-        <button id="nav-drawer-toggle" class="top-bar-icon-btn" title="Menu" aria-label="Navigation menu"></button>
+        <button id="nav-drawer-toggle" class="top-bar-icon-btn" title="Menu" aria-label="Menu" data-i18n-title="nav.menu"></button>
         <a class="top-bar-brand" href="#" tabindex="-1">
-          <img src="/assets/logo.png" alt="qooti" class="top-bar-logo" draggable="false" />
+          <img src="/assets/brand/lockup-white.svg" alt="qooti" class="top-bar-logo" draggable="false" />
         </a>
-      </div>
-
-      <!-- Left: collection nav (shown only in collection mode) -->
-      <div id="col-left-nav" class="col-left-nav" hidden>
-        <button id="col-nav-home" class="col-nav-btn" aria-label="Go to home">
-          <span class="icon icon-14" style="mask-image:url('/icons/house.svg');-webkit-mask-image:url('/icons/house.svg')" aria-hidden="true"></span>
-          Home
-        </button>
-        <span class="col-nav-sep" aria-hidden="true">/</span>
-        <button id="col-nav-collections" class="col-nav-btn" aria-label="Go to collections">
-          <span class="icon icon-14" style="mask-image:url('/icons/folders.svg');-webkit-mask-image:url('/icons/folders.svg')" aria-hidden="true"></span>
-          Collections
-        </button>
       </div>
 
       <!-- Center: search ring wrapper (ring lives here) + search bar inside -->
       <div class="search-ring-wrap" id="search-ring-wrap">
 
-        <!-- Shown instead of the search bar when browsing a collection -->
-        <div class="collection-topbar" id="collection-topbar" hidden>
-          <span class="collection-topbar-name" id="collection-topbar-name"></span>
+        <!-- Pages without search (Collections, Settings, inside a collection — guide D1/D2/I1):
+             the page title takes the search bar's place (page-bar.js) -->
+        <div class="page-bar-title" id="page-bar-title" hidden>
+          <button class="page-bar-crumb" id="page-bar-crumb" hidden>
+            <span class="icon icon-14" style="mask-image:url('/icons/arrow-left.svg');-webkit-mask-image:url('/icons/arrow-left.svg')" aria-hidden="true"></span>
+            <span id="page-bar-crumb-label"></span>
+          </button>
+          <span class="page-bar-name" id="page-bar-name"></span>
+          <span class="page-bar-count" id="page-bar-count" hidden></span>
         </div>
 
         <div class="top-bar-search-wrap">
-          <button class="search-submit-btn" id="search-submit-btn" title="Search" aria-label="Search"><span class="icon icon-14" style="mask-image:url('/icons/magnifying-glass.svg');-webkit-mask-image:url('/icons/magnifying-glass.svg')" aria-hidden="true"></span></button>
-          <input class="top-bar-search" id="top-bar-search" placeholder="Search..." autocomplete="off" spellcheck="false" />
+          <button class="search-submit-btn" id="search-submit-btn" title="Search" aria-label="Search" data-i18n-title="nav.search"><span class="icon icon-16" style="mask-image:url('/icons/magnifying-glass.svg');-webkit-mask-image:url('/icons/magnifying-glass.svg')" aria-hidden="true"></span></button>
+          <input class="top-bar-search" id="top-bar-search" placeholder="Search your library" autocomplete="off" spellcheck="false" />
+          <kbd class="search-kbd" aria-hidden="true">Ctrl K</kbd>
           <span class="ring-label" id="ring-label" aria-live="polite"></span>
-          <button class="cp-trigger" id="color-swatch-btn" title="Filter by color" aria-label="Filter by color">
+          <button class="cp-trigger" id="color-swatch-btn" title="Filter by color" aria-label="Filter by color" data-i18n-title="board.filter_color">
             <span class="icon-cp icon icon-16" aria-hidden="true"></span>
             <span class="icon-dl"><span class="icon icon-16" style="mask-image:url('/icons/download-simple.svg');-webkit-mask-image:url('/icons/download-simple.svg')" aria-hidden="true"></span></span>
             <span class="icon-cancel"><span class="icon icon-16" style="mask-image:url('/icons/x.svg');-webkit-mask-image:url('/icons/x.svg')" aria-hidden="true"></span></span>
@@ -68,24 +62,16 @@
         </div>
       </div>
 
-      <!-- Right: actions (hidden in collection mode) -->
+      <!-- Right: the page's action (Import in the library) + downloads + avatar -->
       <div id="top-bar-right" class="top-bar-right">
-        <button id="top-bar-import-btn" class="top-bar-icon-btn" title="Import files"></button>
-        <button id="top-bar-collections-btn" class="top-bar-icon-btn" title="Collections" aria-label="Collections"></button>
+        <button id="top-bar-import-btn" class="top-bar-import-btn" data-i18n="action.import">Import</button>
+        <button id="page-bar-action" class="page-bar-action" hidden></button>
         <!-- Download indicator — always visible -->
-        <button id="dl-indicator-btn" class="top-bar-icon-btn dl-indicator" title="Downloads">
+        <button id="dl-indicator-btn" class="top-bar-icon-btn dl-indicator" title="Downloads" data-i18n-title="dl.panel.title">
           <span class="dl-indicator-icon"></span>
           <span class="dl-indicator-badge" hidden>0</span>
         </button>
-        <button id="top-bar-avatar" class="top-bar-avatar" title="Profile" aria-label="Profile">A</button>
-      </div>
-
-      <!-- Right: collection actions (shown only in collection mode) -->
-      <div id="col-right-nav" class="col-right-nav" hidden>
-        <button id="col-nav-export" class="col-nav-btn col-nav-btn--export" aria-label="Export collection">
-          <span class="icon icon-14" style="mask-image:url('/icons/arrow-square-out.svg');-webkit-mask-image:url('/icons/arrow-square-out.svg')" aria-hidden="true"></span>
-          Export
-        </button>
+        <button id="top-bar-avatar" class="top-bar-avatar" title="Profile" aria-label="Profile" data-i18n-title="settings.section.profile">A</button>
       </div>
 
     </header>
@@ -110,7 +96,15 @@
     <div class="nav-drawer-backdrop" id="nav-drawer-backdrop"></div>
     <div class="nav-drawer-panel">
       <nav id="drawer-nav-primary"   class="nav-drawer-nav"></nav>
+      <div class="nav-drawer-section" id="drawer-collections-section" hidden>
+        <div class="nav-drawer-heading" data-i18n="nav.collections">Collections</div>
+        <div class="nav-drawer-cols" id="drawer-collections"></div>
+      </div>
       <div class="nav-drawer-spacer"></div>
+      <div class="nav-drawer-storage" id="drawer-storage" hidden>
+        <span class="nav-drawer-storage-text" id="drawer-storage-text"></span>
+        <span class="nav-drawer-storage-bar"><span id="drawer-storage-fill"></span></span>
+      </div>
       <nav id="drawer-nav-secondary" class="nav-drawer-nav"></nav>
     </div>
   </div>
@@ -123,7 +117,7 @@
 
   <!-- Splash screen -->
   <div id="splash" class="splash">
-    <img class="splash-logo" src="/assets/logo.png" alt="qooti" />
+    <img class="splash-logo" src="/assets/brand/lockup-white.svg" alt="qooti" />
     <span class="splash-error" hidden></span>
   </div>
 

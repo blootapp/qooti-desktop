@@ -21,8 +21,8 @@ export function openFeedbackModal() {
   overlay.innerHTML = `
     <div class="dlg-box fb-box">
       <div class="dlg-header">
-        <div class="dlg-icon">${icon('note', 20)}</div>
         <div class="dlg-title">${esc(t('feedback.title'))}</div>
+        <button class="dlg-close" id="_fb-x" aria-label="${esc(t('feedback.cancel'))}">${icon('x', 16)}</button>
       </div>
       <div class="dlg-message">${esc(t('feedback.sub'))}</div>
       <textarea class="dlg-input fb-textarea" id="_fb-msg" rows="5"
@@ -42,6 +42,7 @@ export function openFeedbackModal() {
   const ta      = overlay.querySelector('#_fb-msg')
   const sendBtn = overlay.querySelector('#_fb-send')
   const cancel  = overlay.querySelector('#_fb-cancel')
+  overlay.querySelector('#_fb-x').addEventListener('click', () => cancel.click())
 
   let settled = false
   const close = () => {
@@ -74,11 +75,10 @@ export function openFeedbackModal() {
       })
       if (!res.ok) throw new Error('bad status ' + res.status)
 
+      box.classList.add('dlg-box--center')
       box.innerHTML = `
-        <div class="dlg-header">
-          <div class="dlg-icon">${icon('check-circle', 20)}</div>
-          <div class="dlg-title">${esc(t('feedback.thanks_title'))}</div>
-        </div>
+        <div class="dlg-done-icon">${icon('check-circle', 20)}</div>
+        <div class="dlg-title">${esc(t('feedback.thanks_title'))}</div>
         <div class="dlg-message">${esc(t('feedback.thanks_sub'))}</div>
         <div class="dlg-actions">
           <button class="dlg-btn dlg-btn--primary" id="_fb-done">${esc(t('feedback.done'))}</button>

@@ -1,6 +1,7 @@
 // .qooti pack format (§11.1) and .qootiboard format (§11.2).
 // Magic: QOOTIPK1 / QOOTIBRD1
-// Encryption: AES-256-GCM with key derived from fixed seed.
+// Note: the real .qooti / .qbord files (commands.rs, boards.rs) are only XOR-obfuscated
+// with a key in the source — that hides the zip from casual view, it is NOT encryption.
 
 use anyhow::Result;
 use std::path::Path;

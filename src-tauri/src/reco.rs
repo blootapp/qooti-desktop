@@ -1,4 +1,4 @@
-// On-device recommendations: a taste-aware home feed and the "More to explore" shelves.
+// On-device recommendations: a taste-aware home feed.
 //
 // Taste = the CLIP image embeddings (clip.rs) of what the user has recently opened,
 // saved, added to collections or enhanced, weighted by recency. Everything is local.
@@ -9,15 +9,12 @@
 // the feed stays varied. The shuffle is keyed by a per-launch seed, so the order is
 // stable within a session (an import or delete no longer reshuffles the grid).
 //
-// Shelves: "Because you opened …" (visual matches for the last one or two opened items —
-// appearance only, the same rule as Find similar) and "Forgotten gems" (saved a while
-// ago, not opened since, matching current taste). Recommendations only ever come from
-// the ids the caller passes in, i.e. what the user can already see (free-plan pool).
+// The order only ever covers the ids the caller passes in, i.e. what the user can
+// already see (free-plan pool).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use rusqlite::{params, Connection};
-use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use crate::{AppState, clip};
 
@@ -33,12 +30,6 @@ const SPREAD_WINDOW: usize = 8;          // ~ a row or two of the masonry
 const SPREAD_MAX_COS: f32 = 0.92;        // closer than this = near-duplicate → keep apart
 const SPREAD_HEAD: usize = 600;          // only the part of the feed people actually scroll through
 const SPREAD_QUEUE: usize = 32;          // max items held back at once
-
-// Shelves (same visual-similarity rule as Find similar).
-const SHELF_FLOOR: f32 = 0.55;
-const SHELF_Z: f32 = 1.6;
-const SHELF_DUPLICATE: f32 = 0.97;       // the same picture again isn't a recommendation
-const SHELF_SIZE: usize = 12;
 
 #[derive(Clone)]
 pub struct Anchor { pub id: String, pub emb: Vec<f32>, pub weight: f32 }
@@ -233,70 +224,6 @@ fn spread_lookalikes(order: Vec<usize>, cands: &[Candidate]) -> Vec<usize> {
     out
 }
 
-/// "Because you opened …": the pool items that look like `pivot` (same relative rule as
-/// Find similar), best first, excluding exact duplicates and `skip`.
-fn shelf_like(pivot: &[f32], pivot_id: &str, cands: &[Candidate], skip: &HashSet<String>) -> Vec<usize> {
-    let scored: Vec<(usize, f32)> = cands.iter().enumerate()
-        .filter(|(_, c)| c.id != pivot_id)
-        .filter_map(|(i, c)| c.emb.as_deref().map(|e| (i, dot(pivot, e))))
-        .collect();
-    if scored.len() < 8 { return vec![]; }
-    let n = scored.len() as f32;
-    let mean = scored.iter().map(|s| s.1).sum::<f32>() / n;
-    let sd = (scored.iter().map(|s| (s.1 - mean).powi(2)).sum::<f32>() / n).sqrt().max(1e-6);
-    let mut keep: Vec<(usize, f32)> = scored.into_iter()
-        .filter(|(i, c)| *c >= SHELF_FLOOR && *c < SHELF_DUPLICATE && (c - mean) / sd >= SHELF_Z && !skip.contains(&cands[*i].id))
-        .collect();
-    keep.sort_by(|a, b| b.1.total_cmp(&a.1));
-    keep.into_iter().take(SHELF_SIZE).map(|(i, _)| i).collect()
-}
-
-/// Shelf descriptors: (kind, pivot id, item ids).
-pub fn explore(db: &Connection, cands: &[Candidate], anchors: &[Anchor], now: i64) -> Vec<(String, Option<String>, Vec<String>)> {
-    let mut out = Vec::new();
-    let pos: HashMap<&str, usize> = cands.iter().enumerate().map(|(i, c)| (c.id.as_str(), i)).collect();
-    let mut used: HashSet<String> = HashSet::new();
-
-    // 1) Because you opened — the last one or two opened items that are in the pool, have
-    //    an embedding, and aren't look-alikes of each other.
-    let recent: Vec<String> = db.prepare(
-        "SELECT id FROM inspirations WHERE last_viewed_at IS NOT NULL ORDER BY last_viewed_at DESC LIMIT 20"
-    ).and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0)).map(|r| r.flatten().collect())).unwrap_or_default();
-    let mut pivots: Vec<usize> = Vec::new();
-    for id in recent {
-        if pivots.len() >= 2 { break; }
-        let Some(&i) = pos.get(id.as_str()) else { continue };
-        let Some(e) = cands[i].emb.as_deref() else { continue };
-        if pivots.iter().any(|&p| cands[p].emb.as_deref().is_some_and(|f| dot(e, f) > 0.85)) { continue; }
-        pivots.push(i);
-    }
-    for p in pivots {
-        let pe = cands[p].emb.clone().unwrap_or_default();
-        let items = shelf_like(&pe, &cands[p].id, cands, &used);
-        if items.len() >= 3 {
-            let ids: Vec<String> = items.iter().map(|&i| cands[i].id.clone()).collect();
-            used.extend(ids.iter().cloned());
-            used.insert(cands[p].id.clone());
-            out.push(("because".to_string(), Some(cands[p].id.clone()), ids));
-        }
-    }
-
-    // 2) Forgotten gems — saved a while ago, not opened since; the ones that match current
-    //    taste first (random order if there's no taste signal yet).
-    let taste = taste_scores(cands, anchors);
-    let seed = session_seed();
-    let mut gems: Vec<(usize, f64)> = cands.iter().enumerate()
-        .filter(|(_, c)| is_forgotten(c, now) && !used.contains(&c.id))
-        .map(|(i, c)| (i, taste[i] as f64 + 0.15 * unit_rand(seed ^ 0x5eed, &c.id)))
-        .collect();
-    gems.sort_by(|a, b| b.1.total_cmp(&a.1));
-    if gems.len() >= 4 {
-        out.push(("forgotten".to_string(), None,
-            gems.into_iter().take(SHELF_SIZE).map(|(i, _)| cands[i].id.clone()).collect()));
-    }
-    out
-}
-
 // ── Session cache of the feed's taste profile ────────────────────────────────────
 // Computed on the first feed request of a launch (and retried until the library has
 // embeddings), then reused — so the feed order stays stable for the whole session.
@@ -312,8 +239,10 @@ fn feed_anchors(db: &Connection, now: i64) -> Vec<Anchor> {
 }
 
 /// Home feed order for the given ids (the grid passes what it's about to show).
+/// `shuffle` counts presses of the qootify button: each new value gives a fresh order,
+/// while reloads that keep it (an import, a delete, coming back to Home) keep the order.
 #[tauri::command]
-pub async fn taste_order(app: AppHandle, ids: Vec<String>) -> Result<Vec<String>, String> {
+pub async fn taste_order(app: AppHandle, ids: Vec<String>, shuffle: Option<u64>) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let now = now_ms();
         let state = app.state::<AppState>();
@@ -323,39 +252,10 @@ pub async fn taste_order(app: AppHandle, ids: Vec<String>) -> Result<Vec<String>
         };
         let t0 = std::time::Instant::now();
         let weights = feed_weights(&cands, &anchors, now);
-        let order = order_feed(&cands, &weights, session_seed());
+        let seed = session_seed() ^ shuffle.unwrap_or(0).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let order = order_feed(&cands, &weights, seed);
         log::info!(target: "Reco", "taste_order items={} anchors={} in {:?}", cands.len(), anchors.len(), t0.elapsed());
         Ok(order.into_iter().map(|i| cands[i].id.clone()).collect())
-    }).await.map_err(|e| e.to_string())?
-}
-
-#[derive(Serialize)]
-pub struct RecoSection {
-    kind: String,                                   // "because" | "forgotten"
-    pivot: Option<crate::commands::Inspiration>,    // the item "because you opened"
-    items: Vec<crate::commands::Inspiration>,
-}
-
-/// "More to explore" shelves, built only from the given (visible) ids.
-#[tauri::command]
-pub async fn more_to_explore(app: AppHandle, ids: Vec<String>) -> Result<Vec<RecoSection>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let now = now_ms();
-        let state = app.state::<AppState>();
-        let db = state.db.lock().map_err(|_| "db lock".to_string())?;
-        let cands = load_candidates(&db, &ids);
-        let anchors = build_anchors(&db, now);   // live: reflects what was opened this session
-        let shelves = explore(&db, &cands, &anchors, now);
-        let mut want: Vec<String> = Vec::new();
-        for (_, p, items) in &shelves { want.extend(p.iter().cloned()); want.extend(items.iter().cloned()); }
-        let mut rows = crate::commands::inspirations_by_ids(&db, &want);
-        let sections: Vec<RecoSection> = shelves.into_iter().map(|(kind, p, items)| RecoSection {
-            kind,
-            pivot: p.and_then(|id| rows.get(&id).cloned()),
-            items: items.iter().filter_map(|id| rows.remove(id)).collect(),
-        }).collect();
-        log::info!(target: "Reco", "more_to_explore pool={} sections={}", cands.len(), sections.len());
-        Ok(sections)
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -451,8 +351,8 @@ mod tests {
         for &i in &o { assert!(!seen[i]); seen[i] = true; }
     }
 
-    /// Offline evaluation on a real library: writes the anchors, the first 60 feed items
-    /// and the shelves to $QOOTI_RECO_OUT (JSON) for contact-sheet review.
+    /// Offline evaluation on a real library: writes the anchors and the first 60 feed
+    /// items to $QOOTI_RECO_OUT (JSON) for contact-sheet review.
     /// QOOTI_DB=<qooti.db> QOOTI_RECO_OUT=<file> cargo test reco::tests::dump_real -- --ignored --nocapture
     #[test]
     #[ignore]
@@ -465,13 +365,11 @@ mod tests {
         let anchors = build_anchors(&db, now);
         let w = feed_weights(&cands, &anchors, now);
         let order = order_feed(&cands, &w, 42);
-        let shelves = explore(&db, &cands, &anchors, now);
         let j = serde_json::json!({
             "anchors": anchors.iter().map(|a| serde_json::json!({"id": a.id, "w": a.weight})).collect::<Vec<_>>(),
             "feed": order.iter().take(60).map(|&i| serde_json::json!({"id": cands[i].id, "w": w[i]})).collect::<Vec<_>>(),
-            "shelves": shelves.iter().map(|(k, p, items)| serde_json::json!({"kind": k, "pivot": p, "items": items})).collect::<Vec<_>>(),
         });
         std::fs::write(std::env::var("QOOTI_RECO_OUT").unwrap(), serde_json::to_string_pretty(&j).unwrap()).unwrap();
-        println!("pool={} anchors={} shelves={}", cands.len(), anchors.len(), shelves.len());
+        println!("pool={} anchors={}", cands.len(), anchors.len());
     }
 }
