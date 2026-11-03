@@ -1,0 +1,49 @@
+# Signs files with the updater key held in this repo's secrets (EEA7FDAA90E695B3 — the
+# key qooti's updater, bloot apps' updater and bloot apps' download check trust), so the
+# private key never leaves GitHub. For products built elsewhere, e.g. bloot apps:
+#
+#   gh release create bloot-apps-v0.2.0 --draft --title "bloot apps 0.2.0 (signing)" <files…>
+#   gh workflow run sign-files.yml -f tag=bloot-apps-v0.2.0
+# → attaches <file>.sig next to every file in that draft release. Copy each .sig's
+#   content into the product's manifest, then delete the draft.
+
+name: Sign release files
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag of the draft release whose files to sign'
+        required: true
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # download + upload release assets
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Download the files
+        run: |
+          mkdir files && cd files
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY"
+          rm -f -- *.sig
+          ls -la
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sign with the updater key
+        working-directory: files
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for f in *; do npx --yes @tauri-apps/cli@2 signer sign "$f"; done
+
+      - name: Attach the signatures
+        working-directory: files
+        run: gh release upload "$TAG" *.sig --repo "$GITHUB_REPOSITORY" --clobber
