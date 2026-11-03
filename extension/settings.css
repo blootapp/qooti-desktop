@@ -1,0 +1,114 @@
+/* qooti extension settings — a full page in qooti's settings style: titles above
+   cards, plain rows. Shared parts are in common.css. */
+
+body { min-height: 100vh; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-canvas);
+}
+.topbar-logo { display: block; width: 68.33px; height: 20px; }
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: -0.48px;
+}
+
+.section { display: flex; flex-direction: column; gap: 10px; scroll-margin-top: 80px; }
+.section-title {
+  padding-left: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.23;
+  color: var(--fg-secondary);
+}
+.section-note { padding-left: 4px; font-size: 12px; line-height: 1.33; color: var(--danger); }
+
+/* A part the user was sent to ("Settings" in a message on a page) lights up briefly */
+.section--flash .group { animation: flash 1.6s var(--ease); }
+@keyframes flash {
+  0%, 30% { box-shadow: 0 0 0 2px var(--focus-ring); }
+  100%    { box-shadow: 0 0 0 2px transparent; }
+}
+
+.group .row { min-height: 52px; padding: 12px 14px; }
+.row-meta { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; font-weight: 400; color: var(--fg-tertiary); }
+.row-value { margin-left: auto; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: var(--fg-secondary); }
+.row--app .status-dot { margin: 0 2px; }
+
+.row--link { color: inherit; text-decoration: none; justify-content: space-between; }
+.row--link .icon { color: var(--fg-tertiary); }
+.row--link:hover { background: var(--bg-raised); }
+.row--link:hover .icon { color: var(--fg-primary); }
+.row--link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+/* ── Sites where the button stays hidden ──────────────────────────── */
+
+.site-list { list-style: none; border-top: 1px solid var(--border); }
+.site-list:empty { display: none; }
+
+.site {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.site-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.group .row--add { min-height: 0; gap: 8px; padding: 10px; }
+.site-list:empty + .row--add { border-top: 1px solid var(--border); }
+
+.field-error { padding: 0 14px 12px; font-size: 12px; line-height: 1.33; color: var(--danger); }
+
+/* ── Language: a segmented control ────────────────────────────────── */
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+.segmented button {
+  flex: 1;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.segmented button:hover { color: var(--fg-primary); }
+.segmented button[aria-checked="true"] { background: var(--bg-hover); color: var(--fg-primary); }
+.segmented button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+@media (max-width: 480px) {
+  .page { padding: 28px 16px 64px; }
+  .segmented { flex-direction: column; }
+}

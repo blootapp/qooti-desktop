@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>qooti</title>
+  <link rel="icon" href="icons/icon-48.png" />
+  <link rel="stylesheet" href="common.css" />
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <img src="icons/ui/lockup.svg" alt="qooti" class="topbar-logo" width="68.33" height="20" />
+  </header>
+
+  <main class="page">
+    <h1 class="page-title" data-i18n="set.title"></h1>
+
+    <section class="section" id="connection">
+      <h2 class="section-title" data-i18n="set.connection"></h2>
+      <div class="group">
+        <div class="row row--app">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="row-text">
+            <span class="row-title"><span data-i18n="set.app"></span> <span class="row-meta" id="app-version"></span></span>
+            <span class="row-sub" id="app-status"></span>
+          </span>
+          <button type="button" class="btn btn--secondary" id="btn-app" hidden></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title" data-i18n="set.saving"></h2>
+      <div class="group">
+        <button type="button" class="row row--toggle" id="toggle-picker" role="switch" aria-checked="true">
+          <span class="row-text">
+            <span class="row-title" data-i18n="set.picker"></span>
+            <span class="row-sub" data-i18n="set.picker.sub"></span>
+          </span>
+          <span class="toggle" aria-hidden="true"></span>
+        </button>
+        <div class="divider"></div>
+        <button type="button" class="row row--toggle" id="toggle-progress" role="switch" aria-checked="true">
+          <span class="row-text">
+            <span class="row-title" data-i18n="set.progress"></span>
+            <span class="row-sub" data-i18n="set.progress.sub"></span>
+          </span>
+          <span class="toggle" aria-hidden="true"></span>
+        </button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title" data-i18n="set.button"></h2>
+      <div class="group">
+        <div class="row">
+          <span class="row-text">
+            <span class="row-title" data-i18n="set.hidden"></span>
+            <span class="row-sub" id="sites-sub"></span>
+          </span>
+        </div>
+        <ul class="site-list" id="site-list"></ul>
+        <form class="row row--add" id="site-form" novalidate>
+          <label class="input" id="site-field">
+            <span class="icon icon--link"></span>
+            <input type="text" id="site-input" data-i18n-ph="set.hidden.add_ph" data-i18n-aria="set.hidden.add_aria"
+                   autocomplete="off" autocapitalize="off" spellcheck="false" />
+          </label>
+          <button type="submit" class="btn btn--secondary" data-i18n="set.hidden.add"></button>
+        </form>
+        <p class="field-error" id="site-error" data-i18n="set.hidden.bad" hidden></p>
+      </div>
+    </section>
+
+    <section class="section" id="signin">
+      <h2 class="section-title" data-i18n="set.signin"></h2>
+      <div class="group">
+        <button type="button" class="row row--toggle" id="toggle-signin" role="switch" aria-checked="false">
+          <span class="row-text">
+            <span class="row-title" data-i18n="set.signin.row"></span>
+            <span class="row-sub" data-i18n="set.signin.sub"></span>
+          </span>
+          <span class="toggle" aria-hidden="true"></span>
+        </button>
+      </div>
+      <p class="section-note" id="signin-note" data-i18n="set.signin.denied" hidden></p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title" data-i18n="set.language"></h2>
+      <div class="segmented" role="radiogroup" id="lang" data-i18n-aria="set.language">
+        <button type="button" role="radio" data-lang="auto" data-i18n="set.lang.auto"></button>
+        <button type="button" role="radio" data-lang="en" lang="en" data-i18n="set.lang.en"></button>
+        <button type="button" role="radio" data-lang="uz" lang="uz" data-i18n="set.lang.uz"></button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title" data-i18n="set.about"></h2>
+      <div class="group">
+        <div class="row">
+          <span class="row-title" data-i18n="set.version"></span>
+          <span class="row-value" id="ext-version"></span>
+        </div>
+        <div class="divider"></div>
+        <a class="row row--link" id="link-privacy" target="_blank" rel="noopener">
+          <span class="row-title" data-i18n="set.privacy"></span>
+          <span class="icon icon--out"></span>
+        </a>
+        <div class="divider"></div>
+        <a class="row row--link" id="link-help" target="_blank" rel="noopener">
+          <span class="row-title" data-i18n="set.help"></span>
+          <span class="icon icon--out"></span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <script src="i18n.js"></script>
+  <script src="pages.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

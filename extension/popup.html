@@ -4,68 +4,64 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>qooti</title>
+  <link rel="stylesheet" href="common.css" />
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
 
   <header class="header">
-    <img src="icons/logo-solo.png" alt="" class="header-logo" />
-    <span class="header-name">qooti</span>
+    <img src="icons/ui/lockup.svg" alt="qooti" class="header-logo" width="54.6649" height="16" />
     <span class="status">
       <span class="status-dot" id="status-dot"></span>
-      <span id="status-text">Checking…</span>
+      <span id="status-text" data-i18n="status.checking"></span>
     </span>
+    <button type="button" class="icon-btn" id="btn-settings" data-i18n-title="common.settings"><span class="icon icon--gear"></span></button>
   </header>
 
-  <!-- Shown when qooti is open: how saving works -->
-  <div class="card" id="card-ready" hidden>
-    <p class="card-title">Ready to save</p>
-    <p class="card-text">Hover over any image or video and click the <img src="icons/logo-solo.png" alt="qooti" class="inline-logo" /> button. You can also right-click and choose <b>Save to qooti</b>.</p>
-  </div>
+  <main class="content">
 
-  <!-- Shown when the app isn't running -->
-  <div class="card card--warn" id="card-closed" hidden>
-    <p class="card-title">qooti isn't open</p>
-    <p class="card-text">The extension saves into the qooti app on this computer. Open it to start saving.</p>
-    <button type="button" class="btn-primary" id="btn-open">Open qooti</button>
-    <p class="card-foot">Don't have qooti yet? <a href="https://bloot.app" target="_blank" rel="noopener" id="link-get">Get it free</a></p>
-  </div>
+    <!-- The app isn't running -->
+    <section class="state" id="closed" hidden>
+      <p class="state-title" data-i18n="offline.title"></p>
+      <p class="state-text" data-i18n="popup.closed.text"></p>
+      <div class="state-actions">
+        <button type="button" class="btn btn--primary" id="btn-open" data-i18n="common.open_qooti"></button>
+        <a class="btn btn--ghost" id="link-get" target="_blank" rel="noopener" data-i18n="popup.get_qooti"></a>
+      </div>
+    </section>
 
-  <div class="section">
-    <button type="button" class="toggle-row" id="picker-toggle-row" role="switch" aria-checked="false">
-      <span class="toggle-label">
-        <span class="toggle-title">Pick a collection after saving</span>
-        <span class="toggle-sub">A small list appears so you can file it right away</span>
-      </span>
-      <span class="toggle-switch" id="picker-toggle" aria-hidden="true"><span class="toggle-thumb"></span></span>
-    </button>
+    <!-- Connecting: qooti asks "Connect your browser?" first -->
+    <section class="state" id="pairing" hidden>
+      <p class="state-title" id="pairing-title"></p>
+      <p class="state-text" id="pairing-text"></p>
+      <div class="state-actions" id="pairing-actions" hidden>
+        <button type="button" class="btn btn--primary" id="btn-connect" data-i18n="popup.connect_again"></button>
+      </div>
+    </section>
 
-    <button type="button" class="toggle-row" id="panel-toggle-row" role="switch" aria-checked="false">
-      <span class="toggle-label">
-        <span class="toggle-title">Show download progress</span>
-        <span class="toggle-sub">For videos, while qooti downloads them</span>
-      </span>
-      <span class="toggle-switch" id="panel-toggle" aria-hidden="true"><span class="toggle-thumb"></span></span>
-    </button>
-  </div>
+    <!-- Ready: the save button on the site in this tab -->
+    <section class="ready" id="ready" hidden>
+      <div class="group" id="here" hidden>
+        <button type="button" class="row row--toggle" id="here-toggle" role="switch" aria-checked="true">
+          <span class="row-text">
+            <span class="row-title" data-i18n="popup.here"></span>
+            <span class="row-sub" id="here-host"></span>
+          </span>
+          <span class="toggle" aria-hidden="true"></span>
+        </button>
+      </div>
+      <p class="hint" id="hint"></p>
+    </section>
 
-  <div class="section ban-section">
-    <div class="ban-head">
-      <span class="ban-title">Hide the save button on</span>
-    </div>
-    <button type="button" class="btn-ghost" id="btn-ban-current" hidden></button>
-    <div class="ban-add">
-      <input type="text" id="ban-input" class="ban-input" placeholder="Add a website, e.g. example.com"
-             autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Website to hide the button on" />
-      <button type="button" class="ban-add-btn" id="ban-add-btn" aria-label="Add website">+</button>
-    </div>
-    <ul class="ban-list" id="ban-list"></ul>
-  </div>
+  </main>
 
   <footer class="footer">
     <span class="footer-version" id="footer-version"></span>
+    <button type="button" class="btn btn--ghost" id="btn-open-footer" data-i18n="common.open_qooti" hidden></button>
   </footer>
 
+  <script src="i18n.js"></script>
+  <script src="pages.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

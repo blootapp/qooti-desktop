@@ -1,226 +1,121 @@
-// qooti popup script
+// qooti popup — the connection at a glance, the save button on this site, and the way
+// to the settings page (everything else lives there).
 
-const statusDot  = document.getElementById('status-dot')
-const statusText = document.getElementById('status-text')
-const versionEl  = document.getElementById('footer-version')
-const cardReady  = document.getElementById('card-ready')
-const cardClosed = document.getElementById('card-closed')
-const openBtn    = document.getElementById('btn-open')
+const $ = id => document.getElementById(id)
 
-const EXT_VERSION = chrome.runtime.getManifest().version
+// The button never shows on bloot's own sites (manifest exclude_matches)
+const NO_BUTTON = ['bloot.app', 'bloot-admin.pages.dev', 'bloot-dashboard.pages.dev', 'bloot-landing.pages.dev']
+
+let lastStatus  = null
+let pairingPoll = null
+let currentHost = null
+let hiddenSites = []
+
+$('footer-version').textContent = `v${chrome.runtime.getManifest().version}`
 
 // ─── Connection status ───────────────────────────────────────────
 
 function renderStatus(res) {
-  statusDot.className = 'status-dot'
-  if (res?.connected) {
-    statusDot.classList.add('status-dot--on')
-    statusText.textContent = 'Connected'
-  } else if (res?.running) {
-    statusDot.classList.add('status-dot--wait')
-    statusText.textContent = 'Connecting…'
-  } else {
-    statusDot.classList.add('status-dot--off')
-    statusText.textContent = 'Not open'
+  lastStatus = res ?? null
+  const pairing = res?.running && !res?.connected ? res.pairing : null   // 'pending' | 'denied'
+  $('status-dot').classList.toggle('status-dot--on', !!res?.connected)
+  $('status-text').textContent = res?.connected ? t('status.connected')
+    : pairing === 'pending' ? t('status.waiting')
+    : pairing === 'denied' ? t('status.not_connected')
+    : res?.running ? t('status.connecting') : t('status.not_running')
+  $('closed').hidden = !!res?.running
+  $('btn-open-footer').hidden = !res?.running
+
+  // qooti asks the user before a browser may save into it
+  $('pairing').hidden = !pairing
+  if (pairing === 'pending') {
+    $('pairing-title').textContent = t('pair.pending.title')
+    $('pairing-text').textContent  = t('popup.pending.text')
+  } else if (pairing === 'denied') {
+    $('pairing-title').textContent = t('pair.denied.title')
+    $('pairing-text').textContent  = t('popup.denied.text')
   }
-  cardReady.hidden  = !res?.connected
-  cardClosed.hidden = !!res?.running
-  versionEl.textContent = `Extension ${EXT_VERSION}` + (res?.version ? ` · qooti ${res.version}` : '')
+  $('pairing-actions').hidden = pairing !== 'denied'
+  // While qooti is asking, keep looking so the popup turns to Connected by itself
+  clearTimeout(pairingPoll)
+  if (pairing === 'pending') pairingPoll = setTimeout(checkStatus, 1500)
+
+  $('ready').hidden = !res?.running || !!pairing
+  renderHere()
 }
 
-function checkStatus() {
-  return new Promise(resolve => {
-    chrome.runtime.sendMessage({ action: 'get-status' }, res => {
-      void chrome.runtime.lastError
-      renderStatus(res)
-      resolve(res)
-    })
-  })
+async function checkStatus() {
+  const res = await send({ action: 'get-status' })
+  renderStatus(res)
+  return res
 }
 
-checkStatus()
+async function openApp() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
+  await send({ action: 'open-app', tab_id: tab?.id ?? null })
+}
 
 // "Open qooti" launches the app via its qooti:// link, then waits for it to come up.
-openBtn.addEventListener('click', async () => {
-  openBtn.disabled = true
-  openBtn.textContent = 'Opening…'
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
-  chrome.runtime.sendMessage({ action: 'open-app', tab_id: tab?.id ?? null }, () => { void chrome.runtime.lastError })
+$('btn-open').addEventListener('click', async () => {
+  const btn = $('btn-open')
+  btn.disabled = true
+  btn.textContent = t('common.opening')
+  await openApp()
   for (let i = 0; i < 20; i++) {
     await new Promise(r => setTimeout(r, 1000))
     const res = await checkStatus()
     if (res?.running) return
   }
-  openBtn.disabled = false
-  openBtn.textContent = 'Open qooti'
+  btn.disabled = false
+  btn.textContent = t('common.open_qooti')
 })
 
-// Reflect state on both the visual switch and the ARIA role="switch" row.
-function renderToggle(row, sw, on) {
-  sw.classList.toggle('toggle-switch--on', on)
-  row.setAttribute('aria-checked', String(on))
-}
+$('btn-open-footer').addEventListener('click', async () => { await openApp(); window.close() })
 
-// ─── Collection picker toggle ────────────────────────────────────
-
-let pickerEnabled = true
-const pickerRow      = document.getElementById('picker-toggle-row')
-const pickerToggleEl = document.getElementById('picker-toggle')
-
-chrome.storage.sync.get('showPicker', res => {
-  pickerEnabled = res.showPicker !== false
-  renderToggle(pickerRow, pickerToggleEl, pickerEnabled)
+// After a "Don't allow" in qooti: ask once more
+$('btn-connect').addEventListener('click', async () => {
+  $('btn-connect').disabled = true
+  await send({ action: 'pair-now' })
+  $('btn-connect').disabled = false
+  checkStatus()
 })
 
-pickerRow.addEventListener('click', () => {
-  pickerEnabled = !pickerEnabled
-  chrome.storage.sync.set({ showPicker: pickerEnabled })
-  renderToggle(pickerRow, pickerToggleEl, pickerEnabled)
+$('btn-settings').addEventListener('click', () => {
+  chrome.runtime.openOptionsPage()
+  window.close()
 })
 
-// ─── Download panel toggle ───────────────────────────────────────
+// ─── The save button on this site ────────────────────────────────
 
-let panelEnabled = true
-const panelRow      = document.getElementById('panel-toggle-row')
-const panelToggleEl = document.getElementById('panel-toggle')
-
-chrome.storage.sync.get('showDownloadPanel', res => {
-  panelEnabled = res.showDownloadPanel !== false
-  renderToggle(panelRow, panelToggleEl, panelEnabled)
-})
-
-panelRow.addEventListener('click', () => {
-  panelEnabled = !panelEnabled
-  chrome.storage.sync.set({ showDownloadPanel: panelEnabled })
-  renderToggle(panelRow, panelToggleEl, panelEnabled)
-  chrome.runtime.sendMessage({
-    action: 'set-pref',
-    key: 'show_download_toast',
-    value: panelEnabled ? 'true' : 'false',
-  }, () => { void chrome.runtime.lastError })
-})
-
-// ─── Hidden-on sites ─────────────────────────────────────────────
-// The qooti button never appears on these sites. Entries are stored as bare
-// hosts; content.js matches the current page (www/scheme-insensitive).
-
-const DEFAULT_BANNED = ['flaticon.com', 'bloot.app']
-const banInput   = document.getElementById('ban-input')
-const banAddBtn  = document.getElementById('ban-add-btn')
-const banList    = document.getElementById('ban-list')
-const banCurrent = document.getElementById('btn-ban-current')
-let bannedSites = []
-let currentHost = null
-
-// "https://www.flaticon.com/x" and "flaticon.com" → "flaticon.com"
-function normHost(v) {
-  return String(v || '')
-    .trim().toLowerCase()
-    .replace(/^[a-z]+:\/\//, '')
-    .split('/')[0]
-    .split(':')[0]
-    .replace(/^www\./, '')
+function renderHere() {
+  const hidden = !!currentHost && hiddenSites.some(s => hostMatches(currentHost, s))
+  $('here').hidden = !currentHost
+  $('here-host').textContent = currentHost ?? ''
+  $('here-toggle').setAttribute('aria-checked', String(!hidden))
+  $('hint').textContent = hidden ? t('popup.hidden_here') : t('popup.how')
 }
 
-// A plausible site name — stops "hello" or "a b" from being added by accident.
-const looksLikeHost = h => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)
-
-function isBanned(host) {
-  return bannedSites.some(s => host === s || host.endsWith('.' + s))
-}
-
-function renderCurrent() {
-  if (!currentHost) { banCurrent.hidden = true; return }
-  banCurrent.hidden = false
-  banCurrent.textContent = isBanned(currentHost)
-    ? `Show the button on ${currentHost} again`
-    : `Hide on ${currentHost}`
-}
-
-function renderBanList() {
-  banList.innerHTML = ''
-  if (!bannedSites.length) {
-    const li = document.createElement('li')
-    li.className = 'ban-empty'
-    li.textContent = 'The button shows on every site.'
-    banList.appendChild(li)
-  }
-  for (const host of bannedSites) {
-    const li = document.createElement('li')
-    li.className = 'ban-item'
-    const span = document.createElement('span')
-    span.className = 'ban-item-host'
-    span.textContent = host
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'ban-remove'
-    btn.setAttribute('aria-label', `Show the button on ${host} again`)
-    btn.title = 'Show the button here again'
-    btn.textContent = '×'
-    btn.addEventListener('click', () => removeBan(host))
-    li.append(span, btn)
-    banList.appendChild(li)
-  }
-  renderCurrent()
-}
-
-function saveBanned() { chrome.storage.sync.set({ bannedSites }) }
-
-function addHost(host) {
-  if (!host || bannedSites.includes(host)) return
-  bannedSites.push(host)
-  bannedSites.sort()
-  saveBanned()
-  renderBanList()
-}
-
-function addBan() {
-  const host = normHost(banInput.value)
-  if (!looksLikeHost(host)) {
-    banInput.classList.add('ban-input--bad')
-    banInput.focus()
-    return
-  }
-  banInput.value = ''
-  banInput.classList.remove('ban-input--bad')
-  banInput.focus()
-  addHost(host)
-}
-
-function removeBan(host) {
-  bannedSites = bannedSites.filter(h => h !== host)
-  saveBanned()
-  renderBanList()
-}
-
-banCurrent.addEventListener('click', () => {
+$('here-toggle').addEventListener('click', async () => {
   if (!currentHost) return
-  if (isBanned(currentHost)) bannedSites = bannedSites.filter(s => !(currentHost === s || currentHost.endsWith('.' + s)))
-  else bannedSites.push(currentHost)
-  bannedSites.sort()
-  saveBanned()
-  renderBanList()
+  const hidden = hiddenSites.some(s => hostMatches(currentHost, s))
+  hiddenSites = await setHiddenSites(hidden
+    ? hiddenSites.filter(s => !hostMatches(currentHost, s))
+    : [...hiddenSites, currentHost])
+  renderHere()
 })
 
-chrome.storage.sync.get('bannedSites', res => {
-  if (Array.isArray(res.bannedSites)) {
-    bannedSites = res.bannedSites
-  } else {
-    bannedSites = DEFAULT_BANNED.slice()   // seed defaults on first open
-    saveBanned()
-  }
-  renderBanList()
-})
+// ─── Start ───────────────────────────────────────────────────────
 
-// The site in the current tab, for the one-click "Hide on …" button (activeTab).
-chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+;(async () => {
+  await loadLang()
+  $('link-get').href = siteUrl('/download')
+  hiddenSites = await getHiddenSites()
+  // The site in the current tab (activeTab)
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
   try {
     const u = new URL(tab?.url ?? '')
-    if (u.protocol === 'http:' || u.protocol === 'https:') currentHost = normHost(u.hostname)
+    const host = normHost(u.hostname)
+    if ((u.protocol === 'http:' || u.protocol === 'https:') && !NO_BUTTON.some(s => hostMatches(host, s))) currentHost = host
   } catch {}
-  renderCurrent()
-}).catch(() => {})
-
-banAddBtn.addEventListener('click', addBan)
-banInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addBan() } })
-banInput.addEventListener('input', () => banInput.classList.remove('ban-input--bad'))
+  checkStatus()
+})()
