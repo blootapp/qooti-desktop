@@ -6,7 +6,7 @@
 // tokens — no login, no cookies, no account risk. It's large (~250 MB), so it is
 // NOT bundled: it's downloaded (gzip) into app-data the first time YouTube needs it,
 // then spawned on 127.0.0.1:4416, where yt-dlp's bgutil plugin (installed into
-// yt-dlp's config dir — the frozen binary ignores --plugin-dirs) queries it.
+// yt-dlp's config dir, which only the PO-token retry loads) queries it.
 //
 // Best-effort: if anything fails, callers run yt-dlp without a PO token (unchanged
 // behaviour). Every step emits a `pot:diag` event so it shows up in feedback reports
@@ -55,10 +55,11 @@ fn plugin_source(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
-/// yt-dlp's default config plugin directories for this OS. The frozen (PyInstaller)
-/// yt-dlp only auto-loads plugins from these — `--plugin-dirs` and next-to-binary
-/// are ignored (verified on Windows). We install into every candidate to cover the
-/// macOS uncertainty (`~/.config` vs `~/Library/Application Support`).
+/// yt-dlp's default config plugin directories for this OS, which any run without
+/// `--no-plugin-dirs` loads (only the PO-token retry). The frozen (PyInstaller) build
+/// would take `--plugin-dirs <dir>` as well (checked with yt-dlp 2026.10). We install
+/// into every candidate to cover the macOS uncertainty (`~/.config` vs
+/// `~/Library/Application Support`).
 fn ytdlp_plugin_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     #[cfg(windows)]

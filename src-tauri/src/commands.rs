@@ -4382,17 +4382,39 @@ fn run_tracked(
     (status.is_some_and(|s| s.success()), err)
 }
 
-/// Copy of `args` with the `--format` value replaced.
-fn with_format(args: &[String], format: &str) -> Vec<String> {
+/// Copy of `args` with the value after `flag` replaced.
+fn with_arg(args: &[String], flag: &str, value: &str) -> Vec<String> {
     let mut out = args.to_vec();
-    if let Some(i) = out.iter().position(|a| a == "--format") {
-        if i + 1 < out.len() { out[i + 1] = format.to_string(); }
+    if let Some(i) = out.iter().position(|a| a == flag) {
+        if i + 1 < out.len() { out[i + 1] = value.to_string(); }
     }
     out
 }
 
+/// YouTube player clients when a JS runtime is installed: yt-dlp's defaults (tuned
+/// upstream; our copy self-updates daily) plus the embedded player. Once YouTube
+/// rate-limits a connection (the watch page answers HTTP 429) it turns every default
+/// client away with "Sign in to confirm you're not a bot", while the embedded player
+/// still gets the streams, without a PO token. One extra request per save (~0.5 s).
+const YT_CLIENTS: &str = "default,web_embedded";
+
+/// The one `youtube:` extractor-args value for a normal run (repeated `--extractor-args
+/// youtube:…` flags don't merge). HLS manifests cost an extra request (~0.5 s) and we
+/// normally end up on DASH / progressive formats, so they're skipped — except for a
+/// stream that's live right now (HLS only).
+fn youtube_extractor_args(url: &str, clients: &str) -> String {
+    let skip_hls = if url.contains("/live/") { "" } else { "skip=hls;" };
+    format!("youtube:{skip_hls}player_client={clients}")
+}
+
+/// yt-dlp's note that YouTube withheld a client's direct streams (SABR). The embedded
+/// player then still offers HLS, which a run with skip=hls throws away.
+fn youtube_withheld_streams(stderr: &str) -> bool {
+    stderr.to_lowercase().contains("formats have been skipped as they are missing a url")
+}
+
 /// Copy of `args` whose YouTube extractor args are replaced by just `player_client=clients`
-/// (the PO-token retry takes whatever formats those clients offer, HLS included).
+/// (the retries take whatever formats those clients offer, HLS included).
 fn with_youtube_clients(args: &[String], clients: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::with_capacity(args.len() + 2);
     let mut i = 0;
@@ -4694,13 +4716,14 @@ fn run_ytdlp(
     }
 
     // Legacy no-JS player-client chain, from before YouTube required a JS runtime. Only
-    // used when deno couldn't be installed (e.g. offline on first use). With a runtime,
-    // yt-dlp's default clients are the right choice: tuned upstream against YouTube's
-    // current gating, and our yt-dlp copy self-updates daily (update_ytdlp_once).
+    // used when deno couldn't be installed (e.g. offline on first use). With a runtime:
+    // YT_CLIENTS.
     let yt_legacy_clients = if effective_cookie_path.is_some() { "tv,android_vr,ios" } else { "tv,android_vr,web_embedded,ios" };
-    // Web-based clients are the ones that consume a GVS PO token — used for the retry
-    // once the PO-token provider is running (see the 403 fallback below).
-    const YT_POT_CLIENTS: &str = "web,web_embedded";
+    let yt_clients = if deno.is_some() { YT_CLIENTS } else { yt_legacy_clients };
+    // The clients that consume a GVS PO token (mweb gets one even while the watch page is
+    // rate-limited) — used for the retry once the PO-token provider is running (see the
+    // 403 fallback below).
+    const YT_POT_CLIENTS: &str = "mweb,web,web_embedded";
 
     // The PO-token provider is only for the 403 fallback below. It used to be started up
     // front on every install that had ever hit a 403 — 2–9 s to boot plus ~3 s for the
@@ -4714,21 +4737,15 @@ fn run_ytdlp(
         // H.264 + AAC first (→ .mp4): plays in both WebView2 and macOS WebKit, where
         // VP9/AV1 in MKV often doesn't (AV1 needs an M3+ Mac). YouTube serves H.264 up
         // to 1080p, so "best" caps there — 4K VP9 was ~10× larger (1.4 GB for a
-        // 10-minute video) for no visible gain in an inspiration library.
+        // 10-minute video) for no visible gain in an inspiration library. The cap is a sort
+        // limit, not a height filter: `res` is the shorter side, so a vertical Short comes
+        // in 1080×1920 H.264 (`[height<=1080]` left it at 608×1080 VP9).
         let cap = if quality == "medium" { 720 } else { 1080 };
         args.extend([
-            "--format".to_string(), format!("bv*[height<={cap}]+ba/b[height<={cap}]/b"),
+            "--format".to_string(), "bv*+ba/b".to_string(),
             "--format-sort".to_string(), format!("res:{cap},vcodec:h264,fps,acodec:aac"),
         ]);
-        // One combined value: repeated `--extractor-args youtube:…` flags don't merge.
-        let mut yt_extractor: Vec<String> = Vec::new();
-        // HLS manifests cost an extra request (~0.5 s) and we always end up on DASH /
-        // progressive formats — except for a stream that's live right now (HLS only).
-        if !url.contains("/live/") { yt_extractor.push("skip=hls".into()); }
-        if deno.is_none() { yt_extractor.push(format!("player_client={yt_legacy_clients}")); }
-        if !yt_extractor.is_empty() {
-            args.extend(["--extractor-args".to_string(), format!("youtube:{}", yt_extractor.join(";"))]);
-        }
+        args.extend(["--extractor-args".to_string(), youtube_extractor_args(&url, yt_clients)]);
     } else if quality == "medium" {
         args.extend([
             "--format",
@@ -4779,7 +4796,7 @@ fn run_ytdlp(
         "start id={download_id} youtube={is_youtube} quality={quality} js_runtime={} pot_installed={pot_installed} bin={}{}",
         if deno.is_some() { "deno" } else { "none" },
         binary.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-        if is_youtube && deno.is_none() { format!(" clients={yt_legacy_clients}") } else { String::new() }
+        if is_youtube { format!(" clients={yt_clients}") } else { String::new() }
     ));
 
     let mut child = match ytdlp_command(&binary)
@@ -4972,18 +4989,39 @@ fn run_ytdlp(
     let mut last_stderr = stderr_text;
 
     // YouTube 503 (per-IP rate limit on the split streams): back off, then retry once at
-    // ≤720p. Same arguments as the main run (JS runtime, clients) — only the format changes.
+    // ≤720p. Same arguments as the main run (JS runtime, clients) — only the cap changes.
     if is_youtube && last_stderr.contains("HTTP Error 503") {
         log::warn!(target: "Download", "youtube_503 download_id={download_id} retrying=720p_fallback");
         emit_download_stage(&app, &download_id, "retrying", "retrying at 720p…", 0.0, eid);
         if !sleep_unless_cancelled(&download_id, std::time::Duration::from_secs(12)) { return; }
 
         let pre = snapshot_dir(&tmp_dir);
-        let fb_args = with_url(plugins_off(with_format(&args, "bv*[height<=720]+ba/b[height<=720]/b")));
+        let fb_args = with_url(plugins_off(with_arg(&args, "--format-sort", "res:720,vcodec:h264,fps,acodec:aac")));
         let (ok, se) = run_tracked(&app, &binary, &fb_args, &download_id,
             std::time::Duration::from_secs(10 * 60));
         let paths = new_download_files(&tmp_dir, &pre);
         log::info!(target: "Download", "fallback_result ok={ok} paths={}", paths.len());
+        if is_cancelled(&download_id) { remove_new_files(&tmp_dir, &pre); return; }
+        if ok && !paths.is_empty() {
+            emit_download_complete(&app, &download_id, &paths, &url, eid);
+            return;
+        }
+        remove_new_files(&tmp_dir, &pre);
+        if !se.trim().is_empty() { last_stderr = se; }
+    }
+
+    // YouTube withheld the direct streams (SABR) and skip=hls threw away the HLS ones the
+    // embedded player still offers: the same run with HLS allowed. Much quicker than
+    // starting the PO-token provider below, which stays the next step if this fails too.
+    if is_youtube && deno.is_some() && !url.contains("/live/") && youtube_withheld_streams(&last_stderr) {
+        log::warn!(target: "Download", "youtube_sabr download_id={download_id} retrying=hls");
+        emit_download_stage(&app, &download_id, "retrying", "retrying…", 0.0, eid);
+        let pre = snapshot_dir(&tmp_dir);
+        let hls_args = with_url(plugins_off(with_youtube_clients(&args, YT_CLIENTS)));
+        let (ok, se) = run_tracked(&app, &binary, &hls_args, &download_id,
+            std::time::Duration::from_secs(10 * 60));
+        let paths = new_download_files(&tmp_dir, &pre);
+        log::info!(target: "Download", "hls_fallback_result ok={ok} paths={}", paths.len());
         if is_cancelled(&download_id) { remove_new_files(&tmp_dir, &pre); return; }
         if ok && !paths.is_empty() {
             emit_download_complete(&app, &download_id, &paths, &url, eid);
@@ -5006,8 +5044,8 @@ fn run_ytdlp(
         emit_download_stage(&app, &download_id, "setting_up_youtube", "setting up YouTube…", 0.3, eid);
 
         // Downloads the provider (once), installs the bgutil plugin into yt-dlp's
-        // config dir, and starts the local server (the frozen yt-dlp can't take
-        // --plugin-dirs, so the plugin is picked up from there automatically).
+        // config dir, and starts the local server. This retry is the one run without
+        // --no-plugin-dirs, so yt-dlp picks the plugin up from there.
         if crate::pot_provider::ensure_running(&app) && !is_cancelled(&download_id) {
             emit_download_stage(&app, &download_id, "retrying", "retrying…", 0.0, eid);
             let pre = snapshot_dir(&tmp_dir);
@@ -6360,6 +6398,54 @@ mod ext_error_tests {
         assert_eq!(code("timed out in pending state"), "timeout");
         assert_eq!(code("something nobody anticipated"), "generic");
         assert_eq!(code("Free daily limit reached. qooti will download it at midnight."), "limit");
+    }
+}
+
+#[cfg(test)]
+mod youtube_args_tests {
+    use super::*;
+
+    #[test]
+    fn normal_runs_add_the_embedded_player_and_skip_hls() {
+        assert_eq!(
+            youtube_extractor_args("https://www.youtube.com/watch?v=x", YT_CLIENTS),
+            "youtube:skip=hls;player_client=default,web_embedded"
+        );
+        // A live stream only exists as HLS.
+        assert_eq!(
+            youtube_extractor_args("https://www.youtube.com/live/x", YT_CLIENTS),
+            "youtube:player_client=default,web_embedded"
+        );
+        assert_eq!(
+            youtube_extractor_args("https://youtu.be/x", "tv,android_vr,web_embedded,ios"),
+            "youtube:skip=hls;player_client=tv,android_vr,web_embedded,ios"
+        );
+    }
+
+    #[test]
+    fn retries_swap_the_one_youtube_value() {
+        let args: Vec<String> = [
+            "--format", "bv*+ba/b", "--format-sort", "res:1080,vcodec:h264,fps,acodec:aac",
+            "--extractor-args", "youtube:skip=hls;player_client=default,web_embedded",
+        ].map(String::from).to_vec();
+        let hls = with_youtube_clients(&args, YT_CLIENTS);
+        let youtube: Vec<&String> = hls.iter().filter(|a| a.starts_with("youtube:")).collect();
+        assert_eq!(youtube, ["youtube:player_client=default,web_embedded"]);
+        assert_eq!(hls.iter().filter(|a| *a == "--extractor-args").count(), 1);
+
+        let capped = with_arg(&args, "--format-sort", "res:720,vcodec:h264,fps,acodec:aac");
+        assert_eq!(capped[3], "res:720,vcodec:h264,fps,acodec:aac");
+        assert_eq!(capped[1], "bv*+ba/b");
+    }
+
+    #[test]
+    fn recognises_withheld_streams() {
+        assert!(youtube_withheld_streams(
+            "WARNING: [youtube] qtl2fg-xc30: Some web_embedded client https formats have been skipped as they are missing a URL. YouTube may have enabled the SABR-only streaming experiment for the current session."
+        ));
+        assert!(!youtube_withheld_streams(
+            "ERROR: [youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication."
+        ));
     }
 }
 
