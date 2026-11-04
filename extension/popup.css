@@ -1,311 +1,67 @@
-/* ── Type: Geist, matching the qooti desktop app ──────────────────── */
-@font-face {
-  font-family: 'Geist';
-  src: url('fonts/Geist-Variable.woff2') format('woff2');
-  font-weight: 100 900;
-  font-display: swap;
-}
+/* qooti popup — the connection at a glance, the save button on this site, and the way
+   to Settings. Shared parts are in common.css. */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 320px; }
 
-:root {
-  --bg:        #0F0F0F;
-  --text:      #F2F2F2;
-  --text-2:    #8A8A8A;   /* secondary / descriptors */
-  --text-3:    #585858;   /* muted / meta            */
-  --line:      rgba(255, 255, 255, 0.06);
-  --hover:     rgba(255, 255, 255, 0.04);
-  --accent:    #2563EB;   /* toggle "on" — qooti accent */
-  --track:     rgba(255, 255, 255, 0.13);
-  --success:   #4ADE80;
-  --danger:    #F87171;
-  --ease:      cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-body {
-  width: 300px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  line-height: 1.4;
-  -webkit-font-smoothing: antialiased;
-  animation: pop-in 240ms var(--ease) both;
-}
-
-@keyframes pop-in { from { opacity: 0; transform: translateY(-3px); } }
-
-/* ── Header: wordmark left, status right ──────────────────────────── */
+/* ── Header: lockup left, status and Settings right ───────────────── */
 
 .header {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 15px 16px 12px;
+  gap: 10px;
+  padding: 10px 10px 10px 16px;
 }
 
-.header-logo { width: 21px; height: 21px; object-fit: contain; flex-shrink: 0; }
-
-.header-name {
-  margin-right: auto;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
+.header-logo { display: block; width: 54.6649px; height: 16px; margin-right: auto; }
 
 .status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  color: var(--text-2);
-  letter-spacing: -0.01em;
+  font-size: 12px;
+  line-height: 1.33;
+  letter-spacing: 0;
+  color: var(--fg-secondary);
+  white-space: nowrap;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-3);
-  flex-shrink: 0;
-  transition: background 220ms var(--ease), box-shadow 220ms var(--ease);
-}
+/* ── Content ──────────────────────────────────────────────────────── */
 
-.status-dot--on  { background: var(--success); box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.14); }
-.status-dot--off { background: var(--danger); }
-.status-dot--wait { background: #FBBF24; }
-
-/* ── Toggles ──────────────────────────────────────────────────────── */
-
-.section { padding: 4px 8px 6px; }
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 9px 8px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 140ms var(--ease);
-}
-
-.toggle-row:hover { background: var(--hover); }
-.toggle-row:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.55); }
-
-.toggle-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.toggle-title { font-size: 13px; font-weight: 500; color: var(--text); }
-.toggle-sub   { font-size: 11px; color: var(--text-2); letter-spacing: -0.005em; }
-
-.toggle-switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--track);
-  transition: background 200ms var(--ease);
-}
-
-.toggle-switch--on { background: var(--accent); }
-
-.toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  transition: transform 220ms var(--ease);
-}
-
-.toggle-switch--on .toggle-thumb { transform: translateX(14px); }
-
-/* ── Blocked sites ────────────────────────────────────────────────── */
-
-.ban-section { border-top: 1px solid var(--line); padding: 12px 16px 10px; }
-
-.ban-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 9px;
-}
-.ban-title { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
-.ban-sub   { font-size: 10.5px; color: var(--text-3); letter-spacing: -0.005em; }
-
-.ban-add { display: flex; gap: 6px; }
-
-.ban-input {
-  flex: 1;
-  min-width: 0;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--hover);
-  color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  outline: none;
-  transition: border-color 140ms var(--ease);
-}
-.ban-input::placeholder { color: var(--text-3); }
-.ban-input:focus { border-color: rgba(37, 99, 235, 0.55); }
-
-.ban-add-btn {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 7px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: opacity 140ms var(--ease);
-}
-.ban-add-btn:hover { opacity: 0.9; }
-.ban-add-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.55); }
-
-.ban-list {
-  list-style: none;
-  margin: 8px 0 0;
+.content {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  max-height: 132px;
-  overflow-y: auto;
+  gap: 16px;
+  padding: 2px 12px 16px;
 }
-.ban-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  transition: background 140ms var(--ease);
-}
-.ban-item:hover { background: var(--hover); }
-.ban-item-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.content:not(:has(> section:not([hidden]))) { display: none; }
 
-.ban-remove {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: color 140ms var(--ease), background 140ms var(--ease);
-}
-.ban-remove:hover { color: var(--danger); background: rgba(248, 113, 113, 0.12); }
+.state { display: flex; flex-direction: column; gap: 6px; padding: 4px 4px 0; }
+.state-title { font-size: 16px; font-weight: 600; line-height: 1.5; letter-spacing: -0.16px; }
+.state-text  { color: var(--fg-secondary); }
+.state-actions { display: flex; gap: 8px; padding-top: 8px; }
 
-.ban-empty { font-size: 11.5px; color: var(--text-3); padding: 4px 8px; }
+.ready { display: flex; flex-direction: column; gap: 10px; }
+.ready .row-title, .ready .row-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.hint { padding: 0 4px; font-size: 12px; line-height: 1.38; letter-spacing: 0; color: var(--fg-tertiary); }
 
 /* ── Footer ───────────────────────────────────────────────────────── */
 
 .footer {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 11px 16px 13px;
-  border-top: 1px solid var(--line);
+  gap: 12px;
+  min-height: 45px;
+  padding: 8px 10px 8px 16px;
+  border-top: 1px solid var(--border);
 }
+.footer:not(:has(.btn:not([hidden]))) { min-height: 33px; }
 
-.footer-btn {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
+.footer-version {
+  margin-right: auto;
+  font-family: 'Geist Mono', ui-monospace, monospace;
   font-size: 12px;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: color 140ms var(--ease);
+  line-height: 1.33;
+  letter-spacing: 0;
+  color: var(--fg-tertiary);
 }
-
-.footer-btn:hover,
-.footer-btn:focus-visible { outline: none; color: var(--danger); }
-
-.footer-version { font-size: 11px; color: var(--text-3); letter-spacing: -0.01em; }
-
-@media (prefers-reduced-motion: reduce) {
-  *, body { animation: none !important; transition: none !important; }
-}
-
-/* ── Status cards (1.1) ───────────────────────────────────────────── */
-
-.card {
-  margin: 0 12px 8px;
-  padding: 11px 12px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--line);
-}
-.card--warn { border-color: rgba(248, 113, 113, 0.22); background: rgba(248, 113, 113, 0.05); }
-.card[hidden] { display: none; }
-.card-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; letter-spacing: -0.01em; }
-.card-text  { font-size: 12px; line-height: 1.45; color: var(--text-2); }
-.card-text b { color: var(--text); font-weight: 600; }
-.card-foot  { margin-top: 9px; font-size: 11.5px; color: var(--text-3); }
-.card-foot a { color: #93C5FD; text-decoration: none; }
-.card-foot a:hover { text-decoration: underline; }
-.inline-logo { width: 13px; height: 13px; vertical-align: -2px; }
-
-.btn-primary {
-  display: block;
-  width: 100%;
-  height: 32px;
-  margin-top: 10px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 140ms var(--ease);
-}
-.btn-primary:hover { opacity: 0.92; }
-.btn-primary:disabled { opacity: 0.6; cursor: default; }
-.btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.55); }
-
-.btn-ghost {
-  display: block;
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--hover);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: background 140ms var(--ease), border-color 140ms var(--ease);
-}
-.btn-ghost:hover { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.12); }
-.btn-ghost[hidden] { display: none; }
-
-.ban-input--bad { border-color: rgba(248, 113, 113, 0.6) !important; }

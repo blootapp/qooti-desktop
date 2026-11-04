@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "qooti",
   "description": "Save images and videos to your qooti library with one click.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -17,24 +17,28 @@
     },
     "default_title": "qooti"
   },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "http://*/*",
+        "https://*/*"
       ],
       "exclude_matches": [
-        "https://bloot.app/*",
-        "https://www.bloot.app/*",
-        "https://account.bloot.app/*"
+        "*://*.bloot.app/*",
+        "*://*.bloot-admin.pages.dev/*",
+        "*://*.bloot-dashboard.pages.dev/*",
+        "*://*.bloot-landing.pages.dev/*"
       ],
       "js": [
+        "i18n.js",
         "content.js"
-      ],
-      "css": [
-        "content.css"
       ],
       "run_at": "document_idle",
       "all_frames": false
@@ -43,23 +47,17 @@
   "permissions": [
     "storage",
     "contextMenus",
-    "cookies",
     "clipboardWrite",
     "activeTab"
   ],
+  "optional_permissions": [
+    "cookies"
+  ],
   "host_permissions": [
-    "http://127.0.0.1:1420/*",
+    "http://127.0.0.1:1420/*"
+  ],
+  "optional_host_permissions": [
     "https://*.instagram.com/*",
     "https://*.tiktok.com/*"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "icons/logo-solo.png"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
   ]
 }

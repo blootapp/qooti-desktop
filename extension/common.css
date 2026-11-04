@@ -1,0 +1,218 @@
+/* qooti extension pages (popup, settings) — shared look: Geist, qooti tokens (dark),
+   pill buttons, toggles and grouped rows like qooti's Settings. */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Tokens from the qooti UI guide (dark) */
+:root {
+  --bg-canvas:     #0A0A0A;
+  --bg-surface:    #121212;
+  --bg-raised:     #1A1A1A;
+  --bg-hover:      #232323;
+  --fg-primary:    #F2F2F0;
+  --fg-secondary:  #A6A6A1;
+  --fg-tertiary:   #86857F;
+  --fg-inverse:    #0A0A0A;
+  --border:        #232323;
+  --border-strong: #2E2E2E;
+  --focus-ring:    #3D63FF;
+  --danger:        #FF6359;
+  --online:        #3DD68C;
+  --ease:          cubic-bezier(0.16, 1, 0.3, 1);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg-canvas);
+  color: var(--fg-primary);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.38;
+  letter-spacing: -0.052px;
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] { display: none !important; }
+
+/* Icons: the design's SVGs as masks, so they take the text colour */
+.icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / 16px 16px no-repeat;
+          mask: var(--icon) center / 16px 16px no-repeat;
+}
+.icon--gear  { --icon: url('icons/ui/gear.svg'); }
+.icon--close { --icon: url('icons/ui/close.svg'); }
+.icon--link  { --icon: url('icons/ui/input-link.svg'); }
+.icon--out   { --icon: url('icons/ui/arrow-out.svg'); width: 14px; height: 14px; -webkit-mask-size: 14px 14px; mask-size: 14px 14px; }
+
+/* Connection dot */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-tertiary);
+  flex-shrink: 0;
+}
+.status-dot--on { background: var(--online); }
+
+/* Grouped rows in a surface card, like qooti Settings */
+.group {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.divider { height: 1px; background: var(--border); flex-shrink: 0; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+}
+
+.row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.row-title { font-weight: 500; line-height: 1.23; }
+.row-sub   { font-size: 12px; line-height: 1.33; letter-spacing: 0; color: var(--fg-tertiary); }
+
+.row--toggle {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row--toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; border-radius: 12px; }
+
+/* Toggle: on = fg/primary track with an inverse knob; off = border/strong track, white knob */
+.toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--border-strong);
+  transition: background 180ms var(--ease);
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 200ms var(--ease), background 180ms var(--ease);
+}
+[aria-checked="true"] > .toggle { background: var(--fg-primary); }
+[aria-checked="true"] > .toggle::after { transform: translateX(16px); background: var(--fg-inverse); }
+
+/* Text field: a pill with an icon */
+.input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 14px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--fg-tertiary);
+  cursor: text;
+}
+.input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.43;
+  letter-spacing: -0.084px;
+}
+.input input::placeholder { color: var(--fg-tertiary); }
+.input:focus-within { box-shadow: 0 0 0 2px var(--focus-ring); }
+.input--bad, .input--bad:focus-within { box-shadow: 0 0 0 1px var(--danger); }
+
+/* Buttons: pills. Primary = inverse, Secondary = neutral fill, Ghost = text */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.23;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms var(--ease), opacity 120ms var(--ease);
+}
+.btn--primary   { background: var(--fg-primary); color: var(--fg-inverse); }
+.btn--primary:hover { opacity: 0.9; }
+.btn--secondary { background: var(--bg-hover); }
+.btn--secondary:hover { background: #2C2C2C; }
+.btn--ghost:hover { background: var(--bg-hover); }
+.btn:disabled { opacity: 0.6; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+.icon-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--fg-primary); }
+.icon-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

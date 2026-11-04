@@ -1,0 +1,516 @@
+/* qooti content script UI — everything drawn on third-party pages, inside a closed
+   shadow root (content.js uiRoot): the page's CSS can't reach in and its scripts can't
+   read or press it. One neutral surface (bg/raised + border/strong) in every state;
+   qooti tokens. The background hands this file to the page script, which swaps the
+   font names below for made-up ones (its fonts are added to the page under those). */
+.qooti-badge, .qooti-toast, .qooti-picker {
+  --q-raised:   #1A1A1A;
+  --q-hover:    #232323;
+  --q-tile:     #262626;
+  --q-border:   #2E2E2E;
+  --q-fg:       #F2F2F0;
+  --q-fg-2:     #A6A6A1;
+  --q-fg-3:     #86857F;
+  --q-inverse:  #0A0A0A;
+  --q-ease:     cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  font-family: 'qooti Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.23;
+  letter-spacing: -0.052px;
+  color: var(--q-fg);
+  text-align: left;
+  text-transform: none;
+  -webkit-font-smoothing: antialiased;
+}
+.qooti-badge *, .qooti-toast *, .qooti-picker * { box-sizing: border-box; margin: 0; }
+.qooti-badge button, .qooti-toast button, .qooti-picker button {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Icons are the design's SVGs drawn inline (nothing is loaded from a file, so a
+   strict page can't block them); the tintable ones take `color`. */
+.qooti-ico {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.qooti-ico svg,
+.qooti-badge-logo svg,
+.qooti-toast-mark svg,
+.qooti-picker-check svg { display: block; width: 100%; height: 100%; }
+
+/* ── Save button ────────────────────────────────────────────────── */
+
+.qooti-badge {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  min-width: 32px;
+  /* A crisp hairline that reads on dark and light pictures alike, and a short,
+     soft shadow — no grey smudge around it on light images. */
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(22, 22, 22, 0.9);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  pointer-events: all;
+  animation: qooti-in 140ms ease-out backwards;   /* backwards: lets :hover scale it afterwards */
+  transition: background 120ms ease, transform 120ms ease;
+}
+.qooti-badge:hover { background: rgba(35, 35, 35, 0.94); }
+.qooti-badge:not(.qooti-badge--pill):not(.qooti-badge--saving):not(.qooti-badge--done):not(.qooti-badge--error):hover { transform: scale(1.06); }
+
+/* A gentle fade, not a pop */
+@keyframes qooti-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* The logo button — grab cursor signals it's draggable */
+.qooti-badge-logo-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: grab;
+  flex-shrink: 0;
+}
+.qooti-badge-logo-btn:active { cursor: grabbing; }
+
+.qooti-badge-logo {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* State word next to the icon (Saved / Couldn't save) */
+.qooti-badge-label {
+  padding-right: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Options (video pages) ── */
+
+.qooti-badge-options {
+  display: flex;
+  align-items: center;
+  max-width: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-width 300ms var(--q-ease), padding 300ms var(--q-ease);
+}
+
+.qooti-badge--pill .qooti-badge-options {
+  max-width: 200px;
+  padding: 0 4px;
+  pointer-events: all;
+}
+
+/* Divider between the logo and the options, on whichever side they open */
+.qooti-badge-divider {
+  display: none;
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: var(--q-border);
+}
+.qooti-badge--pill .qooti-badge-divider { display: block; }
+
+.qooti-badge-opt {
+  width: 28px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--q-fg-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms, color 120ms;
+}
+.qooti-badge-opt:hover,
+.qooti-badge-opt:focus-visible { background: var(--q-hover); color: var(--q-fg); outline: none; }
+
+/* Tooltip naming the hovered option */
+.qooti-badge[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border: 1px solid var(--q-border);
+  border-radius: 8px;
+  background: var(--q-raised);
+  color: var(--q-fg);
+  font: 400 12px/1.33 'qooti Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── States: same surface, only the icon and word change ── */
+
+.qooti-badge--saving .qooti-badge-logo { animation: qooti-spin 800ms linear infinite; }
+@keyframes qooti-spin { to { transform: rotate(360deg); } }
+
+.qooti-badge--hide {
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+/* ── Page toast ─────────────────────────────────────────────────── */
+
+.qooti-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;               /* short messages hug their text … */
+  max-width: min(420px, calc(100vw - 32px));   /* room for a message beside a button */
+  padding: 12px 16px 12px 12px;
+  border: 1px solid var(--q-border);
+  border-radius: 14px;
+  background: var(--q-raised);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2), 0 8px 12px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+  transition: opacity 200ms ease, transform 240ms var(--q-ease);
+  pointer-events: all;
+}
+.qooti-toast--in { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 32 px tile with the 16 px mark */
+.qooti-toast-mark {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--q-tile);
+}
+.qooti-toast-mark svg { width: 17.973px; height: 18px; }
+
+/* Message toast (Figma Page toast · Type=Message): the bare 18 px mark, a 13 px
+   message, the action beside the text and a × at the end */
+.qooti-toast--message {
+  gap: 12px;
+  padding: 12px 10px 12px 14px;
+  border-radius: 16px;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.25), 0 12px 16px rgba(0, 0, 0, 0.45);
+}
+.qooti-toast--message .qooti-toast-mark {
+  width: auto;
+  height: auto;
+  padding-top: 2px;
+  border-radius: 0;
+  background: none;
+}
+.qooti-toast--message .qooti-toast-msg { font-size: 13px; letter-spacing: -0.052px; }
+.qooti-toast--message .qooti-toast-title { white-space: normal; }   /* long titles wrap (Uzbek runs longer) */
+.qooti-toast--message .qooti-icon-btn { color: var(--q-fg); }
+
+.qooti-toast-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qooti-toast-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qooti-toast-msg { white-space: normal; }
+.qooti-toast-msg,
+.qooti-toast-sub {
+  font-size: 12px;
+  line-height: 1.38;
+  letter-spacing: -0.048px;
+  color: var(--q-fg-2);
+}
+.qooti-toast-sub:empty { display: none; }
+
+.qooti-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Pill buttons: Primary = inverse, Secondary = neutral fill, Ghost (muted) = text */
+.qooti-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-weight: 500;
+  line-height: 1.23;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms, opacity 120ms;
+}
+.qooti-btn--primary   { background: var(--q-fg); color: var(--q-inverse) !important; }
+.qooti-btn--primary:hover:not(:disabled) { opacity: 0.9; }
+.qooti-btn--secondary { background: var(--q-hover); }
+.qooti-btn--secondary:hover { background: #2C2C2C; }
+.qooti-btn--upgrade   { background: #0071E3; color: #FFFFFF !important; padding: 0 18px; }
+.qooti-btn--upgrade:hover { background: #0077ED; }
+.qooti-btn--muted     { color: var(--q-fg-2) !important; }
+.qooti-btn--muted:hover:not(:disabled) { background: var(--q-hover); color: var(--q-fg) !important; }
+.qooti-btn:disabled   { opacity: 0.6; cursor: default; }
+
+.qooti-icon-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--q-fg-2);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.qooti-icon-btn:hover { background: var(--q-hover); color: var(--q-fg); }
+
+/* ── Progress: title + % row over a 4 px bar ── */
+
+.qooti-toast--progress { width: 360px; padding-right: 12px; }   /* … progress keeps room for its bar */
+.qooti-toast--progress .qooti-toast-body { gap: 8px; }
+.qooti-toast--progress .qooti-toast-actions { gap: 2px; }
+.qooti-toast-actions--wide { gap: 6px; }
+
+.qooti-toast-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.qooti-toast-pct {
+  flex-shrink: 0;
+  font-family: 'qooti Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.33;
+  letter-spacing: 0;
+  color: var(--q-fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.qooti-toast-pct:empty { display: none; }
+
+.qooti-toast-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--q-border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.qooti-toast-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: var(--q-fg);
+  transition: width 600ms ease-out;
+}
+
+/* Indeterminate while waiting for the first real progress */
+.qooti-toast-fill--pending {
+  width: 30%;
+  animation: qooti-indeterminate 1.3s var(--q-ease) infinite;
+}
+@keyframes qooti-indeterminate {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(340%); }
+}
+
+.qooti-toast-fill--error { background: #FF6359; }
+
+/* ── Collection picker ──────────────────────────────────────────── */
+
+.qooti-picker {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  border: 1px solid var(--q-border);
+  border-radius: 16px;
+  background: var(--q-raised);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 12px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 200ms ease, transform 240ms var(--q-ease);
+  pointer-events: all;
+}
+.qooti-picker--visible { opacity: 1; transform: translateY(0); }
+
+/* Preview of what was just saved */
+.qooti-picker-preview-wrap { padding: 6px 6px 0; }
+
+.qooti-picker-preview {
+  position: relative;
+  height: 150px;
+  border-radius: 11px;
+  background: var(--q-hover);
+  overflow: hidden;
+}
+.qooti-picker-preview img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.qooti-picker-preview::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55));
+}
+
+.qooti-picker-meta {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: nowrap;
+}
+.qooti-picker-meta-title { font-weight: 500; color: #FFFFFF; overflow: hidden; text-overflow: ellipsis; }
+.qooti-picker-meta-src   { font-size: 12px; line-height: 1.33; letter-spacing: 0; color: rgba(255, 255, 255, 0.7); overflow: hidden; text-overflow: ellipsis; }
+
+.qooti-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 6px 14px;
+}
+.qooti-picker-check { display: block; width: 18px; height: 18px; flex-shrink: 0; }
+.qooti-picker-title { flex: 1; min-width: 0; font-weight: 500; }
+.qooti-picker .qooti-icon-btn { color: var(--q-fg); }
+
+.qooti-picker-sub {
+  padding: 0 0 6px 42px;
+  font-size: 12px;
+  line-height: 1.33;
+  letter-spacing: 0;
+  color: var(--q-fg-3);
+}
+
+.qooti-picker-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.qooti-picker-list::-webkit-scrollbar { display: none; }
+
+/* Menu item rows */
+.qooti-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--q-fg);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms;
+}
+.qooti-picker-btn:hover,
+.qooti-picker-btn:focus-visible { background: var(--q-hover); outline: none; }
+
+/* Locked on the Free plan: visible, muted, not clickable */
+.qooti-picker .qooti-picker-btn--locked,
+.qooti-picker .qooti-picker-btn--locked:hover { background: transparent; color: var(--q-fg-3); cursor: default; }
+
+.qooti-picker-btn-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.43;
+  letter-spacing: -0.084px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Timer line counting down to auto-close */
+.qooti-picker-bar {
+  height: 2px;
+  flex-shrink: 0;
+  background: var(--q-fg-3);
+  transform-origin: left;
+  animation: qooti-drain 6000ms linear forwards;
+}
+@keyframes qooti-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qooti-badge, .qooti-toast, .qooti-picker { animation: none !important; transition: none !important; }
+  .qooti-badge--saving .qooti-badge-logo { animation-duration: 2s; }
+}
