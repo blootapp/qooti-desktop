@@ -216,9 +216,6 @@ const strings = {
 
     // Settings — General — Profile
     'settings.section.profile':  'Profile',
-    'settings.photo':            'Profile photo',
-    'settings.photo.sub':        'Shown in the top bar',
-    'settings.photo.change':     'Change photo',
 
     // Settings — General — Language
     'settings.section.language': 'Language',
@@ -656,8 +653,6 @@ const strings = {
     'cp.search':                   'Search',
     'dlg.dup.view':                'View in library',
     'dlg.dup.anyway':              'Download anyway',
-    'cropper.hint':                'Drag to reposition · scroll to zoom',
-    'cropper.save':                'Save photo',
     'search.all_types':            'All types',
     'search.images':               'Images',
     'search.videos':               'Videos',
@@ -916,9 +911,6 @@ const strings = {
 
     // Settings — General — Profile
     'settings.section.profile':  'Profil',
-    'settings.photo':            'Profil rasmi',
-    'settings.photo.sub':        'Yuqori panelda ko‘rsatiladi',
-    'settings.photo.change':     'Rasmni o‘zgartirish',
 
     // Settings — General — Language
     'settings.section.language': 'Til',
@@ -1356,8 +1348,6 @@ const strings = {
     'cp.search':                   'Qidirish',
     'dlg.dup.view':                'Kutubxonada ko‘rish',
     'dlg.dup.anyway':              'Baribir yuklab olish',
-    'cropper.hint':                'Joylash uchun torting · masshtab uchun g‘ildirakni aylantiring',
-    'cropper.save':                'Rasmni saqlash',
     'search.all_types':            'Barcha turlar',
     'search.images':               'Rasmlar',
     'search.videos':               'Videolar',

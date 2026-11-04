@@ -2,7 +2,6 @@ import store from './store.js'
 import * as events from './events.js'
 import { api, listenEvent, popMobileInbox, mobileInboxCount, mobileConnectedAt } from './tauri-api.js'
 import { t as tr, setLang } from './i18n.js'
-import { openImageCropper } from './image-cropper.js'
 import { sfx } from './sfx.js'
 import { getLocalVocabVersion, getLatestVocabVersion, checkForVocabUpdate, forceSyncTagVocab } from './tag-sync.js'
 import { openHub } from './licensing.js'
@@ -193,24 +192,6 @@ async function render() {
               </div>
             </div>
           `}
-        </section>
-
-        <section class="settings-section">
-          <h2 class="settings-section-title">${tr('settings.section.profile')}</h2>
-          <div class="settings-row">
-            <div class="settings-row-label">
-              <span class="settings-row-name">${tr('settings.photo')}</span>
-              <span class="settings-row-sub">${tr('settings.photo.sub')}</span>
-            </div>
-            <div class="settings-row-control">
-              <div class="settings-avatar" id="s-avatar-preview">
-                ${settings.profile_image
-                  ? `<img src="${settings.profile_image}" alt="" />`
-                  : `<span>${(settings.display_name ?? 'U').charAt(0).toUpperCase()}</span>`}
-              </div>
-              <button class="settings-save-btn" id="s-photo-change">${tr('settings.photo.change')}</button>
-            </div>
-          </div>
         </section>
 
         <section class="settings-section">
@@ -628,22 +609,9 @@ async function render() {
 
   bindPlanRefreshBtn()
 
-  const avatarPreview = container.querySelector('#s-avatar-preview')
-  if (avatarPreview) {
-    container.querySelector('#s-photo-change').addEventListener('click', () => {
-      openImageCropper({
-        onSave: async dataUrl => {
-          await setSetting('profile_image', dataUrl)
-          avatarPreview.innerHTML = ''
-          const img = document.createElement('img')
-          img.src = dataUrl
-          img.alt = ''
-          avatarPreview.appendChild(img)
-        },
-      })
-    })
-
-    const langSelect = container.querySelector('#s-lang')
+  // The profile photo is set in bloot apps; qooti only shows it (top bar).
+  const langSelect = container.querySelector('#s-lang')
+  if (langSelect) {
     langSelect.addEventListener('change', e => {
       setSetting('language', e.target.value)
     })

@@ -49,7 +49,7 @@ export async function check() {
   return account
 }
 
-const same = (a, b) => !!a && !!b && ['state', 'name', 'bloot_id', 'tier', 'pro_until', 'hub_installed'].every(k => a[k] === b[k])
+const same = (a, b) => !!a && !!b && ['state', 'name', 'bloot_id', 'photo', 'tier', 'pro_until', 'hub_installed'].every(k => a[k] === b[k])
 
 async function apply(next) {
   if (!next || same(account, next)) return
@@ -59,7 +59,8 @@ async function apply(next) {
 
   if (nowIn) {
     // Mirror into preferences — only what changed (each write emits SETTINGS_CHANGED).
-    const want = { bloot_id: account.bloot_id, display_name: account.name || account.bloot_id }
+    // The photo is set in bloot apps only; '' = none (the initial shows).
+    const want = { bloot_id: account.bloot_id, display_name: account.name || account.bloot_id, profile_image: account.photo || '' }
     for (const [k, v] of Object.entries(want)) if (getSetting(k) !== v) await setSetting(k, v)
   }
   // The plan is written by the Rust side from the verified ticket; just follow it here.

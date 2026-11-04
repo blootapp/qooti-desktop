@@ -164,13 +164,12 @@ html.theme-light {
    These floating panels/menus set a fixed dark glass/solid background for depth
    instead of deriving it from --bg-* tokens, so light mode needs explicit
    overrides — otherwise their token-driven text renders dark-on-dark.
-   (.dlg-box, .import-* are overridden further down; .video-player /
-   .cropper-canvas stay #000 by design — they frame media.) */
+   (.dlg-box, .import-* are overridden further down; .video-player stays
+   #000 by design — it frames media.) */
 html.theme-light .ctx-menu,
 html.theme-light .ctx-submenu,
 html.theme-light .cp-popover,
 html.theme-light .wt-card          { background: var(--bg-raised); }
-html.theme-light .cropper-modal    { background: rgba(250, 250, 252, 0.96); }
 html.theme-light .drop-overlay     { background: rgba(245, 245, 247, 0.85); }
 
 /* Logo: all-white lockup on dark, blue mark + ink wordmark on light (guide). */
@@ -1572,61 +1571,6 @@ body.library-empty .top-bar-import-btn { background: var(--bg-raised); color: va
 .sr-only  { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ─── Image cropper ─────────────────────────────────────── */
-.cropper-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9500;
-  background: rgba(0,0,0,0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cropper-modal {
-  width: 380px;
-  background: rgba(14,14,16,0.96);
-  border: 0.5px solid rgba(var(--fg-rgb),0.12);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.65);
-}
-
-.cropper-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 18px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 0.5px solid var(--border-subtle);
-}
-
-.cropper-canvas {
-  display: block;
-  width: 100%;
-  background: #000;
-}
-
-.cropper-hint {
-  padding: 8px 18px;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-  border-bottom: 0.5px solid var(--border-subtle);
-}
-
-.cropper-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 16px;
-}
-
 /* ─── Onboarding ────────────────────────────────────────── */
 /* First run (guide A0–A2): plain canvas, lockup top-left, one centred block */
 #onboarding-root {
@@ -1747,23 +1691,6 @@ html.theme-light .ob-logo { content: url('/assets/brand/lockup.svg'); }
   color: #fff;
   pointer-events: none;
 }
-
-/* Settings avatar preview */
-.settings-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--bg-hover);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.settings-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .ob-input {
   width: 100%;
@@ -3324,11 +3251,6 @@ button:active:not(:disabled),
 .profile-dropdown:not(.hidden) {
   animation: popover-in var(--dur-normal) var(--spring) both;
   transform-origin: top right;
-}
-/* Cropper overlay */
-.cropper-modal {
-  animation: popover-in-up var(--dur-normal) var(--spring) both;
-  transform-origin: center bottom;
 }
 
 /* ─── View transitions ──────────────────────────────────── */

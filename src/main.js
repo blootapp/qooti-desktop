@@ -181,37 +181,45 @@ function setupTopBar(settings) {
 
 // ─── Profile avatar + dropdown ───────────────────────────────────
 function setupAvatar(settings) {
-  const displayName = settings?.display_name || 'U'
-  const initial = displayName.charAt(0).toUpperCase()
-
   const avatarBtn = document.getElementById('top-bar-avatar')
 
-  if (settings?.profile_image) {
-    avatarBtn.textContent = ''
-    const img = document.createElement('img')
-    img.src = settings.profile_image
-    img.alt = displayName
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
-    avatarBtn.appendChild(img)
-    avatarBtn.style.background = 'transparent'
-  } else {
-    avatarBtn.textContent = initial
-    avatarBtn.style.background = avatarColor(displayName)
+  // The photo is set in bloot apps (licensing.js mirrors it into profile_image) and
+  // qooti only shows it; without one, the initial on its colour.
+  let photo = settings?.profile_image || ''
+  let name  = settings?.display_name || 'U'
+  let dropdown = null
+  const paintAvatar = el => {
+    el.replaceChildren()
+    if (photo) {
+      const img = document.createElement('img')
+      img.src = photo
+      img.alt = ''
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
+      img.onerror = () => { photo = ''; paint() }   // a damaged photo file: the initial instead
+      el.appendChild(img)
+      el.style.background = 'transparent'
+    } else {
+      el.textContent = name.charAt(0).toUpperCase()
+      el.style.background = avatarColor(name)
+    }
   }
+  const paint = () => {
+    paintAvatar(avatarBtn)
+    if (!dropdown) return
+    paintAvatar(dropdown.querySelector('.pd-avatar'))
+    dropdown.querySelector('.pd-name').textContent = name
+  }
+  paint()
 
   store.on(events.SETTINGS_CHANGED, ({ key, value }) => {
-    if (key !== 'profile_image') return
-    avatarBtn.innerHTML = ''
-    const img = document.createElement('img')
-    img.src = value
-    img.alt = displayName
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
-    avatarBtn.appendChild(img)
-    avatarBtn.style.background = 'transparent'
+    if (key === 'profile_image') photo = value || ''
+    else if (key === 'display_name') name = value || 'U'
+    else return
+    paint()
   })
 
   // Build dropdown
-  const dropdown = buildProfileDropdown(displayName, initial, avatarBtn.style.background)
+  dropdown = buildProfileDropdown(name, name.charAt(0).toUpperCase(), avatarBtn.style.background)
 
   let open = false
   avatarBtn.addEventListener('click', e => {
