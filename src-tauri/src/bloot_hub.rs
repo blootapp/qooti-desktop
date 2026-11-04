@@ -45,6 +45,8 @@ pub struct Account {
     pub state: String,
     pub name: Option<String>,
     pub bloot_id: Option<String>,
+    /// The profile photo set in bloot apps, as a data: URL (qooti can't change it).
+    pub photo: Option<String>,
     /// free | pro (only meaningful when signed_in)
     pub tier: String,
     pub pro_until: Option<i64>,
@@ -154,9 +156,19 @@ pub fn account(app: &AppHandle) -> Account {
     a
 }
 
+/// The profile photo set in bloot apps. It never leaves this computer: bloot apps keeps
+/// it in the shared folder as `photo-<bloot ID>.jpg`. None = show the initial.
+fn photo_data_url(bloot_id: &str) -> Option<String> {
+    let ok = !bloot_id.is_empty() && bloot_id.len() <= 40 && bloot_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if !ok { return None; }
+    let bytes = std::fs::read(shared(&format!("photo-{bloot_id}.jpg"))).ok()?;
+    (bytes.starts_with(&[0xFF, 0xD8, 0xFF]) && bytes.len() < 1_000_000)
+        .then(|| format!("data:image/jpeg;base64,{}", STANDARD.encode(&bytes)))
+}
+
 fn read_account(app: &AppHandle) -> Account {
     let signed_out = |state: &str| Account {
-        state: state.into(), name: None, bloot_id: None, tier: "free".into(), pro_until: None, hub_installed: hub_installed(),
+        state: state.into(), name: None, bloot_id: None, photo: None, tier: "free".into(), pro_until: None, hub_installed: hub_installed(),
     };
     let Some(device_id) = read_json("device.json").and_then(|d| d["device_id"].as_str().map(str::to_string)) else {
         return signed_out("signed_out");
@@ -178,6 +190,7 @@ fn read_account(app: &AppHandle) -> Account {
     Account {
         state: "signed_in".into(),
         name: t.name.filter(|n| !n.trim().is_empty()),
+        photo: photo_data_url(&t.bloot_id),
         bloot_id: Some(t.bloot_id),
         tier: if t.tier == "pro" { "pro".into() } else { "free".into() },
         pro_until: t.pro_until,
