@@ -25,6 +25,10 @@ function renderStatus(res) {
     : res?.running ? t('status.connecting') : t('status.not_running')
   $('closed').hidden = !!res?.running
   $('btn-open-footer').hidden = !res?.running
+  // Links saved while qooti was closed wait for it
+  const queued = res?.queued ?? 0
+  $('closed-text').textContent = !queued ? t('popup.closed.text')
+    : queued === 1 ? t('popup.closed.queue_one') : t('popup.closed.queue', { n: queued })
 
   // qooti asks the user before a browser may save into it
   $('pairing').hidden = !pairing
@@ -41,7 +45,8 @@ function renderStatus(res) {
   if (pairing === 'pending') pairingPoll = setTimeout(checkStatus, 1500)
 
   $('ready').hidden = !res?.running || !!pairing
-  renderHere()
+  renderBan()
+  renderPlanCard($('plan'), res?.connected ? res.plan : null)
 }
 
 async function checkStatus() {
@@ -85,23 +90,43 @@ $('btn-settings').addEventListener('click', () => {
   window.close()
 })
 
-// ─── The save button on this site ────────────────────────────────
+// ─── Collection picker (same switch as on the Settings page) ─────
 
-function renderHere() {
-  const hidden = !!currentHost && hiddenSites.some(s => hostMatches(currentHost, s))
-  $('here').hidden = !currentHost
-  $('here-host').textContent = currentHost ?? ''
-  $('here-toggle').setAttribute('aria-checked', String(!hidden))
-  $('hint').textContent = hidden ? t('popup.hidden_here') : t('popup.how')
+{
+  const row = $('toggle-picker')
+  const render = on => row.setAttribute('aria-checked', String(on))
+  chrome.storage.sync.get('showPicker').then(res => render(res.showPicker !== false))
+  row.addEventListener('click', () => {
+    const on = row.getAttribute('aria-checked') !== 'true'
+    render(on)
+    chrome.storage.sync.set({ showPicker: on })
+  })
 }
 
-$('here-toggle').addEventListener('click', async () => {
+// ─── Ban / Unban the site in this tab ────────────────────────────
+// Banned = the save button stays hidden there (Settings → Hidden on these sites).
+
+function renderBan() {
+  const banned = !!currentHost && hiddenSites.some(s => hostMatches(currentHost, s))
+  const btn = $('btn-ban')
+  btn.hidden = !currentHost
+  if (currentHost) btn.textContent = t(banned ? 'popup.unban' : 'popup.ban', { site: siteName(currentHost) })
+  $('hint').textContent = banned ? t('popup.hidden_here') : t('popup.how')
+}
+
+$('btn-ban').addEventListener('click', async () => {
   if (!currentHost) return
-  const hidden = hiddenSites.some(s => hostMatches(currentHost, s))
-  hiddenSites = await setHiddenSites(hidden
+  const banned = hiddenSites.some(s => hostMatches(currentHost, s))
+  hiddenSites = await setHiddenSites(banned
     ? hiddenSites.filter(s => !hostMatches(currentHost, s))
     : [...hiddenSites, currentHost])
-  renderHere()
+  renderBan()
+})
+
+// The plan page on the account site, where Free becomes Pro
+$('plan').querySelector('.plan-upgrade').addEventListener('click', () => {
+  chrome.tabs.create({ url: PLAN_URL })
+  window.close()
 })
 
 // ─── Start ───────────────────────────────────────────────────────

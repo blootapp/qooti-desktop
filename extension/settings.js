@@ -29,7 +29,14 @@ function renderStatus() {
   btn.hidden = !!res?.connected || pairing === 'pending' || (!!res?.running && !pairing)
   btn.dataset.do = pairing === 'denied' ? 'connect' : 'open'
   btn.textContent = pairing === 'denied' ? t('popup.connect_again') : t('common.open_qooti')
+  // Free plan: the card (Pro, or qooti not connected: no Plan section)
+  renderPlanCard($('set-plan'), res?.connected ? res.plan : null)
+  $('plan-section').hidden = $('set-plan').hidden
 }
+
+$('set-plan').querySelector('.plan-upgrade').addEventListener('click', () => {
+  chrome.tabs.create({ url: PLAN_URL })
+})
 
 $('btn-app').addEventListener('click', async () => {
   const btn = $('btn-app')
@@ -64,53 +71,201 @@ bindToggle('toggle-progress', 'showDownloadPanel', on => {
 })
 
 // ─── Sites where the save button stays hidden ────────────────────
+// Small chips, newest first. The card shows two lines of them; "+N more" opens the
+// rest right there for up to INLINE_MAX sites, and a page of its own (with a search
+// field) for longer lists.
 
-let sites = []
+const INLINE_MAX = 20
 
-function renderSites() {
-  const list = $('site-list')
-  list.innerHTML = ''
-  for (const host of sites) {
-    const li = document.createElement('li')
-    li.className = 'site'
-    const name = document.createElement('span')
-    name.className = 'site-host'
-    name.textContent = host
-    const remove = document.createElement('button')
-    remove.type = 'button'
-    remove.className = 'icon-btn'
-    remove.title = t('set.hidden.remove', { host })
-    remove.setAttribute('aria-label', remove.title)
-    remove.innerHTML = '<span class="icon icon--close"></span>'
-    remove.addEventListener('click', async () => {
-      sites = await setHiddenSites(sites.filter(h => h !== host))
-      renderSites()
-    })
-    li.append(name, remove)
-    list.appendChild(li)
-  }
-  $('sites-sub').textContent = sites.length ? t('set.hidden.sub') : t('set.hidden.none')
+let sites = []          // as stored: oldest first
+let expanded = false    // the card shows every chip (only while ≤ INLINE_MAX)
+let fresh = null        // a site just added: its chip lights up once
+let freshTimer = null
+let note = null         // the line under the field: { key, bad }
+
+const newestFirst = () => [...sites].reverse()
+const countText = n => t(n === 1 ? 'set.hidden.count_one' : 'set.hidden.count', { n })
+
+function chip(host) {
+  const el = document.createElement('span')
+  el.className = host === fresh ? 'chip chip--new' : 'chip'
+  const name = document.createElement('span')
+  name.className = 'chip-host'
+  name.textContent = host
+  const x = document.createElement('button')
+  x.type = 'button'
+  x.className = 'chip-x'
+  x.title = t('set.hidden.remove', { host })
+  x.setAttribute('aria-label', x.title)
+  x.innerHTML = '<span class="icon icon--close"></span>'
+  x.addEventListener('click', () => removeSite(host, el))
+  el.append(name, x)
+  return el
 }
 
-function showSiteError(show) {
-  $('site-field').classList.toggle('input--bad', show)
-  $('site-error').hidden = !show
+const moreBtn = document.createElement('button')
+moreBtn.type = 'button'
+moreBtn.className = 'chips-more'
+moreBtn.addEventListener('click', () => {
+  if (sites.length > INLINE_MAX) return openSheet()
+  expanded = !expanded
+  fold()
+})
+
+function renderSites() {
+  const n = sites.length
+  $('sites-sub').textContent = n ? t('set.hidden.sub') : t('set.hidden.none')
+  $('sites-count').textContent = n ? countText(n) : ''
+  if (n > INLINE_MAX) expanded = false
+  const box = $('site-chips')
+  box.hidden = !n
+  box.replaceChildren(...newestFirst().map(chip), moreBtn)
+  fold()
+  renderNote()
+  if (!sheet.hidden) renderSheet()
+}
+
+// Two lines of chips, then "+N more" — or every chip and "Show less" when opened.
+function fold() {
+  const box = $('site-chips')
+  const chips = [...box.querySelectorAll('.chip')]
+  for (const c of chips) c.hidden = false
+  moreBtn.hidden = true
+  if (box.hidden) return
+  const lines = [...new Set(chips.map(c => c.offsetTop))]
+  if (lines.length <= 2) { expanded = false; return }
+  const n = chips.length
+  moreBtn.hidden = false
+  if (n > INLINE_MAX) {
+    moreBtn.setAttribute('aria-haspopup', 'dialog')
+    moreBtn.removeAttribute('aria-expanded')
+  } else {
+    moreBtn.removeAttribute('aria-haspopup')
+    moreBtn.setAttribute('aria-expanded', String(expanded))
+    if (expanded) { moreBtn.textContent = t('set.hidden.less'); return }
+  }
+  // Everything from the first chip on line three goes behind the button
+  const cut = lines[2]
+  const first = chips.findIndex(c => c.offsetTop >= cut)
+  const shown = chips.slice(0, first)
+  for (const c of chips.slice(first)) c.hidden = true
+  const label = () => { moreBtn.textContent = t('set.hidden.more', { n: n - shown.length }) }
+  label()
+  // The button itself has to fit on line two
+  while (moreBtn.offsetTop >= cut && shown.length > 1) { shown.pop().hidden = true; label() }
+}
+
+async function removeSite(host, el) {
+  // The keyboard stays put: on the next chip's ×, else the one before, else the field
+  const box = el.parentElement
+  const at = [...box.querySelectorAll('.chip')].indexOf(el)
+  const hadFocus = el.contains(document.activeElement)
+  sites = await setHiddenSites(sites.filter(h => h !== host))
+  renderSites()
+  if (!hadFocus) return
+  const xs = [...box.querySelectorAll('.chip:not([hidden]) .chip-x')]
+  const fallback = box === $('sheet-chips') ? $('sheet-search') : moreBtn.hidden ? $('site-input') : moreBtn
+  ;(xs[at] ?? xs[at - 1] ?? fallback).focus()
+}
+
+function showNote(key, bad = false) {
+  note = key ? { key, bad } : null
+  renderNote()
+}
+function renderNote() {
+  const el = $('site-note')
+  el.hidden = !note
+  el.textContent = note ? t(note.key) : ''
+  el.classList.toggle('field-note--bad', !!note?.bad)
+  $('site-field').classList.toggle('input--bad', !!note?.bad)
 }
 
 $('site-form').addEventListener('submit', async e => {
   e.preventDefault()
   const input = $('site-input')
   const host = normHost(input.value)
-  if (!looksLikeHost(host)) { showSiteError(true); input.focus(); return }
-  showSiteError(false)
+  if (!looksLikeHost(host)) { showNote('set.hidden.bad', true); input.focus(); return }
   input.value = ''
-  sites = await setHiddenSites([...sites, host])
+  // Already hidden there (the site itself, or a site it belongs to): that chip moves
+  // to the front instead of a second one
+  const covered = sites.find(s => hostMatches(host, s))
+  const site = covered ?? host
+  fresh = site
+  clearTimeout(freshTimer)
+  freshTimer = setTimeout(() => { fresh = null }, 1600)
+  note = covered ? { key: 'set.hidden.dupe', bad: false } : null
+  sites = await setHiddenSites([...sites.filter(h => h !== site), site])
   renderSites()
 })
-$('site-input').addEventListener('input', () => showSiteError(false))
+$('site-input').addEventListener('input', () => { if (note) showNote(null) })
 
+// Changed in the popup (or on another computer through sync)
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.bannedSites) { sites = changes.bannedSites.newValue ?? []; renderSites() }
+  if (area !== 'sync' || !changes.bannedSites) return
+  const next = changes.bannedSites.newValue ?? []
+  if (next.length === sites.length && next.every((h, i) => h === sites[i])) return
+  sites = next
+  renderSites()
+})
+
+// Chips wrap by width: fold again when the card gets wider or narrower, and once
+// the font has loaded (it changes every chip's width)
+let foldedAt = 0
+new ResizeObserver(([entry]) => {
+  const w = Math.round(entry.contentRect.width)
+  if (w && w !== foldedAt) { foldedAt = w; fold() }
+}).observe($('site-chips'))
+document.fonts?.addEventListener('loadingdone', () => fold())
+
+// ─── All hidden sites on one page ────────────────────────────────
+// It is a step in the tab's history, so the browser's Back button closes it too.
+
+const sheet = $('sites-sheet')
+const behindSheet = [document.querySelector('body > .topbar'), document.querySelector('main')]
+
+function renderSheet() {
+  const search = $('sheet-search').value.trim()
+  const q = search.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '')
+  const list = newestFirst().filter(h => h.includes(q))
+  $('sheet-chips').replaceChildren(...list.map(chip))
+  const n = sites.length
+  $('sheet-sub').textContent = n ? t('set.hidden.sub') : t('set.hidden.none')
+  $('sheet-count').textContent = n ? countText(n) : ''
+  const empty = $('sheet-empty')
+  empty.hidden = !n || list.length > 0
+  empty.textContent = empty.hidden ? '' : t('set.hidden.no_match', { q: search })
+}
+
+function showSheet(open) {
+  if (open === !sheet.hidden) return
+  sheet.hidden = !open
+  document.body.classList.toggle('has-sheet', open)
+  for (const el of behindSheet) el.inert = open
+  if (open) {
+    $('sheet-search').value = ''
+    renderSheet()
+    sheet.scrollTop = 0
+    $('sheet-search').focus()
+  } else {
+    fold()
+    ;(moreBtn.hidden ? $('site-input') : moreBtn).focus()
+  }
+}
+
+function openSheet() {
+  history.pushState({ sheet: true }, '', '#hidden-sites')
+  showSheet(true)
+}
+function closeSheet() {
+  if (history.state?.sheet) history.back()    // popstate closes it
+  else showSheet(false)
+}
+addEventListener('popstate', () => showSheet(!!history.state?.sheet))
+
+$('sheet-close').addEventListener('click', closeSheet)
+$('sheet-search').addEventListener('input', renderSheet)
+sheet.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeSheet() }
 })
 
 // ─── Sign-in for Instagram and TikTok videos ─────────────────────
@@ -172,6 +327,11 @@ async function renderAll() {
   await renderAll()
   renderSignin()
   refreshStatus()
+  // Reloaded while the full list was open: open it again (if the list is still long)
+  if (history.state?.sheet) {
+    if (sites.length > INLINE_MAX) showSheet(true)
+    else history.replaceState(null, '', location.pathname)
+  }
   // Sent here from a message on a page ("Settings"): show that part
   const part = document.getElementById(location.hash.slice(1))
   if (part?.classList.contains('section')) {

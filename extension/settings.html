@@ -31,6 +31,24 @@
       </div>
     </section>
 
+    <!-- Free only: today's downloads from the browser and the way to Pro (same card as
+         the popup's) -->
+    <section class="section" id="plan-section" hidden>
+      <h2 class="section-title" data-i18n="set.plan"></h2>
+      <div class="plan plan--page" id="set-plan">
+        <div class="plan-top">
+          <span class="plan-title" data-i18n="plan.free"></span>
+          <span class="plan-pill" data-i18n="plan.limit_reached" hidden></span>
+        </div>
+        <div class="plan-usage">
+          <div class="plan-track"><div class="plan-fill"></div></div>
+          <div class="plan-labels"><span class="plan-used"></span><span class="plan-left"></span></div>
+        </div>
+        <p class="plan-note" data-i18n="plan.midnight" hidden></p>
+        <button type="button" class="btn btn--upgrade plan-upgrade" data-i18n="common.upgrade"></button>
+      </div>
+    </section>
+
     <section class="section">
       <h2 class="section-title" data-i18n="set.saving"></h2>
       <div class="group">
@@ -60,8 +78,8 @@
             <span class="row-title" data-i18n="set.hidden"></span>
             <span class="row-sub" id="sites-sub"></span>
           </span>
+          <span class="row-value" id="sites-count"></span>
         </div>
-        <ul class="site-list" id="site-list"></ul>
         <form class="row row--add" id="site-form" novalidate>
           <label class="input" id="site-field">
             <span class="icon icon--link"></span>
@@ -70,7 +88,9 @@
           </label>
           <button type="submit" class="btn btn--secondary" data-i18n="set.hidden.add"></button>
         </form>
-        <p class="field-error" id="site-error" data-i18n="set.hidden.bad" hidden></p>
+        <p class="field-note" id="site-note" role="status" hidden></p>
+        <!-- Small chips, newest first, two lines at most (settings.js) -->
+        <div class="chips" id="site-chips" hidden></div>
       </div>
     </section>
 
@@ -117,6 +137,32 @@
       </div>
     </section>
   </main>
+
+  <!-- Every hidden site on one page, with a search field: opened from "+N more" when
+       there are more than 20 (fewer open in place, in the card) -->
+  <div class="sheet" id="sites-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <header class="topbar">
+      <button type="button" class="btn btn--ghost sheet-back" id="sheet-close" data-i18n-title="set.back">
+        <span class="icon icon--back"></span><span data-i18n="common.settings"></span>
+      </button>
+    </header>
+    <div class="page">
+      <div class="sheet-head">
+        <h1 class="page-title" id="sheet-title" data-i18n="set.hidden"></h1>
+        <div class="sheet-meta">
+          <span class="sheet-sub" id="sheet-sub"></span>
+          <span class="row-value" id="sheet-count"></span>
+        </div>
+      </div>
+      <label class="input input--tall">
+        <span class="icon icon--search"></span>
+        <input type="text" id="sheet-search" data-i18n-ph="set.hidden.find" data-i18n-aria="set.hidden.find"
+               autocomplete="off" autocapitalize="off" spellcheck="false" />
+      </label>
+      <div class="chips chips--all" id="sheet-chips"></div>
+      <p class="sheet-empty" id="sheet-empty" hidden></p>
+    </div>
+  </div>
 
   <script src="i18n.js"></script>
   <script src="pages.js"></script>

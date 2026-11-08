@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "qooti",
   "description": "Save images and videos to your qooti library with one click.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -48,7 +48,9 @@
     "storage",
     "contextMenus",
     "clipboardWrite",
-    "activeTab"
+    "activeTab",
+    "alarms",
+    "unlimitedStorage"
   ],
   "optional_permissions": [
     "cookies"

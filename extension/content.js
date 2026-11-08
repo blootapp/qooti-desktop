@@ -1059,17 +1059,18 @@
   async function handleSaveWithPayload(badge, getPayload) {
     const setBadge = state => setBadgeState(badge, state)
     let preview = null
+    let payload = null
     setBadge('saving')
     try {
       // Pre-flight: fast reachability check resolves in ~5 ms (ECONNREFUSED) or
-      // ≤400 ms worst-case, so "qooti isn't open" shows at once.
+      // ≤400 ms worst-case. qooti closed: the link waits for it instead.
       const running = await checkRunning()
       if (!running) {
-        setBadge('error')
-        showNotRunning()
+        payload = await getPayload()
+        await keepForLater(badge, payload)
         return
       }
-      const payload = await getPayload()
+      payload = await getPayload()
       preview = previewOf(payload)
       const result  = await sendSave(payload)
       setBadge('done')
@@ -1095,12 +1096,33 @@
         showCollectionPicker(result.collections, result.inspiration_id, preview)
       }
     } catch (err) {
+      // qooti closed between the check and the save: keep the link all the same
+      if (err.kind === 'offline' && payload) { await keepForLater(badge, payload); return }
       const pairing = err.kind === 'pairing' || err.kind === 'pairing-denied'
       // Not connected yet isn't a failed save: the button stays as it was, the toast explains
       setBadge(pairing ? null : 'error')
       if (err.kind === 'offline') showNotRunning()
       else if (pairing) showPairingMessage(err)
       else showMessage({ title: t('fail.title'), message: err.message || t('fail.retry') })
+    }
+  }
+
+  // qooti isn't running: the link waits in the extension, and qooti asks what to
+  // download from it when it opens. Only if even that fails, "qooti isn't open".
+  async function keepForLater(badge, payload) {
+    const res = await new Promise(resolve => safeSend({ action: 'queue-save', payload }, resolve))
+    if (res?.ok) {
+      setBadgeState(badge, 'done')
+      showMessage({
+        tone: 'info',
+        title: t('queue.title'),
+        message: t('queue.msg'),
+        action: { label: t('common.open_qooti'), onClick: openApp },
+        duration: 8000,
+      })
+    } else {
+      setBadgeState(badge, 'error')
+      showNotRunning()
     }
   }
 
@@ -1452,24 +1474,26 @@
       yesBtn.disabled = true
       noBtn.disabled  = true
       yesBtn.textContent = t('common.saving')
+      const frame = {
+        url: location.href, page_url: location.href, title: document.title,
+        type: 'image', source_platform: 'youtube', data_url: dataUrl,
+      }
       try {
         const running = await checkRunning()
         if (!running) {
+          // qooti closed: the frame waits as a picture until it opens
           dismissDlToast()
-          showNotRunning()
+          await keepForLater(null, frame)
           return
         }
-        const result = await sendSave({
-          url: location.href, page_url: location.href, title: document.title,
-          type: 'image', source_platform: 'youtube', data_url: dataUrl,
-        })
+        const result = await sendSave(frame)
         titleEl.textContent = result.already_exists ? t('already') : t('saved')
         rowEl.remove()
         toast.querySelector('.qooti-toast-msg')?.remove()
         setTimeout(dismissDlToast, 2000)
       } catch (err) {
         dismissDlToast()
-        if (err.kind === 'offline') showNotRunning()
+        if (err.kind === 'offline') await keepForLater(null, frame)
         else if (err.kind === 'pairing' || err.kind === 'pairing-denied') showPairingMessage(err)
         else showMessage({ title: t('fail.title'), message: err.message || t('fail.retry') })
       }
