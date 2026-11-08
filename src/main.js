@@ -17,6 +17,7 @@ import { init as initLicensing, isSignedIn, getPlan, openHub } from './modules/l
 import { init as initNotifications } from './modules/notifications.js'
 import { init as initMilestones } from './modules/milestones.js'
 import { init as initExtension } from './modules/extension.js'
+import { init as initBrowserQueue } from './modules/browser-queue.js'
 import { openColorPicker, isColorPickerOpen, closeColorPicker } from './modules/color-picker.js'
 import { startTask } from './modules/progress-ring.js'
 import { initDownloader, checkUrl, handleSwatchClick, startDownloadFromInput, isUrl } from './modules/downloader.js'
@@ -712,6 +713,8 @@ async function boot() {
     initMilestones(document.getElementById('view-milestones'))
     initActivityView(document.getElementById('view-activity'))
     initDuplicates(document.getElementById('view-duplicates'))
+    // Links the browser extension kept while qooti was closed: asks what to download
+    initBrowserQueue()
 
     // Signed in = bloot apps is signed in on this computer; then qooti opens straight
     // into the library (zero clicks). Otherwise the one-step "Continue with bloot

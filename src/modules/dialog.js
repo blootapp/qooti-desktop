@@ -5,7 +5,8 @@ let _overlay = null
 
 /** True while a dialog is on screen — other key handlers should stand aside. */
 export function isDialogOpen() {
-  return !!_overlay?.classList.contains('dlg-visible')
+  // Any dialog: this file's, or one a module builds on the same overlay styles
+  return !!_overlay?.classList.contains('dlg-visible') || !!document.querySelector('.dlg-overlay.dlg-visible')
 }
 
 /** "Are you sure?" before an item is deleted. Resolves true only when the user confirms. */

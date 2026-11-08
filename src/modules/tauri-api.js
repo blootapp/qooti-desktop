@@ -83,6 +83,11 @@ export async function initTauriApi() {
     store.emit(events.EXT_SAVE_QUEUED, e.payload)
   })
 
+  // Links the browser extension kept while qooti was closed (browser_queue.rs)
+  await _listen('browser-queue-changed', e => {
+    store.emit(events.BROWSER_QUEUE_CHANGED, e.payload ?? {})
+  })
+
   // Files dragged in from the OS. Tauri handles the drag natively (the page's own drag
   // events never fire for OS files), so the drop overlay (B5) and the import drop zone
   // follow these. Positions arrive in physical pixels → CSS pixels.
@@ -260,6 +265,10 @@ const tauriApi = {
   applyUpdate:    ()         => _invoke('apply_update'),
   checkForUpdate: ()         => _invoke('check_for_update'),
   getFreePlanInfo: ()        => _invoke('get_free_plan_info'),
+  // "Links from your browser" (browser_queue.rs): picks = [{ id, choice }]
+  browserQueueList:   ()      => _invoke('browser_queue_list'),
+  browserQueueStart:  picks   => _invoke('browser_queue_start', { picks }),
+  browserQueueRemove: ids     => _invoke('browser_queue_remove', { ids }),
   takeLaunchFile:  ()        => _invoke('take_launch_file'),
   getDeviceId:     ()        => _invoke('get_device_id'),
   deviceLabel:     ()        => _invoke('device_label'),

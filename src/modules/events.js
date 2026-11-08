@@ -47,6 +47,7 @@ export const QOOTI_FILE_OPEN  = 'qooti:file-open'  // { path } — a .qooti open
 export const EXTENSION_ITEM_RECEIVED     = 'extension:item-received'      // payload from extension
 export const EXTENSION_ADD_TO_COLLECTION = 'extension:add-to-collection'  // { inspiration_id, collection_id }
 export const EXTENSION_PAIR_REQUEST      = 'extension:pair-request'       // { origin, browser } — ask the user
+export const BROWSER_QUEUE_CHANGED       = 'extension:browser-queue'      // { count } | { preview: id } | { removed } | { started } — links kept while qooti was closed
 
 // ─── Mobile ───────────────────────────────────────────────────────
 export const MOBILE_ITEMS_PENDING = 'mobile:items-pending'  // { count } — items waiting in mobile inbox

@@ -229,7 +229,20 @@ export const mockApi = {
   hubRefresh: () => Promise.resolve(mockHubAccount()),
   clearLicenseCache: () => Promise.resolve(),
   listMilestones:  () => Promise.resolve([]),
-  getFreePlanInfo: () => Promise.resolve({ item_total: _inspirations.length, item_limit: 200, collections_used: MOCK_COLLECTIONS.length, collections_limit: 3 }),
+  getFreePlanInfo: () => Promise.resolve({
+    item_total: _inspirations.length, item_limit: 200, collections_used: MOCK_COLLECTIONS.length, collections_limit: 3,
+    is_free: _mockHub === 'free', ext_limit: _mockHub === 'free' ? 10 : 4294967295, ext_used_today: 0,
+  }),
+
+  // Links from the browser (browser-queue.js) — ?bq=4 | 42 (none by default)
+  browserQueueList:   () => Promise.resolve(_bq.map(i => ({ ...i }))),
+  browserQueueStart:  picks => {
+    const ids = new Set(picks.map(p => p.id))
+    _bq = _bq.filter(i => !ids.has(i.id))
+    const later = _mockHub === 'free' ? Math.max(0, picks.length - 10) : 0
+    return Promise.resolve({ started: picks.length - later, already: 0, later })
+  },
+  browserQueueRemove: ids => { _bq = _bq.filter(i => !ids.includes(i.id)); return Promise.resolve() },
 
   getNotifications:     () => Promise.resolve([..._notifications]),
   markNotificationRead: id => { const n = _notifications.find(n => n.id === id); if (n) n.read = true; return Promise.resolve() },
@@ -322,6 +335,41 @@ export const mockApi = {
     return Promise.resolve(id)
   },
 }
+
+// ─── Links from the browser (design preview: ?bq=4 | 42) ─────────
+const bqTile = (a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${a}'/><stop offset='1' stop-color='${b}'/></linearGradient></defs><rect width='160' height='100' fill='url(#g)'/></svg>`)
+const BQ_TILES = [['#e9e6e4', '#9da3ad'], ['#c0c4ca', '#8a9099'], ['#e5803b', '#b8603a'], ['#5468e0', '#6d6fa8'], ['#3d5059', '#4f7480'], ['#7b4a2c', '#a0612b'], ['#2c2328', '#4a3a3e']]
+const BQ_SITES = {
+  youtube:   { page: 'https://www.youtube.com/watch?v=', kind: 'video', titles: ['How Pentagram builds a brand system', 'Kinetic type in 30 seconds', 'Designing a type family, part 2', 'Swiss style in motion', 'Grid systems, explained'] },
+  pinterest: { page: 'https://www.pinterest.com/pin/', kind: 'image', titles: ['Swiss poster, 1962', 'Bauhaus colour study', 'Packaging, matte black', 'Type specimen'] },
+  instagram: { page: 'https://www.instagram.com/reel/', kind: 'video', titles: ['Studio tour, Copenhagen', 'Letterpress at work', 'Sketchbook flip'] },
+  behance:   { page: 'https://www.behance.net/gallery/', kind: 'image', titles: ['Brand guidelines, Nordic', 'Annual report layout'] },
+}
+function bqItem(platform, i, ageMin, choice = null) {
+  const s = BQ_SITES[platform]
+  const [a, b] = BQ_TILES[(i * 3 + platform.length) % BQ_TILES.length]
+  const host = new URL(s.page).hostname.replace(/^www\./, '')
+  const video = s.kind === 'video'
+  return {
+    id: `bq-${platform}-${i}`, url: `${s.page}${i}`, page_url: `${s.page}${i}`,
+    title: s.titles[i % s.titles.length] + (i >= s.titles.length ? ` (${i + 1})` : ''),
+    kind: s.kind, site: host, source_platform: platform,
+    choice: choice ?? (video ? 'video' : 'image'),
+    formats: video ? ['video', 'thumbnail', 'link'] : ['image', 'link'],
+    saved_at: NOW - ageMin * 60000, preview: bqTile(a, b),
+  }
+}
+function makeBq(n) {
+  if (n >= 10) {
+    const out = []
+    for (const [platform, count] of [['youtube', 23], ['pinterest', 12], ['instagram', 5], ['behance', 2]])
+      for (let i = 0; i < count; i++) out.push(bqItem(platform, i, 30 + i * 47 + platform.length * 5))
+    return out.slice(0, n)
+  }
+  return [bqItem('youtube', 0, 120), bqItem('pinterest', 0, 130), bqItem('instagram', 0, 60 * 26), bqItem('youtube', 1, 60 * 27, 'thumbnail')].slice(0, n)
+}
+let _bq = makeBq(Number(new URLSearchParams(location.search).get('bq') || 0))
 
 // ─── bloot apps account (design preview) ─────────────────────────
 let _mockHub = new URLSearchParams(location.search).get('hub') || 'pro'

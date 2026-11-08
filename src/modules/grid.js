@@ -325,16 +325,21 @@ function renderShell() {
       <span class="search-head-sub">${t('search.matches_in')}</span>
     </div>
 
-    <div class="update-bar" id="update-bar" hidden>
-      <span class="update-bar-badge">${I('bell', 16)}</span>
-      <span class="update-bar-text" id="update-bar-text"></span>
-      <button class="update-bar-dismiss" id="update-bar-dismiss">${t('update.later')}</button>
-      <button class="update-bar-btn" id="update-bar-btn"></button>
-    </div>
+    <!-- Update / offline (H3, H5): float over the top of the grid — the grid never moves -->
+    <div class="grid-notices">
+      <div class="grid-notices-stack">
+        <div class="update-bar" id="update-bar" hidden>
+          <span class="update-bar-badge">${I('bell', 16)}</span>
+          <span class="update-bar-text" id="update-bar-text"></span>
+          <button class="update-bar-dismiss" id="update-bar-dismiss">${t('update.later')}</button>
+          <button class="update-bar-btn" id="update-bar-btn"></button>
+        </div>
 
-    <div class="update-bar offline-bar" id="offline-bar" ${navigator.onLine ? 'hidden' : ''}>
-      <span class="update-bar-badge">${I('wifi-high', 16)}</span>
-      <span class="update-bar-text">${t('offline.bar')}</span>
+        <div class="update-bar offline-bar" id="offline-bar" ${navigator.onLine ? 'hidden' : ''}>
+          <span class="update-bar-badge">${I('wifi-high', 16)}</span>
+          <span class="update-bar-text">${t('offline.bar')}</span>
+        </div>
+      </div>
     </div>
 
     <div class="grid-scroll" id="grid-scroll">${skeletonHtml()}</div>

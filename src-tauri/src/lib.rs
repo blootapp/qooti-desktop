@@ -15,6 +15,7 @@ pub mod logger;
 pub mod media_guard;
 pub mod vault;
 pub mod extension_server;
+pub mod browser_queue;
 pub mod net_guard;
 pub mod updater;
 pub mod pack;
@@ -197,6 +198,8 @@ pub fn run() {
 
             let handle = app.handle().clone();
             std::thread::spawn(move || extension_server::start(handle));
+            // Links from the browser still missing a preview (qooti closed mid-fetch)
+            browser_queue::spawn_preview_worker(app.handle().clone());
 
             // Midnight queue processor: at local midnight, flush ext_download_queue back
             // into the normal download flow so queued items download automatically.
@@ -440,6 +443,9 @@ pub fn run() {
             commands::queue_ext_download,
             commands::reset_app,
             commands::get_free_plan_info,
+            browser_queue::browser_queue_list,
+            browser_queue::browser_queue_remove,
+            browser_queue::browser_queue_start,
             commands::take_launch_file,
             commands::find_duplicates,
             updater::apply_update,

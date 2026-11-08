@@ -14,6 +14,7 @@ pub fn init(app: &AppHandle) -> Result<Connection> {
 
     migrate(&conn)?;
     repair_ocr_text(&conn);
+    crate::browser_queue::ensure_table(&conn);
 
     // Reset any items that were mid-processing when the app last exited.
     let _ = conn.execute_batch(

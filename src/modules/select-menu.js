@@ -33,7 +33,8 @@ export function enhanceSelect(select) {
     menu.className = 'sm-menu'
     menu.setAttribute('role', 'listbox')
     const opts = [...select.options]
-    menu.innerHTML = opts.map((o, i) => `
+    // A hidden option (e.g. "Mixed") can show on the button but is never offered
+    menu.innerHTML = opts.map((o, i) => o.hidden ? '' : `
       <button type="button" class="sm-item${o.selected ? ' is-selected' : ''}" role="option" aria-selected="${o.selected}" data-i="${i}">
         <span class="sm-item-label">${o.textContent.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))}</span>${o.selected ? CHECK : ''}
       </button>`).join('')
@@ -48,7 +49,7 @@ export function enhanceSelect(select) {
     if (m.bottom > window.innerHeight - 8) { menu.style.top = `${r.top - m.height - 6}px`; menu.classList.add('is-above') }
 
     const items = [...menu.querySelectorAll('.sm-item')]
-    let focusIdx = Math.max(0, select.selectedIndex)
+    let focusIdx = Math.max(0, items.findIndex(it => Number(it.dataset.i) === select.selectedIndex))
     items[focusIdx]?.focus()
 
     const choose = i => {
@@ -59,7 +60,7 @@ export function enhanceSelect(select) {
       close()
       btn.focus()
     }
-    items.forEach((it, i) => it.addEventListener('click', () => choose(i)))
+    items.forEach(it => it.addEventListener('click', () => choose(Number(it.dataset.i))))
 
     const onKey = e => {
       if (e.key === 'Escape') { e.preventDefault(); close(); btn.focus() }

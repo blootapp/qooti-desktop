@@ -338,8 +338,25 @@ a:hover { text-decoration: underline; }
 .top-bar-import-btn:hover  { opacity: 0.88; }
 .top-bar-import-btn:active { opacity: 0.76; }
 
-/* Update bar — sits under the tag pills in the home grid (see grid.js) */
-/* Update / offline bar (guide H3, H5): a quiet inset row above the grid */
+/* Update / offline bar (guide H3, H5). They float over the top of the grid, under the
+   tag pills, instead of pushing it down: a zero-height layer just above the scrolling
+   grid holds them, so nothing moves when one appears or goes. */
+.grid-notices { position: relative; z-index: 30; height: 0; flex-shrink: 0; }
+.grid-notices-stack {
+  position: absolute;
+  top: 6px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.grid-notices .update-bar {
+  margin: 0;
+  background: var(--bg-raised);
+  border-color: var(--border-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
 .update-bar {
   display: flex;
   align-items: center;
@@ -2554,6 +2571,12 @@ body.hide-collection-label .card-label--collection { display: none; }
 .settings-save-btn {
   position: relative;
   overflow: hidden;
+  /* A row, so a spinner sits centred beside its words ("Installing…"), not on the
+     text baseline above them */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   height: 28px;
   padding: 0 12px;
   border-radius: var(--radius-pill);
@@ -5534,6 +5557,124 @@ html.density-compact .ctx-item:not(.ctx-submenu .ctx-item) > span:not([class*="i
 /* Destructive: red text on a quiet pill — never a solid red block (guide H1) */
 .dlg-btn--danger { background: var(--bg-hover); color: var(--danger); }
 .dlg-btn--danger:hover { background: rgba(255, 99, 89, 0.14); }
+.dlg-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* ─── Links from your browser (browser-queue.js · guide F11–F11f) ──── */
+/* Bordered rows, one per link (or per site past 8); the list scrolls inside the dialog
+   while the title, the free-plan line and the buttons stay put. */
+.bq-box { width: 600px; max-height: calc(100vh - 64px); gap: 12px; }
+.bq-box .dlg-message { margin-top: -4px; }
+.bq-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 372px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+}
+.bq-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 10px 10px 12px;
+  flex-shrink: 0;
+}
+.bq-list > .bq-row + .bq-row,
+.bq-site + .bq-site,
+.bq-links > .bq-row { border-top: 1px solid var(--border-default); }
+.bq-row--link { min-height: 0; padding: 8px 10px 8px 36px; }
+
+.bq-thumb {
+  width: 64px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+.bq-row--link .bq-thumb { width: 48px; height: 30px; border-radius: 5px; }
+.bq-thumb img, .bq-stack img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* A site: three of its previews, stacked */
+.bq-stack { position: relative; width: 64px; height: 40px; flex-shrink: 0; }
+.bq-stack span {
+  position: absolute;
+  width: 44px;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--bg-hover);
+  box-shadow: 0 0 0 1.5px var(--bg-raised);
+}
+.bq-stack span:nth-last-child(3) { left: 20px; top: 0; }
+.bq-stack span:nth-last-child(2) { left: 10px; top: 5px; }
+.bq-stack span:nth-last-child(1) { left: 0;    top: 10px; }
+
+.bq-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bq-name, .bq-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bq-name { font-size: 13px; font-weight: 500; line-height: 1.25; color: var(--text-primary); }
+.bq-meta { font-size: 12px; line-height: 1.33; color: var(--text-muted); }
+.bq-fixed { min-width: 120px; padding: 0 14px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+/* The dialog is the raised surface already: its menus sit one step above it (guide Select) */
+.bq-box .settings-select { flex-shrink: 0; background-color: var(--bg-hover); }
+.bq-box .settings-select.sm-trigger:hover,
+.bq-box .settings-select.sm-trigger.is-open { background-color: var(--bg-selected); }
+
+.bq-icon-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.bq-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.bq-icon-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+/* Free plan: how many download now, the rest at midnight — with Upgrade to Pro, the one
+   blue button (as in the extension's Upgrade toast) */
+.bq-free {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  font-size: 12px;
+  line-height: 1.33;
+  color: var(--text-secondary);
+}
+.bq-free span { flex: 1; min-width: 0; }
+.bq-upgrade {
+  height: 28px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: #0071E3;
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bq-upgrade:hover { background: #0077ED; }
+.bq-upgrade:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.bq-keep { font-size: 12px; color: var(--text-muted); }
+.bq-actions { justify-content: space-between; margin-top: 0; }
 
 /* ─── Import Modal (guide F0–F4) ─────────────────────────────────── */
 /* Opening: the app softens behind (scrim-in grows the blur from 0 → 16 px while the tint

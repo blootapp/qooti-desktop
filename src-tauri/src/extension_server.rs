@@ -14,6 +14,9 @@
 //   GET  /extension/collections     — returns [{id, name}] list    (requires X-Qooti-Key)
 //   POST /extension/save            — queues media for download     (requires X-Qooti-Key)
 //   POST /extension/add-to-collection — adds item to collection    (requires X-Qooti-Key)
+//   GET  /extension/plan            — Free or Pro, and today's saves on Free (requires X-Qooti-Key)
+//   POST /extension/queue           — one link saved while qooti was closed; it waits in
+//                                     "Links from your browser" (requires X-Qooti-Key)
 //   GET  /mobile/ping               — returns version/platform, no auth required
 //   POST /mobile/queue              — receive queued links from mobile (requires X-Qooti-Key)
 //   POST /mobile/upload             — receive a media file from mobile (requires X-Qooti-Key)
@@ -307,6 +310,55 @@ pub fn start(app: AppHandle) {
                 }
             }
 
+            // ── The plan, for the popup's Free plan card (auth required) ──
+            ("GET", "/extension/plan") => {
+                if !check_extension_auth(&request, &app) {
+                    respond_error(request, 401, "Unauthorized");
+                    continue;
+                }
+                let info = {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    if is_free_plan(&get_plan(&db)) {
+                        serde_json::json!({ "plan": "free", "used": ext_dl_used_today(&db), "limit": FREE_EXT_DAILY_LIMIT })
+                    } else {
+                        serde_json::json!({ "plan": "pro" })
+                    }
+                };
+                respond_json(request, &info);
+            }
+
+            // ── A link the extension kept while qooti was closed (auth required) ──
+            // One per request (a frame arrives as a picture). It waits for the user in
+            // "Links from your browser" — nothing downloads until they say so.
+            ("POST", "/extension/queue") => {
+                if !check_extension_auth(&request, &app) {
+                    respond_error(request, 401, "Unauthorized");
+                    continue;
+                }
+                let body = read_body(&mut request, MAX_SAVE_BODY);
+                let Ok(item) = serde_json::from_str::<serde_json::Value>(&body) else {
+                    respond_error(request, 400, "Invalid JSON");
+                    continue;
+                };
+                let accepted = {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    crate::browser_queue::accept(&app, &db, &item)
+                };
+                match accepted {
+                    Ok(id) => {
+                        log::info!(target: "ExtServer", "queue_received id={id}");
+                        crate::browser_queue::changed(&app);
+                        respond_json(request, &serde_json::json!({ "ok": true, "id": id }));
+                    }
+                    Err(code) => {
+                        log::warn!(target: "ExtServer", "queue_refused reason={code}");
+                        respond_error(request, 400, code);
+                    }
+                }
+            }
+
             // ── Download progress polling (auth required) ─────────
             ("GET", url) if url.starts_with("/extension/download-progress/") => {
                 if !check_extension_auth(&request, &app) {
@@ -543,14 +595,14 @@ pub fn start(app: AppHandle) {
 
 // ── Free plan helpers ────────────────────────────────────────────
 
-const FREE_EXT_DAILY_LIMIT: u32 = 10;
+pub(crate) const FREE_EXT_DAILY_LIMIT: u32 = 10;
 
 /// From the verified licence ticket — see bloot_hub::verified_plan.
-fn get_plan(_db: &rusqlite::Connection) -> String {
+pub(crate) fn get_plan(_db: &rusqlite::Connection) -> String {
     crate::bloot_hub::verified_plan().to_string()
 }
 
-fn is_free_plan(plan: &str) -> bool {
+pub(crate) fn is_free_plan(plan: &str) -> bool {
     !plan.starts_with("pro")
 }
 
@@ -560,7 +612,7 @@ fn today_local() -> String {
 
 /// Returns how many extension saves have been counted today (local date).
 /// Resets counter automatically when the date has changed.
-fn ext_dl_used_today(db: &rusqlite::Connection) -> u32 {
+pub(crate) fn ext_dl_used_today(db: &rusqlite::Connection) -> u32 {
     let stored_date: String = db.query_row(
         "SELECT value FROM preferences WHERE key = 'ext_dl_date'",
         [],
@@ -587,7 +639,7 @@ fn ext_dl_used_today(db: &rusqlite::Connection) -> u32 {
     ).unwrap_or(0)
 }
 
-fn increment_ext_dl_count(db: &rusqlite::Connection) {
+pub(crate) fn increment_ext_dl_count(db: &rusqlite::Connection) {
     let current = ext_dl_used_today(db);
     let _ = db.execute(
         "INSERT OR REPLACE INTO preferences (key, value) VALUES ('ext_dl_count', ?1)",
