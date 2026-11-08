@@ -57,10 +57,12 @@ body {
   -webkit-mask: var(--icon) center / 16px 16px no-repeat;
           mask: var(--icon) center / 16px 16px no-repeat;
 }
-.icon--gear  { --icon: url('icons/ui/gear.svg'); }
+.icon--settings { --icon: url('icons/ui/settings.svg'); }
 .icon--close { --icon: url('icons/ui/close.svg'); }
 .icon--link  { --icon: url('icons/ui/input-link.svg'); }
 .icon--out   { --icon: url('icons/ui/arrow-out.svg'); width: 14px; height: 14px; -webkit-mask-size: 14px 14px; mask-size: 14px 14px; }
+.icon--back  { --icon: url('icons/ui/arrow-left.svg'); }
+.icon--search { --icon: url('icons/ui/search.svg'); }
 
 /* Connection dot */
 .status-dot {
@@ -195,6 +197,49 @@ body {
 .btn--ghost:hover { background: var(--bg-hover); }
 .btn:disabled { opacity: 0.6; cursor: default; }
 .btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+/* Full width, Medium (36 px): Ban / Unban this site, Upgrade to Pro */
+.btn--block { display: flex; width: 100%; height: 36px; }
+/* Upgrade to Pro is the one blue button (as in the on-page Upgrade toast) */
+.btn--upgrade { background: #0071E3; color: #FFFFFF; }
+.btn--upgrade:hover { background: #0077ED; }
+
+/* ── Free plan card: today's downloads from the browser, and the way to Pro ── */
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+.plan-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.plan-title { font-weight: 500; line-height: 1.23; }
+.plan-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--fg-primary);
+  color: var(--fg-inverse);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.33;
+  letter-spacing: 0;
+}
+.plan-usage { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.plan-track { height: 6px; overflow: hidden; border-radius: 3px; background: var(--bg-hover); }
+.plan-fill { width: 0; height: 100%; border-radius: 3px; background: var(--fg-primary); transition: width 300ms var(--ease); }
+.plan-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.33;
+  letter-spacing: 0;
+  color: var(--fg-secondary);
+}
+.plan-left { color: var(--fg-tertiary); white-space: nowrap; }
+.plan-note { font-size: 12px; line-height: 1.33; letter-spacing: 0; color: var(--fg-secondary); }
 
 .icon-btn {
   flex-shrink: 0;

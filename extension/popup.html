@@ -15,7 +15,7 @@
       <span class="status-dot" id="status-dot"></span>
       <span id="status-text" data-i18n="status.checking"></span>
     </span>
-    <button type="button" class="icon-btn" id="btn-settings" data-i18n-title="common.settings"><span class="icon icon--gear"></span></button>
+    <button type="button" class="icon-btn" id="btn-settings" data-i18n-title="common.settings"><span class="icon icon--settings"></span></button>
   </header>
 
   <main class="content">
@@ -23,7 +23,7 @@
     <!-- The app isn't running -->
     <section class="state" id="closed" hidden>
       <p class="state-title" data-i18n="offline.title"></p>
-      <p class="state-text" data-i18n="popup.closed.text"></p>
+      <p class="state-text" id="closed-text" data-i18n="popup.closed.text"></p>
       <div class="state-actions">
         <button type="button" class="btn btn--primary" id="btn-open" data-i18n="common.open_qooti"></button>
         <a class="btn btn--ghost" id="link-get" target="_blank" rel="noopener" data-i18n="popup.get_qooti"></a>
@@ -39,18 +39,32 @@
       </div>
     </section>
 
-    <!-- Ready: the save button on the site in this tab -->
+    <!-- Ready: the collection picker, this site's Ban / Unban, the Free plan -->
     <section class="ready" id="ready" hidden>
-      <div class="group" id="here" hidden>
-        <button type="button" class="row row--toggle" id="here-toggle" role="switch" aria-checked="true">
+      <div class="group">
+        <button type="button" class="row row--toggle" id="toggle-picker" role="switch" aria-checked="true">
           <span class="row-text">
-            <span class="row-title" data-i18n="popup.here"></span>
-            <span class="row-sub" id="here-host"></span>
+            <span class="row-title" data-i18n="set.picker"></span>
+            <span class="row-sub" data-i18n="set.picker.sub"></span>
           </span>
           <span class="toggle" aria-hidden="true"></span>
         </button>
       </div>
+      <button type="button" class="btn btn--secondary btn--block" id="btn-ban" hidden></button>
       <p class="hint" id="hint"></p>
+      <!-- Free plan: today's downloads from the browser, and the way to Pro -->
+      <div class="plan" id="plan" hidden>
+        <div class="plan-top">
+          <span class="plan-title" data-i18n="plan.free"></span>
+          <span class="plan-pill" data-i18n="plan.limit_reached" hidden></span>
+        </div>
+        <div class="plan-usage">
+          <div class="plan-track"><div class="plan-fill"></div></div>
+          <div class="plan-labels"><span class="plan-used"></span><span class="plan-left"></span></div>
+        </div>
+        <p class="plan-note" data-i18n="plan.midnight" hidden></p>
+        <button type="button" class="btn btn--upgrade btn--block plan-upgrade" data-i18n="common.upgrade"></button>
+      </div>
     </section>
 
   </main>

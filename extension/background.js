@@ -204,6 +204,138 @@ async function saveItem(payload) {
   return await r.json()
 }
 
+// ─── Saved while qooti is closed ─────────────────────────────────
+// With qooti closed a save isn't lost: the link waits here (local storage, which pages
+// can't read) and goes over to qooti once it runs again, where qooti asks what to
+// download from each ("Links from your browser"). A link leaves this list only once
+// qooti has it.
+
+const QUEUE_KEY   = 'qooti_queue'
+const QUEUE_MAX   = 500
+const QUEUE_ALARM = 'qooti-queue'
+
+async function readQueue() {
+  const { [QUEUE_KEY]: q } = await chrome.storage.local.get(QUEUE_KEY)
+  return Array.isArray(q) ? q : []
+}
+
+// One change at a time: two quick saves must not write over each other's list.
+let queueLock = Promise.resolve()
+function changeQueue(fn) {
+  const run = queueLock.then(async () => {
+    const q = await readQueue()
+    const next = fn(q)
+    if (next) await chrome.storage.local.set({ [QUEUE_KEY]: next })
+    return next ?? q
+  })
+  queueLock = run.catch(() => {})
+  return run
+}
+
+// Keeps a (cleaned) save for later. → how many links wait now.
+async function queueAdd(payload) {
+  const item = {
+    id:              crypto.randomUUID(),
+    url:             payload.url,
+    page_url:        payload.page_url ?? '',
+    title:           payload.title ?? '',
+    type:            payload.type === 'video' ? 'video' : 'image',
+    source_platform: payload.source_platform ?? null,
+    thumbnail_url:   payload.thumbnail_url ?? null,
+    saved_at:        Date.now(),
+  }
+  if (payload.data_url) item.data_url = payload.data_url
+  // What the user picked here; qooti's list starts on it
+  item.choice = item.data_url ? 'frame' : item.type === 'video' ? 'video' : 'image'
+  const q = await changeQueue(q => {
+    // The same link twice is one entry (frames are always new)
+    if (!item.data_url && q.some(x => !x.data_url && x.url === item.url)) return null
+    if (q.length >= QUEUE_MAX) throw new UserError('queueFull', 'offline')
+    return [...q, item]
+  })
+  chrome.alarms.create(QUEUE_ALARM, { periodInMinutes: 1 })
+  return q.length
+}
+
+// Hands the waiting links to qooti when it runs and this browser is connected. Safe to
+// call often: one run at a time, and a quick no-op when nothing waits.
+let flushing = null
+function flushQueue() {
+  if (!flushing) flushing = handOverAll().catch(() => 0).finally(() => { flushing = null })
+  return flushing
+}
+
+async function handOverAll() {
+  const q = await readQueue()
+  if (!q.length) { chrome.alarms.clear(QUEUE_ALARM); return 0 }
+  if (!(await quickPing())) return q.length
+  let key = await ensurePaired()
+  if (!key) return q.length
+  for (const item of q) {
+    let res = await handOver(item, key)
+    if (res === 'stale') {
+      key = await repair()
+      if (!key) break
+      res = await handOver(item, key)
+    }
+    if (res !== 'ok') break
+    await changeQueue(cur => cur.filter(x => x.id !== item.id))
+  }
+  const left = (await readQueue()).length
+  if (!left) chrome.alarms.clear(QUEUE_ALARM)
+  return left
+}
+
+// → 'ok' (qooti has it, or will never take it), 'stale' (our key is old) or 'later'
+async function handOver(item, key) {
+  try {
+    const r = await fetch(`${DESKTOP}/extension/queue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Qooti-Key': key },
+      body: JSON.stringify(item),
+      signal: AbortSignal.timeout(15000),
+    })
+    if (r.ok) return 'ok'
+    if (r.status === 401) return 'stale'
+    if (r.status === 404) {
+      // A qooti from before the list: save it the usual way instead
+      const { id, choice, saved_at, ...rest } = item
+      const clean = cleanPayload(rest)
+      if (clean) await saveItem(clean)
+      return 'ok'
+    }
+    if (r.status === 400) {
+      // qooti can't take this one (it never will) — unless its list is full for now
+      const why = await r.text().catch(() => '')
+      return why.includes('queue_full') ? 'later' : 'ok'
+    }
+    return 'later'
+  } catch {
+    return 'later'
+  }
+}
+
+chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === QUEUE_ALARM) flushQueue() })
+chrome.runtime.onStartup.addListener(() => { flushQueue() })
+
+// Free or Pro, and today's saves on Free — for the Free plan card. Null when qooti
+// can't say (an older qooti, or not connected).
+async function getPlan(key) {
+  try {
+    const r = await fetch(`${DESKTOP}/extension/plan`, {
+      headers: { 'X-Qooti-Key': key },
+      signal: AbortSignal.timeout(1500),
+    })
+    if (!r.ok) return null
+    const p = await r.json()
+    if (p?.plan === 'pro') return { plan: 'pro' }
+    if (p?.plan === 'free' && Number.isFinite(p.used) && Number.isFinite(p.limit)) return { plan: 'free', used: p.used, limit: p.limit }
+    return null
+  } catch {
+    return null
+  }
+}
+
 // Returns 'ok', or 'locked' when the collection takes no new items on the Free plan.
 async function addToCollection(inspirationId, collectionId) {
   const key = await ensurePaired()
@@ -397,8 +529,8 @@ chrome.runtime.onInstalled.addListener(() => {
     })
     applyLang()
   })
-  // Auto-pair on install (fire and forget)
-  ensurePaired()
+  // Auto-pair on install (fire and forget); an update keeps waiting links — hand them over
+  ensurePaired().then(() => flushQueue())
 })
 
 // Right-click → Save to qooti. The page's own script shows the same progress and
@@ -431,6 +563,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     await saveAndDescribe(clean)
     flashIcon(tab?.id, true)
   } catch (e) {
+    // qooti is closed: the link waits for it
+    if (e?.kind === 'offline') {
+      try { await queueAdd(clean); flashIcon(tab?.id, true); return } catch {}
+    }
     flashIcon(tab?.id, false)
     console.warn('[qooti] context menu save failed:', e?.code)
   }
@@ -475,6 +611,18 @@ const PAGE_ACTIONS = {
       return await saveAndDescribe(payload)
     } catch (e) {
       return { ok: false, error: e instanceof UserError ? e.code : 'failed', kind: e?.kind ?? 'failed' }
+    }
+  },
+
+  // qooti is closed: keep the link until it opens (qooti then asks what to download).
+  'queue-save': async (msg, sender) => {
+    const payload = cleanPayload(msg.payload)
+    if (!payload) return { ok: false, error: 'failed', kind: 'failed' }
+    if (tooManySaves(sender.tab.id)) return { ok: false, error: 'busy', kind: 'failed' }
+    try {
+      return { ok: true, queued: await queueAdd(payload) }
+    } catch (e) {
+      return { ok: false, error: e instanceof UserError ? e.code : 'failed', kind: 'offline' }
     }
   },
 
@@ -542,6 +690,8 @@ const PAGE_ACTIONS = {
     // Don't try to pair while the desktop isn't running.
     const key = (await getKey()) ?? ((await quickPing()) ? await pair() : null)
     if (!key) return null
+    // qooti is up and knows this browser: hand over links saved while it was closed
+    flushQueue()
     try {
       const r = await fetch(`${DESKTOP}/extension/pending-download`, {
         headers: { 'X-Qooti-Key': key },
@@ -589,11 +739,19 @@ const OWN_PAGE_ACTIONS = {
   'get-status': async () => {
     const info = await ping()
     const key  = info ? await ensurePaired() : await getKey()
+    const connected = !!info && !!key
+    if (connected) flushQueue()   // links saved while qooti was closed go over now
+    const [queued, plan] = await Promise.all([
+      readQueue().then(q => q.length),
+      connected ? getPlan(key) : null,
+    ])
     return {
       running:   !!info,
-      connected: !!info && !!key,
+      connected,
       version:   info?.version ?? null,
       pairing:   info && !key ? pairState : null,   // 'pending' | 'denied' | null
+      queued,    // links waiting for qooti
+      plan,      // { plan: 'free', used, limit } | { plan: 'pro' } | null
     }
   },
 

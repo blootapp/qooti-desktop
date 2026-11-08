@@ -30,7 +30,8 @@ function send(msg) {
 }
 
 // ─── Sites where the save button stays hidden ────────────────────
-// Stored as bare hosts; the page script matches subdomains too.
+// Stored as bare hosts, oldest first (settings shows the newest first); the page
+// script matches subdomains too.
 
 const DEFAULT_HIDDEN = ['flaticon.com']
 
@@ -56,7 +57,46 @@ async function getHiddenSites() {
 }
 
 async function setHiddenSites(list) {
-  const sites = [...new Set(list)].sort()
+  const sites = [...new Set(list)]
   await chrome.storage.sync.set({ bannedSites: sites })
   return sites
+}
+
+// "Ban YouTube": the site's own name — known names keep their spelling, others are the
+// main word of the address (hostinger.com → Hostinger, web.telegram.org → Telegram).
+const SITE_NAMES = {
+  'youtube.com': 'YouTube', 'youtu.be': 'YouTube', 'linkedin.com': 'LinkedIn', 'tiktok.com': 'TikTok',
+  'github.com': 'GitHub', 'x.com': 'X', 'twitter.com': 'X', 'chatgpt.com': 'ChatGPT', 'deviantart.com': 'DeviantArt',
+  'artstation.com': 'ArtStation', 'soundcloud.com': 'SoundCloud', 'imdb.com': 'IMDb', 'ebay.com': 'eBay',
+  'bbc.co.uk': 'BBC', 'bbc.com': 'BBC', 'cnn.com': 'CNN', 'nytimes.com': 'The New York Times',
+}
+function siteName(host) {
+  for (const [h, name] of Object.entries(SITE_NAMES)) if (host === h || host.endsWith('.' + h)) return name
+  if (/^[\d.]+$/.test(host) || host.includes(':')) return host   // an address, not a name
+  const parts = host.split('.')
+  let i = parts.length - 2
+  // country endings in two parts: example.co.uk, example.com.au
+  if (i > 0 && parts[i].length <= 3 && parts[parts.length - 1].length === 2) i--
+  const word = parts[Math.max(0, i)] || host
+  return word.charAt(0).toUpperCase() + word.slice(1)
+}
+
+// ─── Free plan card (popup and Settings) ─────────────────────────
+// Today's downloads from the browser against the Free limit, and the way to Pro.
+// `plan` is what get-status says: { plan: 'free', used, limit } | { plan: 'pro' } | null.
+
+const PLAN_URL = 'https://account.bloot.app/plan/'
+
+function renderPlanCard(card, plan) {
+  if (!card) return
+  const free = plan?.plan === 'free' && plan.limit > 0
+  card.hidden = !free
+  if (!free) return
+  const used = Math.max(0, Math.min(plan.used, plan.limit))
+  const full = used >= plan.limit
+  card.querySelector('.plan-fill').style.width = `${Math.round(used / plan.limit * 100)}%`
+  card.querySelector('.plan-used').textContent = t('plan.used', { used, limit: plan.limit })
+  card.querySelector('.plan-left').textContent = t('plan.left', { n: plan.limit - used })
+  card.querySelector('.plan-pill').hidden = !full
+  card.querySelector('.plan-note').hidden = !full
 }
