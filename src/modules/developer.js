@@ -514,7 +514,7 @@ export async function runDevCommand(cmd) {
     clear()
     store.emit(events.NAVIGATE, { view: 'grid' })   // bar lives in the home grid
     store.emit(events.UPDATE_AVAILABLE, {
-      version: '1.2.1',
+      version: '1.2.2',
       notes:   'Preview — mock update to test the update bar.',
     })
     return true
