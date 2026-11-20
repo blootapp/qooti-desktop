@@ -21,6 +21,11 @@ pub mod updater;
 pub mod pack;
 pub mod palette;
 pub mod boards;
+pub mod lenses;
+pub mod tagging;
+pub mod frames;
+pub mod crop;
+pub mod announcements;
 
 pub struct ExtProgress {
     pub pct:            f64,
@@ -190,6 +195,23 @@ pub fn run() {
             // YouTube needs a JS runtime for yt-dlp (js_runtime.rs). Fetch deno in the
             // background so it's ready before the first YouTube save; no-op once installed.
             js_runtime::prefetch_in_background(app.handle());
+
+            // Tag lens (lenses.rs, tagging.rs): install the lenses bundled with this version when
+            // they're missing or newer, then the one-time clean-up of the old suggestion tags
+            // (backup first), then re-score what's stale in the background. score_stale does
+            // nothing while tag suggestions are off. Before the indexer, which scores new vectors.
+            {
+                let state = app.state::<AppState>();
+                let db = lenses::lock_db(&state);
+                if let Err(e) = lenses::install_bundled(&db) {
+                    log::warn!(target: "Boot", "bundled lenses not installed: {e}");
+                }
+            }
+            tagging::upgrade_once(app.handle());
+            {
+                let score_handle = app.handle().clone();
+                std::thread::spawn(move || { commands::fix_picture_aspects_once(&score_handle); tagging::score_stale(&score_handle) });
+            }
 
             // "Find similar" embeddings (clip.rs): their own table + a gentle background
             // indexer (downloads the CLIP model once, then embeds new images as they arrive).
@@ -383,13 +405,28 @@ pub fn run() {
             commands::list_milestones,
             commands::get_notifications,
             commands::mark_notification_read,
+            announcements::announcements_list,
+            announcements::announcements_sync,
+            announcements::announcements_event,
+            announcements::announcements_mark_read,
+            announcements::announcements_mark_popped,
             commands::get_mobile_connection_qr,
             commands::reset_mobile_connection_key,
             extension_server::answer_extension_pair,
             extension_server::list_extension_clients,
             extension_server::remove_extension_client,
-            commands::claim_auto_tag_candidates,
-            commands::finalize_auto_tag_result,
+            lenses::list_lenses,
+            lenses::list_concepts,
+            lenses::set_lens_enabled,
+            tagging::apply_role,
+            tagging::install_lenses,
+            tagging::lens_status,
+            tagging::answer_suggestion,
+            tagging::add_concept_tag,
+            tagging::retag_all,
+            tagging::tagging_wake,
+            tagging::lens_status_watch,
+            tagging::get_suggestion_maps,
             commands::reindex_library,
             commands::extract_palette,
             commands::download_url,
@@ -397,6 +434,9 @@ pub fn run() {
             enhancer::delete_enhanced,
             commands::mark_not_duplicates,
             commands::find_similar,
+            commands::set_item_aspect,
+            crop::crop_image,
+            crop::restore_original,
             reco::taste_order,
             diagnostics::diagnostics_snapshot,
             diagnostics::log_frontend,
@@ -412,10 +452,6 @@ pub fn run() {
             boards::import_board,
             commands::finalize_download,
             commands::cancel_download,
-            commands::list_tag_vocab,
-            commands::upsert_tag_vocab,
-            commands::delete_tag_vocab,
-            commands::reset_all_auto_tags,
             commands::copy_file_to_folder,
             commands::copy_file_to_clipboard,
             commands::reveal_in_folder,
@@ -539,7 +575,8 @@ fn process_ext_queue(app: &tauri::AppHandle) {
 }
 
 /// Folders the window may show files from: the library, board images, and any older
-/// library folder items still live in (a library moved without copying its files).
+/// library folder items still live in (a library moved without copying its files) — including
+/// the folder of a cropped picture's kept original, which "Restore original" shows again.
 pub fn allow_media_dirs(app: &tauri::AppHandle) {
     let scope = app.asset_protocol_scope();
     if let Ok(v) = vault::get_vault_path(app) { let _ = scope.allow_directory(&v, true); }
@@ -550,7 +587,7 @@ pub fn allow_media_dirs(app: &tauri::AppHandle) {
         if let Ok(db) = state.db.lock() {
             if let Ok(mut stmt) = db.prepare(
                 "SELECT stored_path FROM inspirations UNION SELECT thumbnail_path FROM inspirations \
-                 UNION SELECT enhanced_path FROM inspirations"
+                 UNION SELECT enhanced_path FROM inspirations UNION SELECT original_path FROM inspirations"
             ) {
                 let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0));
                 for p in rows.into_iter().flatten().flatten().flatten() {

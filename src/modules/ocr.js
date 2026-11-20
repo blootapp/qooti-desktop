@@ -28,6 +28,8 @@ export async function init() {
   // it drains then stops, so wake it on new content (mirrors the auto-tag loop).
   // startIndexing() no-ops when already running, so this is cheap.
   store.on(events.GRID_RELOAD, () => startIndexing())
+  // A cropped or restored picture had its text reset (ocr_status NULL): read it again
+  store.on(events.ITEM_FILE_CHANGED, () => startIndexing())
 }
 
 function createWorker() {
@@ -94,8 +96,11 @@ async function runLoop() {
 
     for (const item of batch) {
       if (paused) break
+      // The file read goes with the result: Rust keeps it only while the item still shows that
+      // file (a crop meanwhile reset its text, and the new picture is read next)
+      const read = item.stored_path
       try {
-        const base64 = await api.readImageAsBase64(item.stored_path)
+        const base64 = await api.readImageAsBase64(read)
         const result = await runOcr(base64)
         if (result.type === 'error') throw new Error(result.message)
         await api.finalizeOcrResult({
@@ -103,11 +108,12 @@ async function runLoop() {
           ocr_text:     result.text,
           ocr_language: result.language ?? null,
           status:       result.text.trim() ? 'done' : 'skipped',
+          stored_path:  read,
         })
         log.info('indexed', { id: item.id, chars: result.text.length, lang: result.language ?? '—', status: result.text.trim() ? 'done' : 'skipped' })
       } catch (e) {
         log.error('failed', { id: item.id, error: e?.message ?? String(e) })
-        await api.finalizeOcrResult({ id: item.id, ocr_text: '', ocr_language: null, status: 'failed' })
+        await api.finalizeOcrResult({ id: item.id, ocr_text: '', ocr_language: null, status: 'failed', stored_path: read })
       }
     }
 

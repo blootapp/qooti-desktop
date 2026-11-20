@@ -160,19 +160,38 @@ fn enhance_impl(app: &AppHandle, id: &str) -> Result<String, String> {
     let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
     let enhanced = src.with_file_name(format!("{stem}_enhanced.png"));
     out.save(&enhanced).map_err(|e| format!("save failed: {e}"))?;
-    let enhanced_str = enhanced.to_string_lossy().to_string();
 
-    {
+    let enhanced_str = {
         let state = app.state::<AppState>();
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        let now = chrono::Utc::now().timestamp_millis();
-        db.execute(
-            "UPDATE inspirations SET enhanced_path = ?1, updated_at = ?2 WHERE id = ?3",
-            rusqlite::params![enhanced_str, now, id],
-        ).map_err(|e| e.to_string())?;
-    }
+        keep_enhanced(&db, id, &stored_path, &enhanced)?
+    };
     log::info!(target: "Enhance", "enhanced id={id} → {enhanced_str}");
     Ok(enhanced_str)
+}
+
+/// Point the item at its upscaled copy `enhanced`, only while the item still shows `source`, the
+/// file that was upscaled. When it doesn't (it was cropped or restored meanwhile, or deleted), the
+/// copy shows a picture the item no longer has: it is removed, and the answer is "changed".
+fn keep_enhanced(conn: &rusqlite::Connection, id: &str, source: &str, enhanced: &std::path::Path) -> Result<String, String> {
+    let path = enhanced.to_string_lossy().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let written = conn.execute(
+        "UPDATE inspirations SET enhanced_path = ?1, updated_at = ?2 WHERE id = ?3 AND stored_path = ?4",
+        rusqlite::params![path, now, id, source],
+    );
+    match written {
+        Ok(n) if n > 0 => Ok(path),
+        Ok(_) => {
+            log::info!(target: "Enhance", "id={id} changed while it was upscaled: the copy was dropped");
+            let _ = std::fs::remove_file(enhanced);
+            Err("changed".into())
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(enhanced);
+            Err(e.to_string())
+        }
+    }
 }
 
 /// Enhance an image item. Heavy inference runs on a blocking thread so the UI never
@@ -220,5 +239,35 @@ mod tests {
         }
         let out = enhance_rgb(&img).expect("enhance failed");
         assert_eq!(out.dimensions(), (148, 88), "output must be exactly 4× the input");
+    }
+
+    #[test]
+    fn a_copy_is_kept_only_for_the_picture_that_was_upscaled() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn.execute("INSERT INTO inspirations (id, type, stored_path, created_at, updated_at) VALUES ('a', 'image', 'a.png', 0, 0)", []).unwrap();
+        let dir = std::env::temp_dir().join(format!("qooti-enhance-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let copy = |name: &str| { let p = dir.join(name); std::fs::write(&p, b"png").unwrap(); p };
+        let enhanced_of = || -> Option<String> {
+            conn.query_row("SELECT enhanced_path FROM inspirations WHERE id = 'a'", [], |r| r.get(0)).unwrap()
+        };
+
+        let first = copy("a_enhanced.png");
+        assert_eq!(keep_enhanced(&conn, "a", "a.png", &first), Ok(first.to_string_lossy().to_string()));
+        assert_eq!(enhanced_of().as_deref(), Some(&*first.to_string_lossy()));
+        assert!(first.exists());
+
+        // Cropped while it was upscaled: the copy of the old picture isn't kept, nor left on disk
+        conn.execute("UPDATE inspirations SET stored_path = 'a_crop_1.png', enhanced_path = NULL WHERE id = 'a'", []).unwrap();
+        let late = copy("a_enhanced_late.png");
+        assert_eq!(keep_enhanced(&conn, "a", "a.png", &late), Err("changed".to_string()));
+        assert_eq!(enhanced_of(), None, "the crop doesn't open on an upscale of the old picture");
+        assert!(!late.exists());
+        // Deleted meanwhile: the same
+        let gone = copy("b_enhanced.png");
+        assert_eq!(keep_enhanced(&conn, "b", "b.png", &gone), Err("changed".to_string()));
+        assert!(!gone.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

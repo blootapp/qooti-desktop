@@ -1,0 +1,1533 @@
+{
+  "format": 2,
+  "id": "motion",
+  "version": 3,
+  "role": "specialist",
+  "min_app": "1.2.3",
+  "updated_at": "2026-11-20",
+  "model": "clip-b32-q8",
+  "template": "This is a photo of {p}",
+  "text_model": "Xenova/clip-vit-base-patch32@6b7c523703ae26e39be4b03774966f8571c7f523 onnx/text_model_quantized.onnx sha256:73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a",
+  "name": {
+    "en": "Video editor / Motion designer",
+    "uz": "Videomontajchi / Motion dizayner"
+  },
+  "summary": {
+    "en": "Ads, UI, 3D, music videos, film, social, tutorials",
+    "uz": "Reklama, UI, 3D, kliplar, kino, ijtimoiy tarmoqlar, darslar"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.15
+  },
+  "borrows": [
+    "fashion",
+    "food",
+    "architecture",
+    "ui_design",
+    "typography",
+    "render_3d",
+    "collage",
+    "infographic",
+    "dark_cinematic",
+    "nature",
+    "retro"
+  ],
+  "concepts": [
+    {
+      "id": "commercial",
+      "label": {
+        "en": "Commercial",
+        "uz": "Reklama roligi"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "a TV commercial",
+        "a glossy brand commercial",
+        "a cinematic advert shot"
+      ],
+      "about": {
+        "en": "TV-style ads and brand films. Untested: it never fired on the test library."
+      },
+      "vec": "ohxoHzygFR4Lj+Sg0iVzsNIkuht/oJ6k8BplHdOj1B4iIMoc4BuEG+AjoaD0JHCjThnXl9eiqh8omlCasw0inCYU1wo7mkCcAxw6ndAgzSObooeNGyB0FqsfW5WxJOIk7B4qoKYfSaZ4IRWk6pgpmdSiSKExJDEQmp5hpAifURzomd6cUx3Gp02ffBunpC+hOaF5JAaeoaBkIIEkdZVanHsbQRtbJDSdM5slIYkjN6FXHDGf7aABGXaxjaB9BLCY1CDomDMg+6ZemuSj+51+pcKgvqOiHeYVdSBNmqgcYSq4lM2YXqLMIxkkzyBgILgEKKJYoAie4qTCI4iVXBzdIP0dfBhbG2GoAp4DOWshiRt/oUak/JtrGAOWpxsknLggAaTzFNcP7R6gmqkgaCTZIqMkDZtCFAckPhw/JKWjNiQUnSaiKpLMoa8UAKNqmkKM+YaDl3kYHZ8knXab8Z3GIh6egyASo3aYsKB+nRmgHB9PpBqdeBylIzKd7h9HpJykhhzlGTUWpaJtmsycqaCbm2qdgh8aGbYmZJ4DjyMk2R1hiXcew5k4nR6hdSaiHaANSKTYm/mkGB16IpqhERz/HTMkJJyRHNehQx2zIeQgSRlYmdKEa5DTocogT5yzpK6VxB0mJGahy53VoQ6cqiWhJEQl4aFqmQmTkRw3lDSjXJ0oIYoYQyQoJMKlsSBgHEOTK6G9Ic2YV6AZkpiiM4u7HJufSKQOnwgfX4j2nOki4p4CHVsZBCXlkuwcFh8zJPGgJqLNpFyW1xnXkSmjwR0okN+ioJwUmaWfiqEGnM2cSpX6n2Yg05omowah+JyLnfalAznDE2IhJiEdFt2kyCIOKPceFCahFn2btqQ8olIbwRSzGhW1GBhyJKgcVCPkFaSkDCXQIZgTfqTtH+Gk0iCwoq+fzqALm+qQJKDpoCAkow0QJLKeRBdbEvIZviWfHJQijaYin2QVLiZHmNEhICLuHIsk4Z/OogycQCH5nTKfDh8aJLoOHKUomqEcchhRIfAdyZYOoM2fYBuQG22dwBxBnNAdnBv5mtEZPiCDouqf9JnAJQEgsJjtmRma6Z6ZnXagnhXqIXChgKFNHmIcfxcPIZoVrqRzIyWilBosl1IgtSDRHbEgcKCaoRKjzhNZnKmiG6YSmY6j3JXopNUg0x2rHdqXViJXhCAa7yQWm5KjQqWNJrCaxSJcICuilp06HJ6iopnspIkN/oB0nvaYFJxPIcucMhjOjNKgyJ3JIF0k6B6OoiCmfqJ8HZcgOBw8HiAaHp+DrYMfdiOYH3CkVBBhHwUhOp/bnWiZySChpnOgZg7lI5UZbaT5HdeZT5awm0IiuiaGnP6ge5AqmTukiKHTnA=="
+    },
+    {
+      "id": "brand",
+      "label": {
+        "en": "Brand",
+        "uz": "Brend"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: in tests it fired on social posts and agency graphics, not on brand identity work."
+      }
+    },
+    {
+      "id": "logo",
+      "label": {
+        "en": "Logo",
+        "uz": "Logotip"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: in tests it fired on any small mark on a plain background, UI frames included (1 of 25 right, 12 partly)."
+      }
+    },
+    {
+      "id": "ads",
+      "label": {
+        "en": "Ads",
+        "uz": "Reklama"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: an ad is about its purpose, and CLIP can’t read the offer or the call to action."
+      }
+    },
+    {
+      "id": "packshot",
+      "label": {
+        "en": "Packshot",
+        "uz": "Pekshot"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "a product on a clean background",
+        "a rotating product shot",
+        "a hero shot of a product"
+      ],
+      "about": {
+        "en": "Products on clean backgrounds and turning product shots, on videos (product pictures use Product shot in the design lens). Untested: the test library has no packshots."
+      },
+      "vec": "MyDgJFukvxW8j1+eqCf8r6onV5zlGpGl/pG5FAignxpKJEicCyFBnpccIaRjJ7CksJj3HE8f1xhGISyeCR8jkXSZFSCsIGaelBktpKgXNYiynwKfpRasG2QjS5pkIUQlpyAWpTaVc6TVFOSgIKCDmp+l/J8/IRAebiN0oT+iNSSBIWCeXxg2obSYNxsOpF+kap6+IreWYaQPhL4gACFUoKgYhR+UmqigLqLcJoQoapyxmMab05yVIXixNBzwm8mMXhxUEjghPaKaINSkYaAuoH6e8JoOoHGZUSMyjB+YkSU4Hv+bnqIVJJkkhqH6IPUauZ2wpKEiIaOAHrchDZTLHKSbMyI/EjqoBqULOZ8cCiIuiM2kJRqXHrKfqpvIow0ebqW8G5AMARh6JNCVsx2OH0UdPqG0n2aY8SOSJAOhgyX+l4Wl3RoXpSmYmyJWIGahuaJJICWjvZt6H6OdjaI4I8SnoCLbE3gSE57HnT6kextQpLOfGCNyGgShY58nopOmOCaoIiIkV5wIngmjCyKpEB+lsyHGGg4inx+mlqskzRxAHy8kzpEdG1udiCQ0ncqeWqJvmM+mVR0JnUige6DTFY0ifqM/lTmh3p+FIGgKHyIrm5qaeKFKoqEku6Amp9aXipzKJy+gf6MTpQwiYiPqIsclkxOMIFehWR80H/efCZxEH7iedx8uJ2uoBSEWIraBwKCcFJadsRbVoCGhZ6SXJP6iO6dXGPsgsB34JFUimh2sncAXUxhNEUQjyiasI3gTYo3LnsiWbiOjnBikjB3VIImlRaK8ofehAaImpeCjDiE5ojqK2ZEDozqkL6Ajmf+fDDlenWqgXCWsIOee+iTmJOQgQChIJL4gE6cLoHMdNRmLmZa0KyEgJEKUwBxlHV6jMCWOJFaZqKBqI8ycACR9pJ+bVBv5FYgaOSLUESAeLZyxGz4UvI4bHh4Z9iH0HZwgpaaOGPMSZCGjgTkh8CSGIk0lxKQwoC6fWRv1HUyN2JvGHjkf0aN8pryazpWZFYagyCNWkwCecBlUo3+idRrXkdGdxCECnUofz59JGrKivCNOH4UfiyM5oKaQWJzLnHodZSEmHu+gE553EdUaRR2dmuocHBr5FBCgrx8EoT4l6qCNInMlTqDPnVei6Z1SmyWkdaSHnPigMqCDpNkgDSEBHA8cCR1knxacziJjH8eiV6gTJBIUviVSoXQWB6fmJCKcCKXCoeujrqDDoRae8xvPFJmjiiEJIbuPDaCAI7gi7yXVGZ2nnJLdHjohKSL+kRsiQJxnrC0hIyPVIKqlPRiBIYMlRqS9HFOd3R3ZnB+dDiG/Ifaf+6QIIiAk+qT5Hz4R3yWgJJAQZCESpK2mIqHToA=="
+    },
+    {
+      "id": "fashion",
+      "label": {
+        "en": "Fashion",
+        "uz": "Moda"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "a fashion film",
+        "a runway fashion show",
+        "a model posing in designer clothes"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers fashion films and runway shows. Untested on videos."
+      },
+      "vec": "chxYiFYd4Zc1pWqk2CEisEgkRxXWo66geKU9IjaitpXWoH8TOZ8imz8f1J4yJWybFKSxoDKlPyT2otafRR/9HYOXHAgmpOWkk6BxIGQf3iLen04bDyNTGTQkNCWfIXkeuSffBGIgaad2HLGZyp8XpA2dbKAEoaQhfyYPH2qmAh49odegLSXWqMyVLpb2Eq8YKJ3nHUmmCR1RKHWW6ggEmoMWn6S6H5gheJ4iHvofxKOAClocnB49jgGxVhcmmTsgjhY7GOIngiXenDKlhyCHnjAh4qLXJWAmkSH4p3EbZClbH7kel6RYHYkd7RzUIgsjeKOgpp6NkKTpHlGeaaHwJBYjzyGakUiha6AXOcOjkyAHoeCINiBNHXulUJ1uphsluRqPlWEdRSDtoBqYWxK4IrwoEhy9JB0iGJ7jKTaerCWPHZMYHSPepMadUKBaFtwgphvUn68cjhRwof2kZSFoH+2eOhLsl/WcbBzEGA2VKSWQoEGeFCHzpOmdshv0ohymVg5YJW6gMqTZntiZr49mpNIUnR4MGHegNJtzlx0bkBoZHf4h7pUDpE6gdiUpnWKkFaREH+mlqCH/oCmdpKFTHKKdqBr0HMkdGqDUHqol/54MiqiVQRlUpHsanKPao3Ic753bJleiKqKUoHsh3IbuGMAibBHtC/EgTRiCFuCaoJ1ElsWi9CBPH6ajQ5SWIH+ir5bjk/adFx0wnAkavhpelsafzJ60op8bnJt5BrcXkxc9HFgixp6+oNChxyTiIDKgZR4YoHai+ZFdINsdr58dn/ekOJ3KmEMimRZOpJIj+Z9Ko4MdNqC1pGwcqZ+QnRWkFjkfH4YbdiAxICylaCEBJoMJJyRroDqgPqKunJOh8SIwkkq0WxsDjaIhKJl0IIihfhhkIXOakJLOIpKihSIWo8eMWqBdG7qRMptWFcklAR8kGriZB4nzmQaapCbJnl8kCyDPH3YZAyFaIxAYcxDrpfYlYBxsFhoWFhwlHWee1JK2Is4gKh8Tm6+he6JoGlug46DQGWCfhp9CodIj/aecIK8HBR7ZH1oc2qAMpD8iTSQOnhccmSRZHQccfqVNn2ijG6CgGKcaRZ4nJK8kdCDInMAmp51hJMykkaTDoHUgrxa9HakkuCDSodGbfSAlGgSelSR6IkWhQp3JGb8fbCGepm+ZsyS7F92U0iF0GEOiBqBuIpgfw6SSFemZ2KIfH/mku6FtodKnZxgloYmkYaQ4JBMftxwCoTGccKC7IU4nAiGnpHOiF6K8mB4ZSJQ3mPSYxx8SrW8gLg7mjbmicZhMI4QjPJ3MoDaSeCQsntee8yKxHgEZPaF+JUYRvB3qn8QksSa8GtyeBBA3HIWjnKB5HQ=="
+    },
+    {
+      "id": "beauty",
+      "label": {
+        "en": "Beauty",
+        "uz": "Kosmetika"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "any",
+      "prompts": [
+        "a cosmetics advertisement",
+        "makeup on a model's face",
+        "skincare products on display"
+      ],
+      "about": {
+        "en": "Cosmetics, makeup and skincare, on pictures and videos. Untested: it never reached the bar on the test library."
+      },
+      "vec": "3RukFWGfziSbnSOo1STvrwcnUqDYGMWoBJ7WJJ0g2CIAJoQdMJzVF2giCRwSoBanU6J/oK+kWyHSF8al4iRam9klvRiLpoKaCgUQiXYjaRifpSUaBaRaJf0imyNsJZojkx8YpRwQrKQ/Fhmk0qBpnaSjqKEYKGUklCBXoUagmJ7rJQOi7yL+p68ZUiM3IIKceSNaI2ij2CHInhomZKRroowUaqA5Ip2mzJ/GHEoi8Rw9nzwRX524IeywuyX8oigfvaQwHCsmQCUuIBOeZ6EZp5ehh6dlIcmayCLuEyWhHigYldMf06HsIOIng5uonBumXJqmp2mdJ6U5IiKkVaSmoTcfbCIsIlmhtaT/ODOYgCEao9shqhbpAr0aeKJwoMaeXaR9oBigcaBKHUoeQhmant4l7Z0PHQwUZ5+1J9SfeihzIfem25oMoTClnSIznfseqyMdpNkVL5sOmdcRBxQqJuWbYibsIAEB/57KpLmcbyFvoy4dRiUgoD4ckRuenLemgihsJHIQm54LFSkfzpW4mtKiJB/zpJgmGx2hI7sUcpxcI+UXoSWlpUwaHCRpI4akO5ehlwKhZSJVJIqfq6KmIjyZG6FQFu6VOJLxIKsmZCAZFqEWYR01jmkgsp69o0MlM51oIreezp52oUycmCEfJG8kWqbtIN+cUSHbpS2ebBwvICqgeRo/HC2RBhwQHYOevZ0VHlshzhzTHwqnJaFHF8SkDZ4UocUlzBsPJIMbR6ITHREFQR9eA3UYrJkznvqfEhySousbWRpqHYGkyJqMpKSmCZ08IdugvJ1DIHml5KB1G00osaEbpJoRUKMApNIdADlboigkYiUAITmjMSVdHSsklCgSkYugs6l2pWmYs5g7Hlq0YRQfHHUke50HJqekwyYgI/UdraREINml/aKKoPofZRC3jIMk06UbFWwk/KR7J7+VRh/Po2GeqSmcHrcmHg0roOicjKSEpL8cdyK1nnkl/xJxmROg5x0+o+WmGSHPHJgZA6j9HOmac6QkI4AipZhLIn6lJJ7GFx8dwpxTGE6gnyLeIsSYGiBGGxujKyAjH/QnAyXCnm8kRKH6ovOi7iWJHxYal5hDHoURt5MPnUEerww2JqOk6qcXndKRIKQJIYuM0KFxGrKnEIyKGoyfLyK0IeqliBgXGEugCiTcoWSd6plbooqaKZghE06mOqbXJqwZTyaUiNYgTqLCJTWiDR3LoXwfoqh6n3OgB5i9mcGm/qRzpeOk9KTeJLCWcyQeoQCg4RsBJQ4lHx8Lm3ckVyP7rHqj25iOI6+fYqDjIVcdnqBnFBsZuxt5JISgMBQYJaOdkaNXHmMhTxhYHTEhxynIHeGfuRW4l7GjJ6Szpg=="
+    },
+    {
+      "id": "food",
+      "label": {
+        "en": "Food",
+        "uz": "Taom"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "a cooking video",
+        "food being prepared",
+        "a slow motion food shot"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers cooking and food videos. Untested on videos."
+      },
+      "vec": "QB3mHLOY3RwNl3aaSyIGsG8kNB0JoNmiyJZxHHKexyGhIQQf7pmdoAenkKGAlaqieB0gnRSgJ5BnkOAgMpyCoxSbLyClhN+eiBZsnVcRaZQopAwgICOKHhcV5xgzKAMlsCLRmW6haaStGnCkHxJAiNejCqGSDKAg75rrnECk6xMUGM+e0hFuIviI/yCBoqWh86BjI3GmfRSBnTOa1BInHsMbTw4sFxEctZYcI8Als5J+I50ZhR/TEi6xsB24oo2fYpX0oGAjhJ+KH0+hdhaoDuql+KI0IKkezSLYoxkh7ijanFMQ96FulSYowiHAH5ak1ZikpviX2KXEJXcaUJBoI9wDeSCJGauo+aITOfSgVxxZo2ClehKPIEmWdiAonPkSU6MepPGZtqF8oJuZA4syGSQgeRR8n1Uiuh9VJBymHyQ3ojykPRw3o36hpBx/nxYc/p4hm+8hhCBUpAil1aDdJc+gBBHzImyh2J20onyiXhIEpJKkWB48Ib2edyCpoQ6jJiPFI1ISIhoFpROfZBjIIKakJBvfnEwEPyPMmRIdbSBeIR8QdB8UHXKd+AjLHaGjJ6UfG0OivByHJLIQl5xuoKIk7aNSGMcgLZxCHBciIxdpHeqkcR1tF3Ali6K6o4OccQ6rJDOlZqQQoSwbByRDJc0akKDwoKsgACFaIBWdHKCxJGugPyIBJ/qlnx0GI2YdBp7uHTKY9p49BdihsBQsF6KiNqJ1JK0SM56wnA8keZ5sH9QZGCehHbAYlSPZI9eYFBjJGoCdqh+wHUSk3SPFHsujlZhkopmdy6H+CXajdCFVn64kQx3PojufuaH8nKCkEzlRpE4ejx0RIgWcTidIJnckQijfG5AWK6dRoDUZwh4SIHi0Hpr4nCEc/R3zH3ukFCE7GLYdoaQtJdsYSSJUpGWiIiEenOAd4hqQorolHiLvIT2U5htHjiqkVRvaoWAmd6ggkNQhyyZjITUhIA6fHdQmTaP9kNudtyOKFdKe1xaIJNkNj6Ygo5ecTKZoH3Gifh7joTUU4R1Mn0OgPSQXFZQdryC3oAUh2BPRpGCfOiF3I0GbHSU8HIYdpJnimUQabxkWJG+khB1VGR8l+hz6IJAgs6NvIDacxo5aoZ8hoh/qlschKKQ2oa6i4R9/oHmdraBOHQygEZwDpVwj9yTcD7MXThxSklebhCLvo/Kkp6P6JEwkE5omnaWcO6iuHj2dt51YqIulxJ+Wo22UKZUuIXaiIKBCJH4ghp8pIWEfVR+Aon6lVaP8IxSecx/uIScggJS/rH4hMRmCmDqLVpjHjLwi+aPfl++Yd5YAI9GbMx38HQ8h5aPomV0ltaD/GSEgjiM6GCgc0CHloQ2i6qVOog=="
+    },
+    {
+      "id": "architecture",
+      "label": {
+        "en": "Architecture",
+        "uz": "Arxitektura"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "an architectural walkthrough",
+        "a modern building facade",
+        "an architectural visualization"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers architecture films and walkthroughs. One video in the test library, partly right."
+      },
+      "vec": "eyVlHZujAqGuAxqjcycZsM0jPhbwntgWtp9mEHqmFZzjo4ogIJhLIwkq36VvJnshXKQSG1CbVBbQldQkJiISpuoU/hoqHAih/o8WEw4WJiEOpr4cU54RpQIkR6LIIQWU9BwAnIEkUx5uHsGjKyC2lAOkAKZCIU2g/5ormbun+KF1m18gniGipH+Zqx4snR2iYRwOHACn0Zg2JhUh6ZfjIREW65pypUUkZKXOGPInL6K6oIcI1h95IOqwGSl7oN8apxfHH1cjQagEo6KlwB/Co1CYXZ7Hoq0c7Ra5F/mZrSCKlXGeUqNYIikkkCEpIw4gVqX5o4sfRqLBIrwiDqRfH0EhLyaBHGebvREKOc4auiKOpVChSKSlHEccdJU3pboihh9wnxwdDZ6apGOgLp1vnGYnYJsInvah2Z6cJCGmpyNSIk2UHZrYoy6dUaBbHwOcmZ6MGKUkB6CqpXWjvpilJlGilqEIoxIVvqI8HY2kmqBEqMkc3BhdGcek7RXHpYiimBr4AGsVLxsLGH6g6qFtnIehfJ0dnWAiUplapAMlspeRJCQdZhg4nw6gUyadJCWk3KR/nPmlyCPKIoAjNh9OmSWdmpVjIiikq6NKGoQh555nnLYhwZaDHmQdV5x8pyGahaI9IQKiKZj0puUpNCSwJEAaIaO1HGwjeCA7EwaI0YRRJjya8ycSKXulmB9NH9clAZzLHTofBh+jo36iNKFbly2kqaMmIkifwaHQoZkkSaBcHhCcDiBznqic2ycCFc0b95Ozpfifq5GZnuSjJqL/pAqgPyAtkCucIqA2phWbOSG6oGOixhutkq8cV52vnqKhCjnFHXgkdCH/Ha6nzB6dF2ocNCiNnz0keacDo72cMSE4Hjy0kqa0ISsepiJMIwqfMyYJIAueKB6oJLuj6Zslp+ghJ56Hn0uZfg+DoRAiq6OVEimcPaVpow2j/yZ7IBsmYadvpS8hAhxQoG4Wqx4aIOcgrZ0bomOffKT3AiOjLCG4pKGZIpSyHy0bryTBG5OaAR/6pOOVWRhNFFweHxroIY+ewyHCnX4kf6EvEawgMyDhlEqUcyQPm8gdDJ4xHoSUIhuDHIsacaV3GLEijCMRKB4hKaCiGakfoyS7IL+amaQ/HRwn7Z9yk3AbRR2DHBqmGACvHk6klYk6nRGZpyRWneGdOR+8odSdHybskfYhiKTyJyUb4yBnnjCj4iEgJd+giQdTpAukAyJTo9Cf3JzcJZWlr6GPlA8ce6WxIi4dpiMaIeGlMSAWGSek7yYsHn8gr6DcrFckVyIFJP2Vx6FtIqYdYaJ/mM0Z2iV9pGma4xROHEmf9Zq0kOcl+KEPmXkkBSmaH0AatJlsoPakJaGUpA=="
+    },
+    {
+      "id": "aftermovie",
+      "label": {
+        "en": "Aftermovie",
+        "uz": "Tadbir videosi"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "an event aftermovie",
+        "a festival crowd",
+        "people at a conference event"
+      ],
+      "about": {
+        "en": "Event recap videos: crowds, festivals, conferences. Untested."
+      },
+      "vec": "NhgQg6yf9iGCpJ2k0x5bsHCcKiLBpLuYR6A2Hu+grRWWpvMgaZbaGeAhZCDfJkqg+p0dmueiqKH9FDeckSFoE/6inxkGoXCgnRR3o5ii+KQDoamZjCR7IRIkCCNsmkYhRCLoHb4WMJ3XIiengBA5nJmcjhgImo4iSiUvmr6RdyKHICKdUpmxo4MgziNvpBGZnhvaHp+laJVjIlgkPx6nG/ei05mzHFOdHxh7IckfNJAhmoajnh8FolyxeiLTo+camB/XIDAYyqQXHx+iiIw+pFKgsqj4HIsdtSIvnQ4cjSf7n6ghcA0QoX8hZhRJJIggqZ0+mVyd5KLCJB+ON6CeFRQYZiYYndukbaT/OBmmSiTTngKkuaAYoCwc3A1oqHwgYKXwnu0fOqhSnHuf2yHnEmApbZ3yIIcVOxHdJJmnbCAOnIygVBIypeSh+x2oFdgfHKAqGp6cQ538lxegxaAQHh+knhg3mDmjXKT7HZqaop3ypW6eZCBGoWQiHA9Io52hEyPcHEgW6aQ6GJWeACCxhteVHxnCoaYcMCQjpmkg0aKxJHeX9CC7oK2mLyACmN4AKqR1nbIauYFNHNSaL5TTl8KYp5jQJJ4iI6NAlgQijRCRmgOaORwjI+AlEqMaoZkdCJbbGbGk86LQpOoiECWcI/whfoKEnroggCV3IWGiTpeQIrSfOihunGqiaCMwnYQceqPJGrWgbyDmmLqVEZoCkCCfZpuvHL4gYp7qHGclsqT6IwwhniTXDokdjiRSI7KlxRgCnOodExp1obGlbiBwC2qk+qHGnokh/5nkopIbLJEQo3MnSpbPoAqYyqM7JLgb/zgxmTEfMhk4JfChoSETK2wZaB3djZQglZ8QolGjSSDSHOe0MhVrHo2ZVZoHHMOgBBFHJFGZwp24I3qkpiW9ojOZNyGgoGIiGyIFmKgisplhJx4hj5JxoKCdECFMpBohUJECl8cdNhvvpeeZhJjFHtgnCJu2HMYhvZ2PIkKirCUtGacX56bJGRAaz54vHymeuBkJIWSelZ4PoE4kCxiCIwsjkyZfl3qbqAzomZ8gYCayJMCfSSYFIcMZ9J/fhq6ggSKGIPkd5hxVjHEgZCLiHRklEqSWlluf5KAqo1qaLhohGdYjphvHlGocJSMUFhykiqKfoyihjyIgpf8ibhxJpIAPsKC+JueGs6PFkjyUlaBMIZ0cNaPuBOOcwKR3IhyhGiAvoHymyhhjm3wY+pZoIHGiJBezlvOgBqEUFikgIJhZGNqkgBvoIDmbDSIEnlElf5TprQcdrRhUnWQZCQs8IQYhbiC8nMWcsyUrpoEfq6C2IQ0egZlqH8uc2p3/osoZBaNkF9ajb6Spn7ehIKKlGQ=="
+    },
+    {
+      "id": "corporate",
+      "label": {
+        "en": "Corporate",
+        "uz": "Korporativ video"
+      },
+      "group": {
+        "en": "Commercial",
+        "uz": "Reklama"
+      },
+      "media": "video",
+      "prompts": [
+        "a corporate business video",
+        "people in an office meeting",
+        "a business team at work"
+      ],
+      "about": {
+        "en": "Business and office videos. Untested."
+      },
+      "vec": "QxsmGMiDX5sDouubeSS5r3QhXB5mo8OXnR52HwyaXhrDGaMkyyH5HgIlVhgcKcOcz6DBoLyjORjxGnAjLSGmGVaf0xVtpKCdZZXHkWYgRqdcnu+bnSMWI+skPh1CJcMfZx2zGbwX/qJZHGylPiHrHQ2l3ZQVC6EYBKPmnQOdgxmrHFqdGaQ+oVEgJiSSkkSecKM7JIua2KASITslj5yoktygLB8RnsKfwJ9EIzUlqqGHnNqkjJxulXixBSFQo8SSuZdpJCAk3BxDnigUuiPpofQcBqRDntMatiDjn6SdbSjYndgdJiRXHIMkuiAmDA+hfZWFJMKeDaZWIeGesyCbJHcc4SHghi+opZ0EORKUlCVLoaukgKAeFescOJTxm9IgiKa/mMwVm6LmjyCcfx0WIRMo+pkfoaYTA5z9JIOj0SK6oEGkGZ2CpEihaJkonI4mRaImHFYhdaJXHWSeHpTRJDKj0SBwI7+hzaT/IzCjLxcRqNQQniDsnMwYsxmbpPQczBvpGaMfhaD2HVWcbpeJBSwcmyRNm94g1xcEoqCcuA1pHCkRFhePmSCkgyS1Ge4gpaKQHswZNhUHIrWl7Z7gnNAYfKM2JN0cwJEbhjEZQh5jopccnhZqnBQgRaOhpUuCapn+JtakuaMZpd8pfyStIxMVSJjGm/YjuiG2AougQ6DlIX2kdCXaIMKfNCH8ILQlC5tqHVSfPxWml6GgIZgJFxkfO58zkbojRA0woQgjhpktIBIUNCBPoUYVRCQmHvWk1Yk1nE6XgqDxoAqcfB6DGbCN0KWkjLoYeh4tHW4gwZ1QoTQmPp4hpAoghaE4CmigBDkZnFUbdiJvHA+nECGiKkyh7xfKHsKZCKBkIFWRmJ0+HvW0OyAlIvEg6iGjHyCkhx0jIACiK6d9HpGivSSPm9YgzCFboWcgnBtFpAElgp0SJIkN0JiTHqQZTiD3GNkkJKT+nNGQMiPJoS+gppMWJJIhKaHyml0ZChohIOmiWST7JVego6WapGaeSByAJPShIJUsHL8aTyQZoBeffaKJEisjeSTRFh4bNJxylv2cuyKBIjGdUyY9oRGbhJtRpS2ejx2vIcEgsp5ToaQjwBsaInsjNKemJHugnaHanXufcROZE6MkWB4VmQejMyFDHuqb+KBAFQue7yITpV4aZhzcndEQySO2IOMc/JmDnCAf8aFNGl6hPZrvGfEU5CB+IVyOTiGflwelCByGowYkpR5QI0KlPQH2mZoZkKBzIhYiopqhn4mj6xxuIAKhXiW9F7wleKLDrMIbCR//GWmhLyHdITAj5YfWod2hIB5jpaeh15TRGJwaJQd3IpAlEJgBpIEkLyPlhdmjFaFyHHSUeKRHpA=="
+    },
+    {
+      "id": "ui_design",
+      "label": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "group": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "media": "video",
+      "prompts": [
+        "an animated app interface",
+        "interface buttons and menus",
+        "app screens and cards"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers UI animations. Right on 24 of 31 videos in the test library (7 more partly, none wrong). It fires on 40 % of that library’s videos because almost half of them are UI animations."
+      },
+      "vec": "Ho49ocygWaBfGX+a7CQzsMUpFhiBF2ih7xObHqmiuRqXHu4c1R4jpFUliqW1Ji2f2qRPIpqcqZBfnPkhxBKtnbSe0yVOFOAcPRVsny0ha6SYqUCgz6CFIlSYXJsBoUYkuRLvnhYlXSD+JJcaxqIXnk2YVJvap2Md8JwnoUSivaVDlMUVxpISpDEgdZIyJEmklKJnF+igi6CrkoefQBYeG78gmx41oP6UOJ4rFbokWp89JZui66AnIj+xRCUloVgh8iGAoukkSafxopOWxpTQoC6jxqALoyaemZM1msCd5yZInHOiKqShGUAl/B6SnJKhF5mEoYWf7SBuHBckjiMrJZyWBCjrITilmJ74OG4d6SJOp8eWDSL8n3uZNR8UoMIeu56FnJOMjKNkHd8e0RvyiCcgnh2poBekn6EcCUukQCUPJXCjrZ24o2mna53lI10iCiFNGxeD0Kd9HDeiPB7+Hcei2SQdGt4hJKKXmhyiy6Lhp9GgzCP1HLykXBZtqPKYfihWJn0WvKFSlASh+aPCGXEhIZR2HaEkawWrpQAgLpkKJgUZ0aGSG6mhtyDRoMif0qBfoF8XxiW0JIamPZ9XJoQjlIQkI4YZ0SGqoCIlPCH/HdGdSpQyoJwcwiOdpRkVhJ8zHH4kk6YJpHYi8x2/JsmDrpW5HcQcHBlzIkSkDqW8ExyW6R0MJail4SJEm0sg3CNipK2hUaEVmi2ZP6KhH26auaHCG6gmpxXlIVwlqaRgn3Yk0iRqksYmESFyIv2kUR9BnucS7B7SnxunPCFYmrOlDqamoYeYmZ7bHH2fGSGpoiQg8ZsSnvidOKQBnTyL+DjKnsicbCdCHsIgfyAsIniSiiZfoCcg5KSLof6kCZ+pmae01ZrIJfySpyE+IQilviaVIiciMBhBKeKfTR7npD4g8qJWpXKVkicnmSug3pjsmg+ZTSLCHG0i2iYfnJOSMKMQnHUlBSRxqNkdlxgdIWkk1qM+FNscRJ9GGd+lHRmTHz4cIKdBGXIg5CSyI1mig5Q5nAYj/KRLm34dlSFYoRmfYSRHHfETdaKsnRmnAanPHVQZTiETnDYddyGho0CfJSTGHVgm6xu5m5wi5CTunlwiZaB/moil3aFgn4IhCaTbDxEi3Y4vqKul5ZrMmBqlTKdQl38X7qN2o0ih4CPfnqAfQKItnr+fJqJkHbOdICA+H/MgOB3hHSkSp6TDJ8akAKXLpHillqMPo8ScxKI9oO+isCEznMMWX6OPIqwSECkqIvqn3aAJGgeJTh60krQeoRburaMhSZmGJneg+JuHH6Ehlh+8HJ8NVx8YpRecZBuIIE0cs6SnHZ4kJpmmEvIjHSiYIr4bESHSGE+ibx2Tlw=="
+    },
+    {
+      "id": "saas",
+      "label": {
+        "en": "SaaS",
+        "uz": "SaaS"
+      },
+      "group": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: SaaS promos look like UI animations; as a scored tag it split the UI tag’s frames."
+      }
+    },
+    {
+      "id": "explainer",
+      "label": {
+        "en": "Explainer",
+        "uz": "Ekspleyner"
+      },
+      "group": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "media": "video",
+      "prompts": [
+        "a flat 2D explainer animation",
+        "flat vector cartoon characters",
+        "an animated explainer scene"
+      ],
+      "about": {
+        "en": "Flat 2D explainer animation. 1 of 1 right on the test library."
+      },
+      "vec": "xyJjD8+bVhTjnLejsyeur0wnHiKWGwilHh4MnHKcniQSm7Mhph+GGgkgcKTiJ1GIn6E+oKiQlBj7nJKbAyQAoCYbmCNdoHqhQyGFmnALfKQ1ptmO0x0sIHacDhOKnIciKBfzAWYaAB+ZIE2eXp7Dnaag+qLpnTwgpRwBouSY+Y+DGnKeJ5xTmGQD/RyXmFeo4BGTIoekNY8bIXOZHqSEFA4fNZoXoE8jAKSkJv8m3KXxFF+kBp3hDS6xAicnoFkfliTUoBYnIqUto+SjlyEZpG6fIqEgpYoYWSJ+Hg2e8yXfon4i5JkXkNglCBV3GoigH6Y5oTOhr6QeJmQlTh6rJbMYyCMGGWyooqMJOWMNQBZVmhSgJR9oHI0hvph0G7gdNab6k3wZehX/ICycwh3Gn9IkMKTGnhAfwBzfJ9KheyZ3GDqgEiNgptyk1qHgH+MkHh6DHlEjYxSFoCKeOx+TJIOoGR66ooWivZ5EjJyhT6E1qLWcFCXSkKCjY6AGpZkYESM4HSuct5UCHuccGqDzGdAdmSAmHCUgbCD7GlMkVR1SHXglV5ywIqSgxpw+puCiU6UvmgKfiYe3nVyg1Bm1JbIiohG7nZEeQiF7HHQl2R4coQ6ZX4kUHOMhqx5mo24gJ56eA5Yg9KLBoUoVkSQpImwhAyG/IH0e2iMWGH2h3J7jIkGf3Br5InimbCNYJCEcE6B4mdqc5palE5Ic2ad6HmqfSKUCH50kqxs5mmglyqdrlIckiiSUn2sdTST2GRGkDRTMpaoYZqA9oKelfSKHmgOk559qoJeaqaVfnXGd3R6KpPEdaiMgCoefraDzmPKfCDngHBeV1SQUGNscSyF1Iv6hYSggnaEkKaFWnB2dKiCnF4W0ASD7IeyffyOXlZye6CWCnH4VpBJzJTKedx/BpROfU5gGnKwcMZlToMyZrKDyjWomCCKFIiyjlibqnIkXKqbCnCAhGCEGpvgiWJ/eJDQjwqB/IGCYtB/NFF+ks5VtJTOglqUOp+icSJlLHlCiaCBYIZ2h2JJKElYcS5t4omqfriMRGcueB6ZipBCjgqa5JPodO6AzpSGYuqAxo1Gf8SC8I8EjJx1KGsAbsSSRHUYkc6ZdGE0dmBhyFYsdFaS7lxAYih0foiehBhygnDWf+6VhHD2h7ZzGoyEZ/iTWGg8WmyQjodeg9B08ny2bzaBnI70SeSfbHrIhjaPMJLKcAJ3VpOqfGpogpNieY5+zIw4R0BhaHbybb6PcGL0hGSkRHiCm4BjqI0aiEyAhGkkjdKC/raQfeiG4kfWjfZyBJ4Mdpx86HXgZKyUKqO0flh+hIp8bvxUXIhwhZ6IgHUuWDyV/JKChOyFBpWSgAKJGHA=="
+    },
+    {
+      "id": "keynote",
+      "label": {
+        "en": "Keynote",
+        "uz": "Prezentatsiya"
+      },
+      "group": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "media": "video",
+      "prompts": [
+        "a speaker on a conference stage",
+        "a keynote presentation stage",
+        "a presentation on a big screen"
+      ],
+      "about": {
+        "en": "Stage talks and presentation slides. Untested."
+      },
+      "vec": "3Ja3IJKdOZ1mokeg0CRjsDMihR0QoNqhw5oqHd2aMJxAosMebhwIHkskhxlJKOylhKTiILWhFKGTnMgfcB1CjAWbMSHIEXmRaJ1TBP2g9qWbpEyhgCO7IGYlvxshIRMgQyEZpPAfkqJKIbSnM6HjnmKhCqBrlDUU2CSbnHQXGSGkHuygTJbxpHMg0CL+oqShKJxmHKCk7Jz/IpYmVBViCWOg7iDbIYcXG6P8neIiY6AlJLOhhB5jHYyx3plLpguecJslIUMkOKZ4mPyd9ZgJpI0aHqG3pCodzyH1jWAY0CnSmsgdmRyeofIdayTJntsjI5wSpDKoNp89IqMivxeKHB4hOyZXoY2li5jgOD2dCB0soJugohUBIGEiB59inLgkvp5yoKwjLqdcI0egZBwYIewpa5tqjjugoJ0aHzSkmiQLIGiiCJ9VpniZTppLlLUhbBG1EzWeMKM5ljuPih/iIrOnBRz8mOWefqJrngWl4hsIqYyefyT+nUaaWZuwofcjByQeojUZbKSLHJaUtaTEn10c2CEpHigXBBe/nLUkLKTUlCUd3p31n5ykaSF0GIKl2qGvFJEjOB+pJ1yiXZydH60fLxnmJaYjkKEmHp0eth9nngsifghNnAoiIqV+pusd56CLFjiZMadMqKcpViY5JSGYPh4ak5UkGCTbIh2m5JywIICbCiTKmjSm1yWfFj8h1pY2GQia85oSkTKcOaGDHUCf+x6RnQUcABbMIU8knqNAJPgcBSc0imCRzSf6Hzak7ybDpAsUNiOwpUykJ5xQCwCk1aTdkZab/ZjIm9YfLCIAG5EYrRp6pcKbcaKqJJ0Y4Dj8oCSlxyOdJMimaCFjJWKZ6x4NnY4aNaUFovWemZinmFS1tRwlIAGcPRTDHYGlNyJ3JFUWARjNI0Kkkie4pLEkVhx6n2wmkSReoZ0mfBgMIlQYNRaRpQWg0SFnnlshQ6EIklwgsRMkpVkjkyWvlq0kUKYWGEuYEaA/oIik9iLnooyhKadvoDcdzyQTIecYASFSH0KezKKjIQUhOh+CJWQU1SUYHruUeJjsGryg3iI3J4QgVCeZGmmgqI5LnwWgbB/OIqMh7KQmhComKyPeGlAltqVAGh6cjKD1ovqdriDFoZ4li6EKo7ukjQHlmnaiEZ2Ioz+icB8rqCAh/6AApoSdGpdWIwyikaDRnCqhxKaOHn0j555XnCki2qU8IAmOuJvtoIqdGiAjoZod46HLGVWnGhhynjGjfaQUH54mDiIzoLSkMx3NIGocVyI8HGYm6qG6ro4kahxNmf8cDCI/IG8jqpleo5Wj3h8rqFKgDBkBIdEfI5z+IysaRZpylD4ivSDgmV2YkhpOFKegBqGtng=="
+    },
+    {
+      "id": "dashboard",
+      "label": {
+        "en": "Dashboard",
+        "uz": "Dashbord"
+      },
+      "group": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "media": "video",
+      "prompts": [
+        "an analytics dashboard",
+        "a dashboard with charts and graphs",
+        "a finance dashboard"
+      ],
+      "about": {
+        "en": "Dashboards with charts and graphs, on videos (dashboard pictures get UI from the design lens). Untested."
+      },
+      "vec": "rRX/oDSiuJ5mlU8YySMEsOMm4gMNHX+kNqRJF1+VCiAMoqUhmSJ4JSQh/pukKO0ZJ57/HGyjtJ4wlngkPSaMnIycxSVPJX0hgCGAmEYgpaCMqJmhyiE/IIIbUxa2inghraR+pF8fjZxlJSIW36DJkA6gc5p8nzIkzqDEnWeZj6RWICwfdRrbok8gLZpfHe6hraQ0I9CiTqLiIHMgvx/cnyUeN6CYlUMl1J/BnxYnJpjAIbGhvKCsn2CxAKGvn4cW4505mv8iwKX/nwSeppxNpVkKoZ9Qpjicd5xdnn2XQSlMFoSZhyBHFbUlOCQcnSKgjZlhpSAeFyENHPIetpsKJtqR5yRgHzSoRRTpOCkg8iCipPihMSOioGqWvBFoorwc8aQMoRSkH6IQHGKhOCE9ocMfuyCAo4GUNaA+HuKCfyWnG+mmLaREp5OdvJ7UJB4hyiQaHHShn6PGoQWiqCNDJFeVVB25Jfwd1qPGo7miX5gqoQyiMygUIIWd9R0dolejpybLls+irpMPI3Oh4KI/nzsiqxsfGTIbGhxYERYYVaIyI8AjzxcZohuhHiOToDmhZaFcnkmlZx/WIpyh3BwKJWAmiZ5Zoc0fuwcOIi4MqCKboYabpJgHpGSYqp7NpPAeKqPrH/4cd6QTprwnPyUfkpohGqD/Ay0iGhwGIx6llqQQEjuBoR7sH86llR9NIMgksp+WoHGnXaRWmBClb6ANIMASa5t8pAsclSD4nhsn4JyAoIUhJyHKn5EiUiTMF8iiNiTIpFefgZozpGalIB9qHA6mN6Q4HPKWxKHImAWaqCNUoHMlAaIKENGmU6SrnpWV6DhiJTKkjydVkLkWRiTUJXAffCIfpYmgZKGjmTWkRpttkVi1o6ShJGagYCW5IFGjDCDvIpMhO6KXJHOf+x1rpHIkJJ34psYd5R60oM0c3KHjJAqhVCE3IC+joiExnaIhBw2unb0jIiFLqOUaJx3aIDkjYBs6mQugfZ5Go+2mZpVtlnMcX6i5otyhGiKangKZ7ZUJHxIbqKHpnIyf9iHIJdaVXCbClJohs6TplD2gkSFZI0gdiyOonQigBRkyoEwjvSIXI3QnTaISmQ+ShyWgFLEcB6OXHeSncxXxmwMg26UjmbslkBw+ov+olJwxHe4dEajCFCmea5oYpawYwR6woPAeUp8cH5GkqqT+G8IcUZgjJPcYyBx2HrIYv6RYJUcZc6QhoC+SspsyFp8kT6MjlWOi8xwxnMmllqUFIr0hWSUODKmn7p2XGN+fAiCeHEYlYpRnrZ4hVSTNIH6auJ2ZGSQh052lmmCCGCQcqd6dhyPGFA8GKaBzg6YgV5jdoF4kMSSWIDObuhYknQEgN5UmGw=="
+    },
+    {
+      "id": "onboarding",
+      "label": {
+        "en": "Onboarding",
+        "uz": "Onbording"
+      },
+      "group": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: onboarding screens look like any app screen; as a scored tag it took the UI tag’s frames."
+      }
+    },
+    {
+      "id": "character",
+      "label": {
+        "en": "Character",
+        "uz": "Personaj"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "media": "any",
+      "prompts": [
+        "a cartoon character",
+        "a stylized cartoon person",
+        "an animated cartoon person"
+      ],
+      "about": {
+        "en": "Cartoon and animated characters, mascots included (the design lens no longer has Mascot). 1 of 1 right on the test library."
+      },
+      "vec": "RCHRDJOiZZTMIaSkQiMQsA8bKCTUINakLCRVoNYaRCXgKD8fZRtAJGwn9QtuJ7acuqFloS6cnxwAmEyg7iZ/oimbzyM0obqlbyNnpBmYUpTeprAbNhs3JM4hLSfaoeckFB6vnx6dxZu0IC2hF5+EoMwcY6IXnfKZnSiVls0bMA4OISyji5+rmw0UayEYn/unfhmHixamZwgaJMIen6WoIMof/B0enGEkE6OYIYEhuKUgpqSih5qkoB+xLiJtkA4adiTKF60muB0Zo16hWCaGoDGe0JwTEoAksiLWmSwgBCYxpbkfQJu6o/4lRxs7HFuXv5iopvOXvqNiJB0jRJ01JOYf0STHnd6nHKYMOViilSKGn4+gAJE0pe2R4BiLofiVy6LQHychwRpZm1ibNyFzoWsknqOxnjYi4SCBJmGlXiWZE0yf+iGJqGCkeaFUHoEdbSHRn58itJ8SlHkcQxzMJOynlwqVnx+fgZnGIu6gDKO0ptYQtSHNncegLJ72F6KfZSSrI34iDprDmXggwqJ9n0oZiRzNIHAd3CDCFFuh1aFVGe8kwB1hHa+gHJhUohag9KIKm+6Yxh6oIPgQxZc4JFgfcw+ynyea5Btuoxoh+h3JnXCVvR0Ilbsg+A0+puwisyDlHiCfUaDToqijziFcImIYcQyajV0clyfFlrcajRnfILOgrxRTH4SijiH6JB+hyKSdGk0iqxy7GI2WzaJ4ICIiPKJjlO8ZlxzRDysfmqdJlYwOjSIyoKIgeyM+oDSii6GuphUhd58vHlikJx7Qig2oRZzfGCWhXqE9IZId25BbpP0jmSb6DcyY5ZgOHTehCjmVIQchCyh3FgcZaSM4GlacIycGCzgkORgWHaweCArYIW60ppzuGKAdxBtwnloeuyDJiSeWfSBLINaf1iLMpASYGCEjpHkg0qLupegepSKqHvshsSJuKIyhgycVGaYd05xAlsaY9B3wo8IhXSBqIvcQxh0FFvUMJyMImTGmYRasGOCcEKdqoSil7iHLmBmh1J6jIz6mgiHKpCQg358upOWMoBqZFiihRKOCpB+YT6JoJD4eA5iDox2VEaKcElejHCRFJZggqCB9FeogeCPUIgIl4KVNEw2guJiXoIwdDqC1FnwfFiDEozcZ1hzPoDYUxaGsHnGePiX/pNwZ2SRFISAZUiQTCn2cKhx6nSikp6QwKHwkmSZwIOgMSRTnJVof5iGsoxigyaDzpNOgDZ9QlgaggyG/oXGixKBymQgh/iZuk/ylpxqGJlOYaiTAH64kiZxfre8iFyLUHYmhh5wvJfcf0pgIlMkdZicipFUjJByLI5WRSh9QIiYfFqLKn5ug1SVZISug+BmQoESkvZmAmQ=="
+    },
+    {
+      "id": "abstract",
+      "label": {
+        "en": "Abstract",
+        "uz": "Abstrakt"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "media": "any",
+      "prompts": [
+        "abstract shapes",
+        "abstract motion graphics",
+        "colorful abstract forms"
+      ],
+      "about": {
+        "en": "Abstract shapes and motion graphics, on pictures and videos. On the test library: 1 picture partly right, 1 video wrong. Watch it."
+      },
+      "vec": "UCWlEGmg3CDbmj+ZQiWnrzMqj5oSHSqjBaiUloqflBwfkwSibJcuIREcwqlHKXYexJ2mIEses5O4pMihQp8DpQCfpCG4pjOlphrWFyge8qDrnJcdCxtwF2MdUJ+lGY8gTiVXoIWbTp2IIdOeoJEEIp6i+qiHIPGKmCNpoE+oa552gPEl3qCBpCSebRgmIe6l6ht6J/Wjf6ERGnScEaBDlEwd1yAZqBAeCaAaIh8plaCdHc2ethk7mb+wEiDmoRUetyeunEckVamem+CmihE8pooeaaT5h0IgMxiEIpYkHiG6H9Gkqp+cIHginRlimCqZIKe+qL4R+pcpI8UhASBTIVAdMSWencmaR5oQOeQlyCELpPqkhaDoI/uaDKLFl5Uda6XNIDkaSpxYoQESByVtEuAldB5vp34hCBbJIzqknSQIIJCkKqHmpTSiAKG4HUoamZb6GQSAMKFloA2cyiUMKOimbiLipdeanqSVo6agaRyJoBuiQiKwFDiii5iapx8d6ic+I60YlyQlpCEXDSEspM2dUokqIbciNSCJIqccziObHiEoxqKVJDqgHafwHJulXaZLpF2epKBNGJaV/p56HvAg1Z3yJGemixlvHq4iMCBoDRcRIBx/hr0k+xlqpRwgIp8FIgsnM6HpptOk9JxzIsClsxUsFEgaySGunPOh/6ZjIFik0SDuH0WiQJq8HrMQGyPNoO6Yi51unmeVfqJCI6ycF6aSJK8l+SBMnlcfER5aIngnOCWWGjcg0SFBJIwcVhx7o+WiviFinwGg/pxmJDipGZ60HjSk0Z4dpRKk/yILqGSZRSNMHimhOqTJIgciDjlzIpujUyARobWkxIAZn/mh6imdGzIlqKfOpMQl5phiHzazwBcWojqh1xxioFWjtCg0HwQei6JpJs2ikhNYqJoaZaSMniEetqJ3l00cwBkbJDcYoyXsnN0hcyh3DCueCqPIIvciWSFYme+eqCCTHqAmqZ6lH+0cKKDGIbqksRoDnyAk7Jknn8uYUpTGJOugyB2QIyamkZizniIheyLTGAKl7SALptKceJy4oDkiORwEH4SbhyHfol+VPh2YkMaheiQWII4o06CUoMocLSMKIDkixKjEHJEiZyIrIkih8Ke9HpkgihxElGgWsaAZntCjvpgaIo+ntp5yJQAadSRZoE4XkSIVn36cwB+MnzYedpR3I1ilwCjEpnMcsqZJI0oXYabemJOl4aV4pcad7JqtJDoZPaBiI18gvKTWneMg6iKulnSmDiCGnuOm3B1cIbSBWZg7rGYOzJlBnrelFRTlJdqW3aKjIAgcARwapKuiZyLyHLmYA6UIGg4q7KQRmEiRZycvJImjSCCvpyafiZ2uIA=="
+    },
+    {
+      "id": "isometric",
+      "label": {
+        "en": "Isometric",
+        "uz": "Izometrik"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: two sets of prompts were tried, and near the bar both picked buildings, 3D objects, charts and boxes instead of isometric art (0 right)."
+      }
+    },
+    {
+      "id": "liquid",
+      "label": {
+        "en": "Liquid",
+        "uz": "Suyuqlik"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "media": "any",
+      "prompts": [
+        "flowing liquid",
+        "a liquid splash",
+        "glossy fluid shapes"
+      ],
+      "about": {
+        "en": "Liquid splashes and fluid shapes, on pictures and videos. Untested."
+      },
+      "vec": "CiQ3JKumCSKQl/qmnCQ1sDcn8KFFpwek+KdVn1uhhBg5H+cghCXQIjWkSKc1JfOh9KBXJQiaohVXGOmizCJckfmjwSAYIhCfcyO5obcbPCGFo3meI6FyJNYf5RwUJc4bfCTFn3GgHwh3JhSfxaCXHcymqqT9Izsf2CSvlPSlRSQEHKkizxpQpESgRyTdgGShuJL0IdegwZ2ZIj+ZA5lnnUmYACP/oUyhPaDOIUUn1BcwoHkfFxlTH0exJh9/o8ahXRdSprkm8KYeHjKoB6FVGguhaKXSHaqdEiS4JIwYGibsIV6koKX+GgUoT41YoEgf/Zp7qWyZ5qRPnCSiqpqJnCOgJx3AG7Wip6b7OICgoiV5pNCmDaLrGEGcwpSNpJiXy6Y+GQeiVCMkoWYjtCRBoZIjq51WpE0jDiGoJyGg0yKWI32k7J4pn/SiR5e2o18gQyGgmoUVbJSqHWyi1KFqKKSnkiM8pI2gY5dZGf+kqZ/BoeWiuyJNHpOkIJk+oo+mUSZhJNgd5yWAGQWj8iVHINmd9ibmo5sjxxjcIRMoeSJxJdEn4hxTJmmgPBtLHIei2aH3mWamYJyFmTAdK4SVGtIliqW/gIiggRPzHpskS5jXnhQcJSQjmlAU6h3Ep/eUCp/fICSQIKLHpo6jKSO7IgChGiCZnNGkiiSiIQmimJ3jF8WeeSFrJFenEiFFHZUc55ujGhceOZ/oFqKhJKQtJKwiiaY+Ghcivpt2JDmdqonBGUQi5ST9oNQRPiX4IKSiwSK5mOagcR8unV6oyR/MJ1aoeqJ/n/yiWqQTlIOjUh58k1gfyBUMpcyiD6I8I/4g+jjFnZ0dkKGnoCGazhzlHeohLinSlmUkV6dOpVYjvB4ZkXe0Qx3KnkchEBxKIhufFyg4HZeSraHNGaSXuiGZpUWY4Rb3Hi2UVZ0tHqYm/p6LIOMhGhYsIGof9yJKHRgme6Lim3YjE5hDmPkjYSSIGSglwqGZI/Mgy5/Hl+yklCEvHGYkJqEroLUeJRyVGUqkRZ2So5iglh1KnFSQKSF9n/OgnSSon2cSOpzUnm8clSI4HPAjLSZGnp6iLJuZFZ6ghyAUJjohFB+yFqci4CX+nMojvKQGGTwimSFyl70ZAaOaoO0hhiEZnb0LIZoiGFydeqM5JEQjbpvCkTkivyFBImMJYZqTFJAVByOhISuhPaNaKDYSRClRn3og36a4IUCgXZ8bo7ikQ6UMpdujhqSXnjSkMSQqJFaiOqOnJR8eTB0mFHKi0J6+DhmXIxBEoDyfO5uBrDYoeJoaHemjeRK0Hr4gQ6RBEKqe1iOTnFSnkSdGIr4ZLaSODI0nTaJaHI2dKiJMIU2lNBQ9pRqoJ597ng=="
+    },
+    {
+      "id": "glitch",
+      "label": {
+        "en": "Glitch",
+        "uz": "Glitch"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: two sets of prompts were tried, and both picked halftone textures, image grids and screen close-ups instead of glitch effects (0 of 21 right, 4 partly)."
+      }
+    },
+    {
+      "id": "particles",
+      "label": {
+        "en": "Particles",
+        "uz": "Zarrachalar"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "media": "any",
+      "prompts": [
+        "glowing particles",
+        "a cloud of tiny particles",
+        "sparkling particle effects"
+      ],
+      "about": {
+        "en": "Glowing particles and particle effects, on pictures and videos. Untested."
+      },
+      "vec": "BxU0IGOhRZpWGL+h0R0asIsoJpkkovugw6J3IgihwyAckQYeDRzOHukhoaOPJW6hi58poVYbaBTglVmgDiIeofiZQyGbJB2luB8mlDYU8xzeotOkmwdJIQQkPhFLlWMhyR1loU4gVKEuJQCcq6QfkXmlEaBimGIizCFqoESiuxBvIb+gTaH0pbiaeyESEzajAaDYJr6kmhzFIX0WGCTppCsIs5ZmnNGj7KL5IWUpO561H+OfpRDgIVKxzqAMpV8YhBUiphEjMaeAm+emoQyYnHmjg6PbFZsaXiJ+IYcXxCSTnpOaXqXtJ3QkuJ2LIEUhPZ46qMcVkqRIIlogHR76Fs2fFZzZIeKlUKQBObyVGSV4pUOnwh7Gg0CYZ5G+pk0dU6Urn24g75lyGw0lOo0VoL0a8KASpc4cPiDtKBekrCQWJCWkKx1MGOijah7qGGQefBu1ldQgRKV+oCygtg1SJhineB1qpAqha6IUpFmh15wMoKSlFyTClGqml5lHoS2lMyY8IH0hHg53H9AOLSN0nE6gKiRRpFIiTSJsl0olfJ7UJtUkk5xsHg2kKyGQmFahIaMPEw6jpyFDHTCkngdSGMgk66LOGHKf4x4ooXggb54tnNoi9iLNJOihpRi1GeCdwaFwJHobgRljpFAaDSMIIR0gmJ0aj6+gXyBmEMqgiBvqIDEh0yGrIpahpiXZIakcnaEqnUccLqJcDkWi0p7OJayP+aaqIwckipZYIzIklaVPlRklTyL8oP8hnSaMi4ui/yDEoZuiICVIoDeoSCDTIQOoHaOFCEii36OAo/eY8CA5nxwf9J0EpOUchqTJIhGfATlDoCefmyOol3mkFST9IVYbACkqnfgX6aRPpekL9SYvHZy05KBJIuUlOSMcI7ihWiXdIDeaqIqtIU6iJhpJooUWBpyIHNmhqKDeHmMcvJq8HSIb7xqJIXwdfCSpmXwkIZu1ooUfviN2pt8UwxokoccnDKYBnF+fd6NVIUOnABwPnsofJaA4mmQgqxb4GaSgIR8ApWOdO5hVoe0gIhB2GUubIybxolUbCCF8m0Kb8SNXH4YjxRt1oXokxqCuoVOcVyUpIvEigJxqHFId8ySyFxYg+KIjmMwYhyJil54foac1joAifCB8oHiUFRhHncegSKcPnLojaRismAgYJyEVnXghcqSgn82f6xpQnjgZuJt9Ja+eeSawlQKdPqcfKEajkaSWpM6dV6DrpAGd7ZvxohGgWxtvJHaj+6DgJPQdOiEQF0ylR6LsGhya5B7UifwL0pwNrUUiJp7PIaSi8Rx+JYgf8KSRIeUgwCVBpK8eDSRCGUkYWqIslromHaLdnnkQeCQBH3ulSJ+/pgqfnaGMmQ=="
+    },
+    {
+      "id": "loops",
+      "label": {
+        "en": "Loops",
+        "uz": "Looplar"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a loop is about timing, which frames can’t show."
+      }
+    },
+    {
+      "id": "generative",
+      "label": {
+        "en": "Generative",
+        "uz": "Generativ"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: two sets of prompts were tried, and near the bar both picked icons, posters and illustrations instead of generative art (0 right)."
+      }
+    },
+    {
+      "id": "overlays",
+      "label": {
+        "en": "Overlays",
+        "uz": "Overleylar"
+      },
+      "group": {
+        "en": "Motion",
+        "uz": "Motion"
+      },
+      "media": "video",
+      "prompts": [
+        "a light leak",
+        "a film burn effect",
+        "dust and scratches on film"
+      ],
+      "about": {
+        "en": "Light leaks, film burns, dust and scratches. Untested."
+      },
+      "vec": "JJZVoL6ccAzZGCmieyNHsAofKBl7lmyjtpynHgGgKyQNnFObliFnHWgjgqK9Joebv52yHmGUsBTRHLWYhAiLnQ6gPiFSHQGghA43nRwftiDbo6Ki3pr3IbAgdCHYIp0hgxh+owgHpKX9JUqiP51toROlDKTeHWUV6SKQnaOmrhSDJD6iTJg3pqscPyRNojSlYKGMJRij/wxgGkkZ2R+GI2yhIRwHGFMdNpn+JCApfZw6oE6hDJjxInSxphlZpHkiJJ+0nvUg3qZqmBKnB4uOoDijqqTgHoCRFyTWIs2dkyjVjOGjRaZtImQeg6NEIDoc8KQUqIqhfKHKJM0dJR7iHMMYtyWwG5GlKqMEOVMg9SNLo6umeyLeIG+lRKDGqKQcaqJdEAgZt6CxmZga5xxdnN8fsKImFWgZGh9+KA2lKCK8I5WjTBscodWk1RuSpV4f0B9unh4byaNVFywOApztJEagqR5lowuW4pzspXihNqChpKahLCOZHz2iBZ8rHBSlPSTFHVobdpewmtyYURvkniShCSKgnksmHCFAIfshA6CRJZ4dFJ4lFDajUyGpIs+d9JecoqinfyEuoNeh+ppVHwMlyqETHbodAZ3ZDvkfxI7vF1IgdB3EHzIhnxXTm/qZkZ6qJtEYWI82pOScRCGLI6EinRURHGWfvB+hl3yk5hdnHZGaniA2G6KlSCZxJYicfZ0gofugUBbJjzKiVKBQJCCbWaRGJEMjmqBHI24iNKSAnLcdoiEBHf8k2CCjHxqfdhTunGqjJCBVokKlCR3rFFanLaEfoJSeFJ60noCXoCBYoSwfjZXPpXqU5KNvmaGVAzmAnOkY2iXIGp6dbSMSJa2adShkoMwcRqMrn6sZ+yQ4mcS0Ip9xFf0kUyTyIgadFCQGIFykJJvLIeObkR+hoVoX2ZhEGNChWKXiHrMlMR47JFSVwB7PIMQbSiEenFomw6RMGhwfayQ5od+GXZVmn+smLqFXHC2XDaIKHGKl+xj+l4IerqM+nSEjgh0rJJkaCCHinmYgICH7EqkXuRxkHnKgciWVoZaTeSANnSwVISMtHlIgPiERGjYb9KPhGeEdHyDAlrqfqpepHfMgMBqOkLgiUpyRHiGdJiAKo9sZLhJCoKUi3x3hn0cexB3KEhSkCqnnn3wgfBvToMohzZw6lXofW6Ben1OXWyByHI0Sg6IuJgoMGydjmfse8ac6IRifR56RpgKi0qKHouuITxcsnvKcEyHcGimbcaOhIEAh5x8tmVum5qVoInwimiBKn8Ee1aI3rRcl6J+zIzqeO56PH1ofhZ/UmewhQxSgDKGfJyKuGB2RsqCKHV4jKxh0mu2d+CQaBV2hsZmVpNGk5aQEIA=="
+    },
+    {
+      "id": "typography",
+      "label": {
+        "en": "Typography",
+        "uz": "Tipografika"
+      },
+      "media": "video",
+      "prompts": [
+        "kinetic typography",
+        "expressive animated lettering",
+        "hand lettering animation"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers kinetic typography and animated lettering. 1 of 2 right on the test library, 1 partly."
+      },
+      "vec": "E5hWIj6ZWiXhopScMScHsIwkhqBgIt+oaiU2pOAbqJt9ozMeIpCMGqicz6QgKKqjyhyxHBohEZ0xo3aWpiTKpooOriGEoxWhGCSQHSkU4KSjGYqkP4wlk5AZipzwI2+esybapESbdaceEEahBJe1ogYm2aRFloWhth8/pOUjJaWKInWZERvioYcbZhw0IbOidhiYiQOh86GlIVcVBiHnHNQkGicnFnMifalhH4AhKhyRJGSg4h8Sog+xByh7mi8nfSadn0IjGaxzF1Yhwp8fkymkbiPnoQsc36ICnSyktymZpPkgVKURJAIj/5/MpZqf8p8Qp92mXafTl08lyyQ/I0UdMBwXHFWm1KLsOB4mWyaAFkGhmBw/pv4Tl55ZJHKAORwonrGiHRp9pM4k1BoVJHohqhu3pVohziURKZ+l/R1kCW4fbaA/oegQTKbXIOgaYyC+ofAgEpvQobuXOhiYJKuhT6AMqNAaEaFYGV6ly6CopGKn0ijKnRyhe5zfn3Cj4icVH3GkfxmSJEaoyBooH+2gdyFinBUkKRlLliAgFpYbI8gk3A9hJ1qiAJyjDF6h96WQEIimZSNXJNmX2CDKIAaijKXEIB4gcqD1oIWg3w7ungIcdBuxh1uaaCAJn3OgVaD1JP6NhpyWotajVySxHA0d5iI5mUIh9aEJpLWkU6XeJMcSOaJfHsGhsCU+IgaiIqZRoT8cK6Kyms0IUyQsIKudzKS2JNmjjoz0pdKVOxuYHMEgjiS/niMbXJrung4cs53apfmgeJ4qHKsTHRxipnWoF6IfpDMUOJxHmbcjICXxo5+dQpZ1oX6k+p/wH3aM6jirImSiwx75o/Wlah1SmeUgwSaioCMl4R7IonEkiKLrJoS0Mh5bokma1p2AJNGQlSYCGO2PhxyyJKufWSJWnlWgd5z5mEgd+xs2n7Yod5jCoYgakx11IXcOWyl2HnKilahHl8IgCaLJpoQkaiXtKSUmjhtHISWYURkLoYOfKSRdnXUTQ6oNHUkiYaJ9oKun96JXFZ6mxySCHvMiIygcnCag9ZuzIFihBiOWo/WlfKh1IFAlLwedpJoo0R8dIMyetCY/Jq8kRiKWpoUZIiFCI/0ieqZDIQ8c7KBYoy0gAiKGnEEZcRySpJyiKZcpI++klqDfnGIdKaTvpWImPhxQoJIeIydZpYSl5h+RjLukuKRWJEcg0CUDn7OkBKD9IzOhKKXFozuoJZ+Xo7yi1Jh6nImfxpsCHIQh/qebnK0kZCevDh+l3aB6nv6dbyHCo8oiw6DerKMcgx6Nix+mcKN3H+0hFKhVlK6kPhk/qOsj8p4oIdskbKBMIK8fbRdkG8QchyhuHj8hIBsuGJGk9KCDoA=="
+    },
+    {
+      "id": "render_3d",
+      "label": {
+        "en": "3D",
+        "uz": "3D"
+      },
+      "media": "video",
+      "prompts": [
+        "a 3D motion graphics render",
+        "a Blender 3D render",
+        "a colorful 3D illustration",
+        "a 3D animation still"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers 3D animation. 1 of 1 right on the test library. It rarely wins there, because CLIP mixes up 3D renders and glossy UI animations."
+      },
+      "vec": "bSXtIvGmTKMUpYGk1yfkr6Apch1/ILCl5aQiliygPyjRIS4RapQ6mIMlKKb7JzulfaQDnBqhgiWIos+jHiQbn8Gguhw8qJqm0hmkEwKOP6BKpVogYygoIowbiaDaoXIg5hikGSCZnZo8IXWikJakGI2lN6IgoBYgeSPToHaldBh/kGqeMpnNpNQdPh7CGYOmy5fBIfimBKNLIRCiQaVbHqMguhPqFmccc6UuKJMnyKa6JK+kf5mNoPGwc5uyoA0bTCX8lXEl9ahnot2kapw/oSqiT6JeoYck1yChmG4buxGLpS2beKU2JIkkLqRMIYKcrBtVojOn5aZyI/UmKKRQIGYgEyQPGoiodZ8COTAiNyWzpF2giCPOHiyXSaJ7IEYbXaTDISId9Y1Dn1waoiCIIu0dZ5qkpBIkCxsGKBmlQCSknDKiYiLUn0WVvqUZHCIkgZjdHqUipaFcoKOklaLoJhqo4SOlonGi4pW3mhKm+KJrqYajniQ5mCmmWSCAoxqhWyB2JI+epR8ZlFCgopsmJGeZHp58HIcoQSK4IdQnHpkpHmQm0ZmGkA6l/6PkBfUdbpqbHk2eZiB8oB8ZfJxEoQQjm5/ZoC2hkCGynlonwB6xm70Vv5VqoVYibibJoZOaeBFCHMAg+qTWpsycyyOFJJkkYCBUINCYyybGJbqVhaOtJNmhRiPrKMOoSyRiJmyeC6UyoO6cpRF4IWueIabEJiSmWp7lIqgmepg5pbAhRae3EwghLSRSoPwnKiW0JKafJqUUoMkeIR2uGgugtyBJnAynbxCTow0cZaUNnmCl/yOwofKlGyFCFFqcLKNxlh2lATnMo7AhbiLWIqAcrBy8l9ebVyr4l/yb7qZ5p5kilB+0IRmzgyFmn3sefB4RIh+cDSfvn8ibEqKUKFSnoZwLo8EaASAxHDCa5qGDpMKdIyLVJG8hIxlVpFuaxCiZme8fe6kDmnwaUSeOoRMgwyNxHb4hpaavIwMcNxqCnmOlUwpgJoYgMqCuo2GZQRdHJOGmBCUfFemn8JKqo9QkCKEXpAqmKiEzEb6cYaYQp3WguKjIGy4gnZKDpXShZSClocOkC6JJJDgh0KGjGh8kjxzPD18g8pwjoLYe1h81nvwh+5+2orEdyZtfoROg0SR7owilB6ZDlFGdc6QToHSfIRtgoGqUDRYSpBAfZSBUpNYcziK3Jiye9ic9JHQbdKGsIKMi/aDjoteiKJ60m8GldaDtII+evZxeIoefGqXFo+IgtybHJCCjvB05I0+UiY0GDMWhEJjsrawePiRaJT+lzp6oKocd0Ah4IfkfuiNJoyIg25WdIV+YtaCTIj0ld6S6H4sfgigEJSOp9SDnmRWlHKD4Fg=="
+    },
+    {
+      "id": "collage",
+      "label": {
+        "en": "Collage",
+        "uz": "Kollaj"
+      },
+      "media": "video",
+      "prompts": [
+        "a vintage paper collage",
+        "a mixed media photo collage",
+        "a scrapbook collage"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers collage animation. 3 of 3 right on the test library."
+      },
+      "vec": "fCUJoDcZuyIoI9gWJiiWsAoohqApHsSkvp6NkSqg2pjXm5WYvBbYJYslBqUJKqofgiBwkk0ehx6iGt8edyRNoVgiyyHxqXucnJxTmiohLpSWnKujQJPzJUYj15sEmXmh+SWfo0iVphncJAQlYiBap1Ki/KN1pC2UzJRJn1aiPKKzIG0gLpk0pMgcNCfcHkimgpr1F8qj96V2GXigrSKQmwwmVRzrHZgYrpb9IdkkXyRoFtKj6JxyIgSxDSbnnU4hrCMtoOknIqdaIQSXG6VtkqOjXaKQJLqk+ZkrHnaEpyBTnLWbPaWcmLEkIR0eJF0kKaP2qFwVO6i8mvAf2yAAJvokpCjojUaopKTeOI4VdyKGHOqn6yi+oCUhRJjLnxOl9gvLpC+Pu59hpMEgA6DnJOoggKE0ocQaUh8qJySmwR16KMClS5a9oHmmL5nVIEwmTprhIIEcPBE6HI8efiSQJG+jvp2mooWkkaQUnU6hQqA+pz+iJyK3nE+kDSPlpe0YPyTgIoakyqM0oiGemp+OIyWeFhpcDDkhJSaZG5ImQhvgITkkVqJ6JEKhJSVjoOUkJ6UDoFupQ6GXpgWdfKQYlLgewpmTneemFaIaJQgR/SIQpYScSCVqoq4hUCQ6oFgjG6UKHhMkIYZrpBKkKhz4JDccxCVOFjwlGKABKOWbj5jkpFmiRCHvJFym9yTkncik06bPHLGl1ZxpHiIY9JNhoYykPaQXnH0lRJuPojQlHaHupLWcRCVCHxYiVyU0oLginR0Xmy+iK5XqHJqmYh7mlmemNoBspJeO1qVvoe+kdyFgnaojXwqYJaudRqTJH2yo3jjXn12kmRJ+oF0oFp5sHuichCg2mMAlyqd6puOfiSdJpzG0qKA8IcWS/SEKJ/6iiSYuGfoYkZ3iKYKlm6LRpWUloKEhpmQgFxx3HU4oVqi7JGOj+Z6IKRilUShTpT8iyaHVJMwdlZ49ps8mz56CKOQaBSAkoSceXJ64IG6nviQuJkwZw6PypL0kcCTvnkCgt5ntJLyZLx91EFkiwR7CoOijuCN+Ix6X6qYJpjMbgarBJAghjSYsoKsgHyMfGGQjWx3GJK8eOKRKnocaRhhtpLgkI6GmHgCjSiDmHhYcFCTfoe8glBuwpMAg4xp3myWqFZorm8Aagad8o4chiKMdjzckHqYlp3Wk4x3coJCdsh6KHrEHhSEtIUCk3qZFJ1uh5KWRo5+k3aWNppSkrZT9nBGep5l3qAyneqZwIxcd1SfoIYGoxKI5JMERsSHkIvwfPJ2hrRQl7CdCIgyknh/FKKOh/6DAJMoiJyXEp0oYs6OpImId4qR5nGAn6JpUkA+fGCpMnmGh5qFXGIqq65c7og=="
+    },
+    {
+      "id": "infographic",
+      "label": {
+        "en": "Infographics",
+        "uz": "Infografika"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: on videos it picked illustrations with no charts or data (0 of 2 right); pictures are still suggested through the design lens."
+      }
+    },
+    {
+      "id": "stopmotion",
+      "label": {
+        "en": "Stopmotion",
+        "uz": "Stop-motion"
+      },
+      "media": "video",
+      "prompts": [
+        "a stop motion animation",
+        "a claymation scene",
+        "clay figures"
+      ],
+      "about": {
+        "en": "Stop motion and claymation. Untested."
+      },
+      "vec": "3BQcIdKMIJ/To/ucFCdzsEIKcxy6jUmkiaRkIN6gmSRLoX0emyDHm20cJA43JhihoaJbpKuhsCPPCcOiiCQlo86OPiQXoZ4ZfyAwlbIdqp8xojGXEyBKIGMgbCCvIf0lKyKSIQedOKBeItOisZ0EoQQWKKLmHVoVOiSMoJShZh9NIG6gFh7+nn0efRl4pHGmAYHQIUGlkJ+enaojXZ7ynz0e8ZIgmmgdZKB0H2IoaaERFSOgHqF1oHmxbSRHHUYakx2hnqgifKNEIMCkuxwMpIii0KOgmSsfbxq7nT0gXChcnDwkcKRWFC0lKhl+ETKZNqK6pAqgg6TGIcIheZxcJPEgiCNtGp+oTaQFOb+ctSJGpOKfi53JFD0g3pjIotkfLqifEPobf5+ootCaFpe0pFIeuKLpoKYe1Z31JdqlDyR/m5OhnhlOpRihI6D8oFYh7J4hFLgkAojvpOeY/KETJmWmbiIQpIWdUJjhoR6k5JosptakSSDFFZagRBG/ntOgGyNVk28RvY4OlcacVaCFobOYCSNmnG4iGRKZHGYfyxSwIP8koZwKIewJb5dHFLicaaRhnbGlHp8FIQwUa5wuIWQglp8voueWuhEHmSgjyoiZofIa+Rx8lF0gjg7tomMhR59II4YauJ96pCogByO0Ilof+R6YmxYhLiBKINSiRKAZH5+hBSGLGouioCC7IycWOaSZoiycFJ0CHFiY958SJIaYn6LjmC0UrJ+QngslFKD9GVKb+yZJoGoi+CK9IK8N6JgMoQMfeZRnoKSgkRzkGLyn5J3io5wVnaT7ETqYA5/gmlAfdhQQojigGKA4mVmjBTnHn0YiaSOUI4IT+CSPJdMhMieSnGiatqDBo6wYyiSgmuS0MxbXFaAiJB7dGd6gqCSAnymhH6DWJEOhcBwLpPKgFB3uAsGeHxFjnsgltx57I1qeRpqIHECh7CFIndUceaRZmuUeGxYHpNAYuCHAIdgkOCDXHkCkGhvXCtujlJuqJHwd46NdobAgASGyHVek2KApo4cWjxlwofMdxZr4mhabjB/DEf4WYpmQoM+hTBwEHiodMR2tn8+d8aOLHZCeuR4OJa4jNpb9Hj0YBiMgJGMjNKNQIl8em5iTnPggVCCSoDcZR6DMnw0eZBp9FWKekqT6GE6hMKKDpF+VyyS4Guaclx6emQigEB8dHCOOiqG3JlkkbyCcHY0XbKUkJmyUbRGFouKkP6JRoLyh450VGwydWxeyHiGekKQKJHEg5SYLnp2lmJLPIoSWmiBGIIagA6B1rZ4hWCAaDCai6R1BJOUlXh+7FsaUL5qvpX+dYhd6JHaYcZKoHw4liqCoGD2cMCMYm2GhwCDeoPCkcqXxGw=="
+    },
+    {
+      "id": "map",
+      "label": {
+        "en": "Map",
+        "uz": "Xarita"
+      },
+      "media": "any",
+      "prompts": [
+        "a road map",
+        "a street map",
+        "a map with a route"
+      ],
+      "about": {
+        "en": "Maps and routes, on pictures and videos. 4 of 4 right on the test library."
+      },
+      "vec": "vBvAHDQS6BPgn8KisiRSsLEl2yDppiucwSIuFhiaJx8IHlwbEiCwJGMkCqQKJJufvqTYn1+fghozGUuhQyU7HGIjYSQ9HtEm7RheIIedkiAKpCSkXSPAHogehp2ZoCwndSKXoH0fhqBWJCukbp61I+Yd/J9WJaEgdJ2CIFyk1xwsI7SZ7x/En+siypQjk1SkR6HAIOGZH6EBkuEe2CPcnAMg8hzzoo0mKp4dDI8jsxxiHGUT5yJloD2xPSohGyWaxZ8Mo0klGahbnx2k3CXppLKjp6ONoeMiNyRLn8oOgCaPox8ZMJ/xmu0l5CSqo+4cJBPhpfigQJQUJOQcWyAGIY0j0SZAn6Weipz6OOIgmiMyppWktKfDHZQjIZ50pyohF6AroAqgRKCUpL2kLyYCoTIgrhi8mj8aX5wPIv6fzCPSn5iUlxCZo7Gfy5+AJi4g/Ru/n5ohKaSYp9ulPwN/IHObvpGJoDKW0BnDIpilE6FspXGhFSS5HJOdIiA7oxak5yW3oOulRB5gIAKjc5HrIxecCSOnEXyc+x9UmbEgdaPBIa8f0p2ani2l3yOAILqem6TYmOek3iFIJdAhDxc1pF4m8qJBnEyjG6JnlikkuyPkHncZJRjfm2aZTSHgpE8ijh3bIailw56poGChYBtHnEAcmB+dnZ4fLCFYISMdXaBLILKguiiBJa6kIxu9ITok4KFHpdGey5h6oR+mGZ9QI7ehN6MfE8scIKBYmJYf/Z5vobwfgiHFA98Y8yJaJPsfvSIVm2sYryOnmg2gMCI0Gp+k0Z/+H/EQ6aBmnZilYCFtIAgk6BrcpHmlAqTdmGih+TjyH1QghRZkHf2i8iBXJT4lPijtHbmZaZ+lGUSj2yJZGue0xqTkIIYecRwWoBulVSLqIMwRpJmSFHejWCO8pYAfgCDJpOAVmqFen4wh2J4EJyuaPg9qIeag2B+AnE4i4J53HCoju5PIpWwecRxPIksVPCDVI2oVvxWyJtKh5Jxoo48d4aWynRUm6yaGIlEeeRginRmh5qI2HRKg/6AFKCYj8hw7Cf4lcBnEIS6YAhr9JnQinCJqhNgb2B+wHKeZYCGFHykj4J+DIdch7yTCohyWtprkHNwh1SPjlschYKK/mQ4kNqZsFE8XLiUFn4mffqbGFameF5Z5piugBiBknnqcK5vUHXOX9CEBnomYNp+8I/maMaQHGkKdmqEYncmgryFzG6OiC6HKnaef0p87D/WkYiPoICWkAqaEIHYgUiUboFCltCJBJc6XLSGsnTYZCiGSrdkgFhYeJDwWVJyBJHUmRx4/mkEfMyTinc2iGZSHGvmc66boIfAgIxkCmfqbKSMjHFkiD53ZngqmyZ/yoA=="
+    },
+    {
+      "id": "titles",
+      "label": {
+        "en": "Titles",
+        "uz": "Titrlar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: title cards look like Text, Typography and trailers; as a scored tag it was a near-twin of Trailer."
+      }
+    },
+    {
+      "id": "lyrics",
+      "label": {
+        "en": "Lyrics",
+        "uz": "Qo‘shiq matni"
+      },
+      "group": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: CLIP can’t read words, so a lyric video looks like any video with text."
+      }
+    },
+    {
+      "id": "music_video",
+      "label": {
+        "en": "Musicvideo",
+        "uz": "Klip"
+      },
+      "group": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "media": "video",
+      "prompts": [
+        "a singer with a microphone",
+        "a rapper performing to the camera",
+        "a band performing a song"
+      ],
+      "about": {
+        "en": "Singers, rappers and bands performing. Untested."
+      },
+      "vec": "CSBhm3oYLqBDowSgSCHDr9WjryP2pMehzZyFHMQZpaCtnwkZT5u3l5ojwJyxJfaa4x4zoaKktx2OoGsjQiWhHV4fEJ4KnyKheg9xoYSkcR2nolacmyNInYAhzSa4IywjPySxokYZF6RrIV2g1ZWXoVKjdBJ/Hggd6CgEltKhgyJNjwihFZzSk2oe3SJopCqmmqIVJJ6jL6AQI4wk3R98HuEZTSIdFsSWUiUIHbkkBKSClLiiipn1ojCx8qRfoHCUCpymHiuJKKcWIPSnA5/Mn00fUKdbH0agviRVpdegoCcwovoiJJ5tn8gifR5JIhmWbJTQpI2ggKBsIzaWD6CbIHmbgx8Jn0WoX6MNOccXQ59jnGakfh3GlgChd5/OoR4frpfwCCIl3KVSovak1yOun34p0qOTHxWQ7ZRCIBynZCR7o3aY1ZhfpXucMZzTmQSg85rqE9wbg519oRCjTZ7wH38inSJoIlkSvaMAIBmhFRpkpSefpB//p8ybpyG7pHqcayUqJlUg/wzLnkqlyaAjn4oXAiDPnx2hqSFvHLig2aE2HNkhEQFDm4GgbBj1GxaieKPEGN6k+yS6JHykapy0HnMjip6fmDyLUpiHHYwiPR8ZpRKfOSBcJ48Ujpw9ocohJo4LJQqlR57XpEwltiSoJpUg8Z1Bmr4gQxtEJEiccBaWItSfVCZ6Ir2hgyDSIc2kC6RAnNsi1RxMm8ucyxz6Ijad9ppzHpClwZ3OHcsjeKIpHZ4dxZcJJBghNiZVJlSjkJ4UoIMjJiAaoLijPiFpoJKoyp/UHAYhlhn3luCdHx1Jo8YdDZkPpesY+pk2JK+fDDn/Bjgf7SZYJe+mISMjKIUfWCJNJFIgNqiIpCyh5CAnDFm0MpwPHvSZqCFCD6Ci8hYWIE0hzxYcIfChRiOmpX6Y6B7PIGsd2BZupKglKSF2JE4EtZ3om2GeOyB/ihclWxhuG2IilKEnDPcRpB8npBgn0R0voyOgK5d9IQqk5iE2oGyc+6SSkdcdF6M5IjkZ4iAAI4+jlJTYoU0lwaEqI8YctyHAH66jIKBMo2yenyKlJd4gOiW7nf4kLRhbIVKgziKAIjskSp46FGYkdx4mIC4dlqKgGs6hoRcuo9Eb5BpZGLEiVJfQoE0h4qLxmZqjpp6BogKgCB4CpzUg9iHcpCAZ5qQ5GoygAqF6HbWgEqYwJS8gaxVOJN4aoKi7IKajJiL8oOGmsp8Go9ScK548jSCiO6O2H6OcxR+eIP0iciEtnDWkA6OZHlGdcR6JHtcgtiJDrv4kKSCeHAij35RFJH4kTxRJoiSWyx7Snf+XaJrHJZUgb6VUIasdeJtFoaifGqBIGFEXDBx6oSYiQaOzjg=="
+    },
+    {
+      "id": "visualizer",
+      "label": {
+        "en": "Visualizer",
+        "uz": "Audio spektr"
+      },
+      "group": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: in the video test of 2026-11-20 it was suggested on the wrong footage."
+      }
+    },
+    {
+      "id": "teaser",
+      "label": {
+        "en": "Teaser",
+        "uz": "Tizer"
+      },
+      "group": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a teaser is about purpose and length, which frames can’t show."
+      }
+    },
+    {
+      "id": "concert",
+      "label": {
+        "en": "Concert",
+        "uz": "Konsert"
+      },
+      "group": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "media": "any",
+      "prompts": [
+        "a concert stage with lights",
+        "a live music concert",
+        "a crowd at a concert"
+      ],
+      "about": {
+        "en": "Concert stages, lights and crowds, on pictures and videos. Untested: it never reached the bar."
+      },
+      "vec": "gx4Aoq8cwB0upUKiUBnXry2lXSNkpX+iahhdFHoa7yGMpg6eHpzaoOsZnqG+JdyjuR/3mBuhspGiGq6fICXAnQodwBDEpUOifB3BnGGlcJxRoaiZHyWnG96QbyM6jdggiCBVn2QhHaQRJKulhR8xoEKiTJshDagkoybcoaqgYShDHUiiQRtFpFIkvSSTnxKhn6GfJN2j9BTtJjkkAh5HJZWhqZd4nN8fbiRiFKsgFJ/yn+SfzBYUp+qwTp88pKkdcCA9IpSj8KnlHkKmlaCVpjCZXqncIPkdNySroKWjQyVWk1kkLZWPkkAhQiA3JWKGu6B1oBqk356+IhcRfqKtm2acTSSlHNiitKEKOcybLZvNoAOkEqTaIiyexZ3Fp6siFRkRmxMli6WHoMKnFiUQEWwqq6UCH9UTB5hrHminiSH+kZyeyRhtpvicsxuHmDoRfJH2nWKc0qFaIWika5wPFvOWyh/0n9AglKZWoAedTp8npcehfSD5pY+ivSHDopggDCKvIIQiJ55XIEMRIKAWn3WeeSCzIPOdqRxZpKyevJ8aknKVAiRMpJqkfRkVmKOiHaSqnIKgFyTCniWcSxqCkFeUog0QJrEhqKLwGssdZRyTpHOQVJtXKl4eG6SjHDEkwBwCDz2jZJ4lpYQluyeUJLkfVJajnh8lGyH9IbmkSiHzI2qcBSmHGWKTGyIMnKafsqYOHCskICL+pKEbIh/IIrygSaK+JAidg5sDHZUlzpxIJMgaHRwvIN0iSCEqKJCkhZy9mH8jZ5g3oLegDRQAnkSorKPIIzIacRqFHhuV+BYppRgicKErpaMceaCzIHAlCDlcoGkkfiLTJhynxR3aKZkl0yKqIWIhf6VHpBagAh2tCeizZpdomTQTI531mWKlwgMzJB8X4pjKHwGnGSTSpbMYciBAHaYgLiHphFIb3o0gJs6YLxwXpW6iqigTonQlnRzsnK0bW562pAoBmB4GofInbCSQHCecm5mbGCOkASX7qPyQsqERHAeVFKR7lVeYI5jiGBSc7KIGHgkmxY8zKFUUeihoHnejSx5qoZ4j9SK6JWKhRSdeHUwfF5jHoESjyxRfn4wOoaABmKYhERsHH66T9Z9AnCoko5b/o6YVraOfHWgkqx8DHYsiux2uma2nBp5HpbOkYyBapsoi3ST1pM4jCqeiIleWDqMMnlCb/6UHmH4iZ5+AIvmheKjGI7GgwiP4F8WnuR58GSkaCyBAFLui+pxBoFiis58/jZMm9JDMoMaj6qNsH3YX8yPdnmAknSC+rn8j+B01oD8TGSM2IzyU9J3MnVIdkxyOIN8dHZkgJl2clqS/JHcbTqGmozqj06YjHgakUxFznoojE6O8Gg=="
+    },
+    {
+      "id": "canvas",
+      "label": {
+        "en": "Canvas",
+        "uz": "Spotify Canvas"
+      },
+      "group": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a Spotify Canvas is a short looping music video; frames can’t show what it is for."
+      }
+    },
+    {
+      "id": "dark_cinematic",
+      "label": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "video",
+      "prompts": [
+        "a still from a movie",
+        "a scene from a feature film",
+        "a dark cinematic shot"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers cinematic film shots. 1 of 1 right on the test library; on 2 more videos it won half of the frames but stayed just under the bar."
+      },
+      "vec": "4x7kjBearYnAoOOcsCYLsMqZMyDMof6eeJ5xIQ2meyHApKYiJCBHndsjsaKhJWKgI51koVukSR+/n9GaISLgG6QexJcYoVARDSCfm4QEiyRTohygkyCQHrAWLSQtJZUknpZLnyYcv6QZJG6kwpyUoeajPqSRIwEk1pfsGBqhGx4yHEyTMCLapTkdBIm6oaulP5++Jm+fB6DKGM0h/JtBH3MeIpBZHxUfdCFvI0Io2J6+CLGhlB3RnUGxDp1go4McbpolluUk46bhheqmJJV9pj2iqqc7FEAcGx8Im1YeGiWGHaaX2KJRIsYjSKM9H4AZM6MhpGainaU8Ju4MNBzDIOQU/ySoHCWoHZ8VOd8dn5/VocacqaA5kB+VSpIipTchgaZ3ISQgM5fmnZUYbCWkGCghTpyJIIMgRRxxJX+hhSAdoPGjmKEeposc6aITofMhYiJpG3WUuaASm6igAKBQIMOkziDspceWIpKzFAiik5heptKdWyARHEygyplFom+hqhcUINmcl535HBqdGqCpE+SaiA1KobQjWBbKFokgV4BAG6gj+hrgnEedVSNhGreg3JkVlXylbxt+GfaZ6Bw4H8khbqM7GggglBFtGF0hRBZInMccch+XFgIZ1JidoBOfApiOJN+kbpxyoNGdpSWlJJAiaJnJnrEgzSFkHtWhaZriHacd8SSLItqiWCM7IdGcK5/em/+kFp9WnYeVCRydGc+gaKROm7gfaBk1noodrJygGr4dQyGZl8Qi3iQMIN+hr5pbnxeZKBHZoOugFhiVhPCcQphWnJAYw6ODmWsd7SAQpAChZ6BnoDKYuKF2ovWiFTmGEdklICQKIn6WIiHyJ9yTdyR5HvYVK6XIoq2cMiBTGXW0nRGbImQiqSRBGJChGyERH7ueeqH2Ih6mWBwtoIcZZaIHnSGgyhFmB0EkViEjJcqZkqB6GPkYhJbkos4jmaYJlEYbtSeNoWUeGRutmPIkmqLOhQWhgx0iIi6gGx3/JtYc3aQMneIfk5VnIGyjZh4unKMfUR9KGIcdGRndIiKcdyHloRkZM5f/o+KaO6QbHxwfrqWmlZ+gHps6GSOkzaFQHAmhl6S+HpEjHh7/InQb8aE4HMacwh9gpZsITyeloFci85qYoIolJZAqoR2l+6nDGT6i16AnprwdJSSXl0GgGyAjod0dcRUxoA0YcKT4JNYinRTtIGOd1p9dE7ekSRyqpk+ijZ0ZlAgWwp05IlCYSxhzBQiiHZ9gGnYiqB6Vn5ClL51AILcTyRwlHQsjP568rYgjLhnSDHOgWp/SH28jmxrbl20htZOFo2ocOBbNIsYaYKF3F8IYABsgoNyU0SavjbeV7ZWFnlOitKQjHQ=="
+    },
+    {
+      "id": "short_film",
+      "label": {
+        "en": "Shortfilm",
+        "uz": "Qisqa film"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a short film looks like Cinematic; as a scored tag the two were near-twins."
+      }
+    },
+    {
+      "id": "fan_edit",
+      "label": {
+        "en": "Fanedit",
+        "uz": "Edit"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a fan edit is about its source footage and editing, which a frame can’t show."
+      }
+    },
+    {
+      "id": "grading",
+      "label": {
+        "en": "Grading",
+        "uz": "Rang tuzatish"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "video",
+      "prompts": [
+        "a before and after color grade",
+        "teal and orange color grading"
+      ],
+      "about": {
+        "en": "Colour-grading comparisons and teal-and-orange looks. Untested."
+      },
+      "vec": "ACQHnlGoA5wopD+oYyYmsAgoR6UkJnKiPKT7GXOk/CgzIi+hgSGqIl0olKTQJ2aeABd2IFOjOyBXJG8gNSF3oVanryARpCWkjSQepCQloSH9pMYgb52hF0shPZk2onAl5aBgIBseKKckpzIkt6JVpSINEx4AICEiARhMoiyrzZ6PIs0jWpJdpLiXB58PqX6iX5X5J8KmOqM5EW6o+CH+HzGFsAwEojGcxp1hjTYmuSUrKcWiPaY2J2OxFyUCoQYo+CGHpTMk36QQpFumkKVVEjMSOqCUIPgagx1iIoyk+CEenJyoTqpGI7Qi/aUrHaGkXSHyo8AjOKLjoNolZyDSINkenCY6HAGiQqa8OGInUJ45okWceSBvHLGlmqSBo/KVpaelDSukZSjfo9kofCa1ILwgwqEiqJuhrpbzJbaiGJWyIomf9R7FH2IjZ6RYIckjOZfYIZuiF5SllDUjx6NRJ1SmBqCbGjqlzaLMqN6knqNfqb+iuyPVqdGhPCFyo0elbCiDKOoPd6AWpgYgzJ0moEGdcRiLGbIkCSa9I40qI6YoJ76bA6gJJsSl+J0LoWMm8p2Tpayc9iL3pHGhDqKDJFygxJ91KM8IBKGRJ7KiKSHvGyad9xzbo3wkYpVwHJMeQ6TyJCaYg6dxqE2kHJ+HJwUgbCEXmDaeNyZpn2OkoaKYHPSnCSV/I3yk1SRsKLqlc53Lo8Kp8iVvoQwc/KYSKN6k3KOBJmGLMRwNmcwitaaXngEgtyIVnp8oeyiUlr8b/BeznRmmFChLm0ygaZ44HrKqtx7yEC4mpZ7moYqoLCdbpO0kcB4VIu0dNRhcnayguThmoHukDIfhI8UgqifvJiCppihFIoyiiqhMqHCWDSTmE3W0uRphqGgoZieZHP2jxCSpFhMi35z4JpqkRKJdqHwX5B+GIKkiYx1opDoh4Bz3KI8lNphzJfyimiUVproiSqb7JOYohSgepmGg/aDaGRYbIaS7lUgn+KBOpVWoXyT8Hw0kkqXoHvkcGyflI48kIB2rJkilu52jHMgcDJTBHt4ZbSiKpCSVzqWbpn4j6ZpEnPqjox/bpF2VZCQBJV2dUaJ6oX0bzppFI9KTXCEKIEcqmYOkIhmmSCDkns0jf6aNlIQkIKA0pdqiuCWhpSSisaEuFRagEBsPn56S0oA2oSMkSqQcpCUdnyCqpXqeDCeFHTylVygkHkOh9aUCJyYjOKK8IFog0ptdn46ZiKQvIAGhaCZCFR0JCpFDlYEYDiCmIziqF6OMIvOi7yU4odglf53jrNwcF5WuJbycShnIJUMlH5/SJXUb4iaentCmQp8vIUEeUyKCImcoQqWgJi6WbylgmsmoUyYHqAmljCWQHQ=="
+    },
+    {
+      "id": "one_shot",
+      "label": {
+        "en": "Oneshot",
+        "uz": "Bir dubl"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: one continuous take is about timing, which frames can’t show."
+      }
+    },
+    {
+      "id": "drone",
+      "label": {
+        "en": "Drone",
+        "uz": "Dron"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "any",
+      "prompts": [
+        "an aerial drone shot",
+        "aerial view of a city",
+        "aerial view of a coastline"
+      ],
+      "about": {
+        "en": "Aerial shots, on pictures and videos. Untested."
+      },
+      "vec": "GCCJHzqN2B3WpOqiSCA9sMsn5SBfnhObQiNCJBulG6GEHwCVBBP+olsdlhpYJucUn6M5hVajtR1NJWCYBB6XngMc/iNTo54ZNpU1pLMfDiSWplyi1CXGKP8kAqFMIoEkCiG7JXgffaK/IemQhB7FnBITdZhcI24dyZ90nACdZpzYJNchqCILpJ+mbZ5dqZ2odamdJmClAqe+JC8kNxQDn/2eOCJyodmePqMjJNQlT6R+pX8fSyTVHMmwzCc8FX2dRqLxJUomqal+oH2bGihQqBCl/aRlomwccyNDpTgicp7QJm2gi6e4oP8o3CKwmHCgECGcqH8Jv6UaJVQoZaKBJHAb8CNUmaikWKbfOCMYAZ5zpnEh+6l1oXqcnSfFphicbqStneKm1qaloJio5SSSpuudQ6R3lXYTXxxeIOqpDxlIk5qmhyFjoy2lB6P1JPclvp3/HNMm3Z4kp3CkLaSpHEmkdhdDp3WedJ/+Hr+jOh/olvuaLB0rIRQX551UoaGkbSZqHvyYdqXXHlekMiRpnxkYaSMFn3EOJCeIGvKllZAxIcohWiHiGLeiSCQPnM6bGaYBlQmncyRyJQ2c4xqoF5wnKaHAHSymQaXGI4YV1KAsHP+TlyTJovuW+KI7pLUiQqM3KkOmXqZUGnIcFyAdI1Ok6yTmpCYUcCaumsIcvB+aHOogByrFJV6dYiVDpZgkhhzuIJ2ixqVTmOoO2CE+KBklhKWRoicNT5u9o3QZupa6HFaf0yOinmOjmxlKJV4mtRf8p9EUuyS6oo4dOyBWHTKhpJgNIgwhKCX+pUqo9h5EqCehsaKEpWCU65t+pFuM3jhTHfwjcpxImfqiFCWHlCwgtidNJNUdjqEQpPyk+ScLIhe0z6mtlqigSSOsna2Z7B0EHb0NWKGKmZ0gaikepmkkPKDZptagLKBAJDQf0CASKhIcHRb5pFGcDyPpmNkcaZ6zoXEgLR0CpMQhcCTKpVkoDKO5n6scTZXTJ6qijhuCoQSk9hQpIyYmsSRfJC4k/JwIqLumTSEFk2KhuqB7Iucj7iVeohckpyizJHekBCbgKVog9iTJENsmEqOHJFWjhCA2FbIlMCasJNohQydollkZ5KCGITYleSGMos6kD6biGz4oHaShHKoaKyS0okKndqaumamhj6F4IwYhqCfaFxakoaL4mpmnpZmhJlaIbh46KNedK5ikIA+n4aQZH6Scv6H6noejtqEBojYdZh0uHAKniSlgJfKnzxowobicaiQkFgWnw5xjIUahjhzjnJQeiSM7rcMidJNpJVCl1ZyilxQjwSGmnjSgZyjzJBqkCqNEJ+8k6qaNJNAhGCR5oZgfiiaeouKlMZ1PIJqkvqYOqA=="
+    },
+    {
+      "id": "travel",
+      "label": {
+        "en": "Travel",
+        "uz": "Sayohat"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "any",
+      "prompts": [
+        "a travel vlog",
+        "a tourist destination",
+        "a scenic old town"
+      ],
+      "about": {
+        "en": "Travel films and destinations, on pictures and videos. Untested."
+      },
+      "vec": "rR/hmOwWkhiToeCd9SQasCMhrZOPnHCjBSBaHnOIkBoUo2UhWxiloBso4ppmJ76lapgBHB4apRhVn+Odbh1gohAQQSIpn14bph4Qnl2Q2yW9ncqXcJLlmmgfOpgNIjoddSQAoVwku6GCG/Wi3xadnmUcKZ4qIU2S2qBcnQ+kK5kpHSgPpxkDHk+gIZQUo3SiV5zanW2kkKNLILgQqRwmnjMdtIgTpA8iv5nwAEyUqqFNlCSWXRwnohWx9CccHdOWO5b0Gy8nU6pIlRQUrCHTpOCgdaPRIwMgWByXmmUUNiggnQgfmKS4IuwieCFfHpAOk6Zvn7+cx6P3IkgdWp5aIOcf3JzAnkikUKAgOT6cZiFKHH+g5qLXED6duJnLofwgTaAMl7KIJhUcoSCcAZIAnPkfVZIdIO0dWKDEJUik1iIUob+aR6DiovuRT5wzJ/Ig/p09oN8eE5x2oA6RxZp+Io+ccSAHpgsSeBINlK2kgw+tozGdHCB8HBkd/iBJoKSgRyOzHUyU4ZzpIOGfsRtMn3mbVyBcoSMl0SBsFlsgdZj4IKqY4iDOoB2jlSFFGzcPW6FvnBCmQRy4HnQkLYazGBQknpz/EOGaBCAiHcgivpUVkRwTMRwCFbwbOw8bpiAhtRCiJralrpcznZYc8h/eHeEhYA/yo6gcISJCoDAVvx+OH22jOynTIrecFh8LHU0lVZ6kGOiaOJXQHOadeB4Zl9KksKO7EnIhY6C8pIIhjJWwnjsZEiEYHLYfoiTJHzKORp1VoNoUzRsclfCgwRyknHAV8J0DIUofOp8yovufExzPoCgkERTLoY8azJ+oGlmlHjmck3wdqozdnIilRSLmKLkgUyeInfEfwqaIkiyZLCB+JF60HqBMH2yZUxxsIEKjvCH8GACjnpoxJJmhZiLTooegWaGboxwe56L5oaUfmRBFH7cZZ6LXJweemCWqo1AaB6F3mDCQHB2PoscTJ6HuoXUg5xGDk+EWWJrTIYmayCMZoFgYoaGvGoIikhMSnaCafB8ymL0cOh4bmWubgpotII0cPyTLovUgLw65oyWizZlHJE6bNiGaExQdHRukIlOfbRr7HZ0Zd57RIgQkTB5sHrEgMqTNIakCsZOvEekjJ6GYmv4kSA46m2sgZSMOmgykVaVFjBGcxJsfoFofYyL4lsohZyAXmoCdsCHlHNeVZZwCJIMPIaFVHLGjOKFHIAKhLyBsogGnu559oyWYOBzrJeehBY69Hs2fAKGqm6MiTiFln0GllBnYFbiiGib9mTAONhFHrVodUhcAnwGWIJEjIb8dd5VCowwZiSCrny+h/BwxIbQaIaURIesiz56rHgQcUSLyGFiVN5hMmiyj5aM9kw=="
+    },
+    {
+      "id": "nature",
+      "label": {
+        "en": "Nature",
+        "uz": "Tabiat"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "video",
+      "prompts": [
+        "nature footage",
+        "a forest landscape",
+        "ocean waves"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers nature footage. Untested on videos."
+      },
+      "vec": "RSGVljyYspa5n7Wfmx0LsHchRh71mYCkmaTOnF+dTSCVnkMjTh9wIuQi7RW4J6GklJ/yIeCTfh38nQEhUSQ2nRYYyCG8nsUcZSUwmQURnB4RpMObpyPwkEwfJB3eJP4gayW0GGYXg482JXSnZ6EmoHikLKS1JDAd4RyEpJyiRZ59FGAdXCJmoBMdQCWGn8+iKaIcJ8+lp6ZtHW4EDZ8Gpf0fXSF+HHmkN47GGhcmdJeNFXAULhNKnNuw+CNBnkKTIiTHoFkf36mfoTKkpRj9nsahUqQlIHEioh9LH9Sc1CRPITebhKNlICIhliMznisYtJ4npw6cEqhcJVAbG5mnlRUlHCCqI86hmKMYOUOcgiSgoCKkN6LnmiqZQaI8nRMeD5x6oPKdM59zkyajMCSToWAhXxhflOqc4hx+ItykfiGSFp2hvZy6ow+i5x3sHN0kbaBTjZkap6A7m1OgspGUJh2lEh0Oqd2UlKDrHdOjbaA7lAueExxLHTwas57Upi2h4icVkOeWtB5Fmv+UJCYMoAociJaLo4GcBiAejLkY9qJlIdMkmJd9IIKkJxshINijEqXbnkCgBSXHIomb3hVMoPIoX6IOGsqh5hf6H24l85Obk+UgvBKVHrmY/pzJpm6f3KFqJJijVxw4HbsQZyJVIAog6pxamegZOh8sIz6kVpDKIrCipSdhJpCeax4xIfUhTJylnIMX26EUn7WSnBP1Gr+haqREHo8icKBzmpYk0BDZoFketCduE/SgZiSsIY6gnJr1nK+loR8KoVyUaZd/I/+goJq6l7Ib2qJPo/SiyJ4koewiuiJMoqYfxp2cIkmfFzk3IHkhTJqbIzwVYSQAjl4eoSnyHSgaiaSFoAsdqhzwIg60raSPEAEkQ5ktoo2luCUpIXSa+5zBlMyh/yFppK+jjZ3boPyM2x1EIKckEZ7jJUAipBc3HuYiuxnuovAgRiFGndwXByProkaaUByYoQcnSqJIJGyMqZBxIvCkriKMpTKWWaGPlR0iGR0JHXGfqiGnmT2XNRrmmzAhxKQGJBeXXCa4oVygYaSeILad3CilH8AB2yMrIUeQXZAAnaqkWx83IuEnPxrNIeSUyyaJILUl7aXxISMkvh4ynyOf2aiMHUAgR51KG5MNTp+DGoOj8qHBlNyeshhlnVAgMh9+mDKgQgy0pd6hQiOLF1ufDaJGJAEgjpwcn/2baah3JtWetxwMpJOhaKSwogafFRazHwGZeR2mI/YUEKAyIpQiJxx9moymAKNHnOSjpCCzFDYRLhzSrKokPoA1mv6j25t8I2gmXqITIIAaJR2JIW2i+RoljRYZnqa3nt4omR0IHwUfNSjoE+KhnyDjpRKgV6QdJQ=="
+    },
+    {
+      "id": "documentary",
+      "label": {
+        "en": "Documentary",
+        "uz": "Hujjatli film"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "video",
+      "prompts": [
+        "archival footage",
+        "an old documentary photo",
+        "a documentary interview"
+      ],
+      "about": {
+        "en": "Archival footage and documentary interviews. Untested: it never reached the bar."
+      },
+      "vec": "Z5VXEgWWJJ8xoqEYzCQrsOCZGyCioiigMJ6kIN+W+hz1nVkkeR3XEpolX5xdJYuh7px8ozmgRhc+oXEYWZCBm4Wd/iMpm9AYRiLfGMEeWyFFnDAXCyEWGAEk6iQKIZ0hIiLUnEAis584HsmkMh+xGPKjYhQRI0kbv5UIodCZUxp/oymgkhmQnm6bmCJqpTaklRq/JKSjRqMoICiQOZvMn+0esRmsnYsTBxV7IgInGaPfFsShth0mGGCxFJ9uGnsWViDVHccdJ6exk32gFJwYmR+kU6VZIL4erxWhHFKSZih+mskWoKC3IRUk6R4EI+Uc2KTpoqOhNaUiJMqY5B5gIqghoR8rGP2jnKAKOZia4iGioyikAhnWlYcb7RZvoiQgTaGNjLkgGZ2OHNAc5By9nlMkdhxQoPchAJU2JMChWCGSIpOfWZv/pOKf7Z04FhQiFSJGnNsexp2EnVyhFZk9IccgLyLcoGyiBaQ+GmSICCFsoxqeXCWCHLeeN517pX+isSINJGMbQaKdmlmhCqQ8oJgM7R1HopsinB+oDiQgtZ0eIDUcoxmzo+aeDiEvGvOgpZqHHyGn1B3ZFRCiDJpkHCEeMKE8HR8WApiKGqEiBBloFd6jO5yQoIYIgQ1vo5OfkqGwJRejiJywn9eXpCEBJnwg0JYfm+YcSh4vIHaYa5k8IZGg+SFPH6miTiPWIbWfnKB9Guuj0pp/HhKazqBpHu+juaCtImggdJ9znpwkVZ6tncMeFiNLGJkelB9zFmihCR7Jn5GTqhkKnsmj9hnSoxCc1Zern5shK5zBGKccOgqao+kjoByRnkyVcKB4moCjCjkJGiuUth78IAGktx+ZKZAcEhVFFEccWqXvoLKkviFsH/20PpxvHvuXcxrfFLyh4IfgIiQZcxGoIYKgAyMPpfGgkp9unxOcCJwSo9ElsRVMJH8hkiB+JzEUZh1yFcEfDKRJnR4eIyXIpCuaiZ7CngkleKAHm28dx49cnNCkvyG3JFwekacnoDwXfJrHHCwgmyEKoUQcvRyHmIohUhAomEKe0CSRHm4g+JgFpFydphhbJDeUsiIKHQmevpQ1IjWZmxoVHjiXQhqsIAcagh78HRIk8aXHJHWib6FVo8EfmyXjmtIcq4Vdor8hcRqVHSWkT6SJGsAOsB3un2Aiwh8imUyZPxfYk1QYmBzRFe+gOaHaJRYe+BurH5mgpKCAHeClm5lPpZGknpoxmU8hACCdJWQZ6phSnniezqCfIK0fxBYQnp+lBp4VHaigFiHhmpIg0JykrVYgZyMNoOmioaGJGf4dchDgnqIeTSAPqkeeeZ+sH1waRaJDmgEYYiBemnkdICigo2GYUKDJnqARwKC6HQ=="
+    },
+    {
+      "id": "wedding",
+      "label": {
+        "en": "Wedding",
+        "uz": "To‘y"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "any",
+      "prompts": [
+        "a wedding ceremony",
+        "a bride and groom",
+        "a wedding dress"
+      ],
+      "about": {
+        "en": "Wedding films, invitations and photos, on pictures and videos. 1 of 1 right on the test library."
+      },
+      "vec": "PiRPogChGJSSpICiJyZMsCmi3ySEo3OivyATHmOguqMIpJSbEyB/I1Ee7qQdJgoMehiFnQMYySUiItuefqZWlowd7SSjp0wbFiHZoDKexiAspqiZIKOdnREn/yMVImAccSSQkWifwaWmImWln58wqEemwBbGnUIneBwln9qoMBSRG4wW5yHspVoXo42um1qlYx4tHZ8ediS2KeogaJh6FCKbBZjrIzoRZCE9mMycjSDbozCcfB3xpeWwFKF3nswafZUUHUgmPiXaDOqfkST3lbkklJuTJ38mgySepNKf2SjAoIqdqKU9IsacAR6PJOQZwiEjqAKF7qbyJFgfgI41HiAnUZS8oSES8aMHORwdlhispTmoL6CeHKufjCMPohkmzKUfofUg4BhIIPGcbSGgp0soXIITIGSkDiB6KHMkSI02oX+l7p54omGl7qPnHNUgkBPZoWsU/KIJlBSkjAg2JvakwiGkoUYdd6J0nwmeOyR3qDwbeCRXkuGlOh2cpWenGxQ1JQCloaEpIsCaJ5ylEu0Zu59xnbAgjB+KoIaeCJs3JnaU7yI4o0WkzSR5orCdjaYjIvaeyxCGpwIeCaU3oXElzZy4nDobxxtXn5keBpjLo+wkxB+hJ1glRqYvlVGko5qoKGCmr6P6opOfzyPGJgQbwyKknDyWFhpTGfWcDyMqHC+jbiWLIfaZzx4cIRKgaSCmoL+fN6M2pL2llCQnotKiqhxzHUYYeqCYmfwmbw4FGu0Wgp+LH+8AwibQHpYesaMHnxiiBJoznnijFRpGIawUMBfzG90e/ifBnhom/JxFmQkkVBQ0nMwisxtqJViTBjkbGNicZpOWHluk1iXgKgMjVCc+JFOmE6VQn/6ebJCIIL6zdyQNJBIhgCL4JXCeKhbpJUohqpqyJJOmwiBvo+odwJqcHAcW/pyNnAgalqEDJKAYe6HXljshn6S0oUYleBSdovYjrx+VqHyfQSLAmMebR6bDnVKXWyb1JJ0LPaDXJjgZkaU7oEWf8KCIHXkd7h80m26c0R+boNQd0yb+I9Al+hePJPAPWKG0ohsPHijjmmEeFioinlUiE6ZNHd4cE6HREXOYa5QEIL4iHCNxIzAguaVunfuMtRjioAUlEZ5LC02ayyj9nmwfnyWAHMub1iUJH6SjShKzqIwkWp8VoZicmh5vmbmiCKRdmj6ipaRlJNocMaZqmBmfx6JeIhSl25pojT+jD6MepiUafJ7oJqagOSFWJvUch5oXHE8kCRTfohofNQ5oGschCCUaGDydG57Mqt4czyWmnGmjGJh3IXwkHCOeILIkMJQtKqCj6SEPGfAjRo5MKJChwxksHL8g3x1rJG4cWCJ5HMyjP6HeoQ=="
+    },
+    {
+      "id": "sports",
+      "label": {
+        "en": "Sports",
+        "uz": "Sport"
+      },
+      "group": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "video",
+      "prompts": [
+        "a sports game",
+        "an athlete in action",
+        "a football match"
+      ],
+      "about": {
+        "en": "Shared with the thumbnail lens, which describes it for pictures; this entry covers sports games and athletes on videos. Untested."
+      },
+      "vec": "OCEwnlEgsRI+mtiWOSUwsLEYGiFKpJujMKSnIOehNglFJpAkwxnNHr+Zk5m6JsSd1Z+XpHSg6hSDmTsXiiIYGxugcCLJnGiiAx8LoW8VtRnbosCSUx9uIloVmCP0BeUZO5Pdm/gg0RE2IhykGqQwo4kfeqCmo+UjyyRMnHikWSSfISOUxCH3lX4a6RhTnKikFKR9I5mjQ6D7HiUj+g0VmPmdRJrsnmomqR5UFYcPiJ0QknWfopcfokexCyesonkbSR6+nEGgpKaXHO2jRyQBodmhS6WxmVWZCyURojcbjSnCmD4ha6C+CD0hjB03IZekIqINmUkcvqSPI7ig2ZpyI24l7CWuHDql4aAOOXChQx5To/ukx5bDl3mfWZ6EoAYfAaRnHQAZPR9xoCCTXyCRkFyYwR7gnK8j4BsNJIil4CNQnoiZZxmdnLymixz8mBsfho94oowf/KJGnBCkIozHJEinyiIAo1ocn6MmmB+kshOGpw6cWhhPHXOiHh1+n4qd+yTBJEUg85ueElKjXZvmFaAOyBiaotceNx3klnsgNqONmq8gZBsnoC2hUSTJEy+kqJawoZihVx8joAWk/BhclJAeZKQxmFciix/Rk+EfSiDpoFGhPxJHp0AggqDspJwlUyJDIvKjTp7hopIdqCUsJ6MlLiCQnEocAxRiG1yLKp5llEqkPCWeI3Gg6ggPI00eOJR2oOmgPpsnII8YyxvQHzCgG6V4F1oe85VjIXsmcKExI6QhhCIhHg4iYia9KP2YQpK4np8hgpxdoUigLyIinzWlWp3mnPyFEqEnokmjaJpvpP2MSySHo6CWdaCyEQShDTlnnuceOiQNJX4asyEGJzsl6JSZHQkkW6VBnS6Y/RYRnsS0FpwlH9EcqRnKIJSkeR6PJFEcNJ6rJ12lpxUmo1yMEJxfndodn5SgHYsl6RlpJPAVf6BcILadehaenE0jZZ4lpAQhqR8MneYUzB1TINQixJqanYYWcCAHHyyFLB+0JLEda6KpnK8VRRz7lauTG50MpTufI6CEnpejVp+uH0QdICP6nB2ayhixFE6bISLpHb2gUiYanSWdYJ0MmfafUR75nJEh+J5Zn0IGMpNHDtIa/6CUIvueCBpOofERGyFFmXwhxBwfkBigex9fHW6lq55blPqhqBdvprsj1h90oNCYapHNHa6cZqAdm3SgARDjIQQjTSOMHlmgCqRVHr2iHiKtpjakiqFEpNOeyhtUIIOgehQiHG+bX55uHbcdIZ9zHAGmTqFNIEOZ5BliHp4kBSMwrT0h7h2NHSCPqp1fITIeXJkoGqsfqZ7Xn+2iYJyyI9QVH6LwkpSf5pl6lUicriJKnImYmJzUoHqlQqX/oQ=="
+    },
+    {
+      "id": "trailer",
+      "label": {
+        "en": "Trailer",
+        "uz": "Treyler"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a trailer looks like Cinematic; as a scored tag it was a near-twin of Shortfilm and Titles."
+      }
+    },
+    {
+      "id": "intro",
+      "label": {
+        "en": "Intro",
+        "uz": "Intro"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: an intro is about where it sits in a video, which a frame can’t show."
+      }
+    },
+    {
+      "id": "essay",
+      "label": {
+        "en": "Essay",
+        "uz": "Video esse"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a video essay is about its form, which a frame can’t show."
+      }
+    },
+    {
+      "id": "talking_head",
+      "label": {
+        "en": "Talkinghead",
+        "uz": "Kameraga nutq"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "media": "video",
+      "prompts": [
+        "a person talking to the camera",
+        "a speaker facing the camera",
+        "a head and shoulders interview"
+      ],
+      "about": {
+        "en": "A person speaking to the camera. Untested."
+      },
+      "vec": "Oh5cnN6jFqYloDKb5iM0sLmj+SRBo5+f4SERJZKaHKDUm88YUptrGH4oBJwLJXuj+qBlnFCYMpgfoNwduSDGoWGfBZ3zHwyco5saoS+WThfsoG+anplCHv0iuSbEIy0m0iBDoBkm9qLUJQCnDKH6ojue8KM0HH0gOCdboPwQfJt6lt6gPR4NoVChhCYWpCak3pwSIlSmuZ38Iu0gmiGrnq8a7yC8oNgfEB6ZmHMotpggpWimqCDRIoSxLiLrpCmcYR+WoLIi0Z3ymr+l/yFKo2yVNaY9HbSZASSFofgilScgpKaQSp1Kot8mNCH5IMIhuZ65pSGkZpiVGcIjLJ38Ii+gkiQwmZSmZKT0OIeZJSJ9pKOmKRscohmk+J+WoPcccJ9nogMdbaUJJGOj4RwOob0oTKSvnjUcz5clIhylLxy4lnmiaiECp2Cc05QcgJ2h8JUIpEufL6VHo8WaPKQuJGoS1SDokoqkVaFuGp+cmx9tpI6hPiG9DnSaJplJpD8QeyXMIfEmD6K2GsGdVaNmoHYWNpUcocEkViLyiYqg8RxsJLUTXaAqloqjmSKbmFekg6Oqj9Il9yOpJuSm8qGSJA8izZ2zo18cho++HqwUlx0KoI4cgB3Fnywj4aOypcMdGaFeJ4iiPKS+pR8lAiHAJg6hB5p2IX6gDCEpHFyc4RYbFA2YIyW/F+akVCb3H3acyqJtFNwgbp1rBZmhM5+KHeigSySqIO+ZJyCcIKgV8qAqlcCZvCPuIscf9STMFd6cARxPosYiBBnFn0CmZCMYIDeiBaSYGBYaTZ3QGS0kbZfRoYYjyptPolacMJlrHXEN8zhODfOdlCbOINqk6ScNJvIVKyMglWQiw6IepM+i4JqdHfq0bp/CId0eWB9bIEGnXZwqJK0e+6WgGxahCCETpEWklh0DpcYMfKQso7YlAggmIrUhFR6PJOeZBxy7nEohK5a7HkccdRPeHVUd8yFvpfIky6QZnwmV/RrbIcGgRJmVFtmYHqn/oDokzR+7HlEkCySkIuYdqJqSpBeaAB+hHC6eFiHdmx+eAiD8nw6g1CWTIUoVDyYoIM4lFKE0HPcaEyQBJQck1yDgITMjpiSoH0cmwKL8G5CnACHQouAemhLcG18odpJTGFKX+Jt3nbqk4adxoAENYyNine+efxqtmJydk6TFpF+gd6GXHYik15vAJegj6SQ0oakevaTEI1iccqTLoWOlyKUYpCiUfZ5WFmykAhQRI2icxZ5THf8emCPcnkKnd5YPH5ojBiS+mbIkXp0XrUki1RcRDGmeMZizHVshdpgbofiZ/B+tmUud6oxsIVeQJ6NuGcWc/ow0nbkiiigVjgcYVqSRoKqaIqaCoQ=="
+    },
+    {
+      "id": "podcast",
+      "label": {
+        "en": "Podcast",
+        "uz": "Podkast"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "media": "video",
+      "prompts": [
+        "a video podcast set",
+        "people talking into microphones",
+        "a podcast recording session"
+      ],
+      "about": {
+        "en": "Shared with the thumbnail lens, which describes it for pictures; this entry covers video podcasts with hosts at microphones. Untested on videos."
+      },
+      "vec": "bJlcHN4kXaQXnPKhix4Er3secR8bonakLp00I3McJxpypLwgtRoanWQkkJIRIpyk6KD5lnac/BqlG+4ZniAboYygRxLxpAgQThyeoYYaZKUbpDCbiSFdIVGXJB+7H7wiTCX6kfghpIx5GtCkVp/VpP2iHxsdHJOfB6XimAqgUJhAHEMZyJ1RHWweOSCWmFKkaBpVIRmlPBwZI2UhKJ0mGCkQ9SG3EaiaYSACJFIoIaQ8HDyjpwNilEmxBBS9Ggub6B6xGbKUEaVPGVOgYiD0E8ycc6ASoKOgUyNPnoChgynYnsMb8J5ioRolKhgjHwOe4qD6oW+i66GiIbQiGyIYJweeBRLkFYyou6EMOdMcZCBZmx+kDZyRmUOhoxxkIRGg5KJCleIcKafCGCyftSA9oKMkICEHo0wclBzEGVGiuySvFMChYJnhpKCgsx3fIFcfoR0loEYgBJzsoTedbRwsIAghKRfvILSfQ6WnFOuhAh6apF+cAJ7+nHkbuZUJphma2iNiJYwmtKOYnIWj7hoRoNCX0x4xnyYccyUgIj2PDhkII3gebaA+nrudrhj2H7ydrJ91HoCfgh+jIEOnU5j9HuMiGJkam3uWmB2WHvYhFJwko5meuRurE/EcDJ0YnlYRNZzmIbqi5Z7Fl8Am0SI6Jyog5xV0IasElx1QGRebXpp1HVKcQ5q0G4ih0yINGQuesxSKHDyYoxHomnsYZqSamQmhayF7iPwdPBt+HDMjJaOJGOoVMSPAIdKadiJyHdYg6iBQpMuQzhOsot+iKyWToPWbtKSMpHQgZxIumkEWmpgNkmAhq6GhnyujZJ25F26iCzn+F9eQ4iScHq6npCJkKAIZIxwrk/4dfaO5pG+kpploIeW04hV/IKefnCTAlxilvwsKJCqQZZckI9IhwCa2pK2fBhbvGdIchZLQozIigRwoIyyB8xDFJzMT2x4tHEck8qSjoGQjZCJrokQYi5jGoOIhY6PuolUa8JqSH/6f0RkpGs6iZaiSix0hFqWbIkIMZhx4JH4kPx7in3aVKRckmNsdcCOTHXYOwxuVoeaeVaSQH9UZux4vFKEgv5U0IfkfXhXRJE8iGhd+HVsiRBUMlTkfJaPuJHmhnJUNo5khmCAyH28mzZhBnc+dfxpnI5Omnacunk0jLhvvosMX4yE3jtIdyxQHmcieMpw5IsiYp6TeIUcj3SDQmKAjnqbAIieljqGVo9qlx5wqopEgLpiOoOie4pl2H02dsaBXHhEgsx7QnPum8BwrnVEhZB+YmwklPhy4rQMgeBl+GkuhiZ5IIM4jJJBcnOwZRh3CqG+YMhU6IcAZmKTKnBcisRUim38hxCELEVOX1aFnopQkxabRpA=="
+    },
+    {
+      "id": "reels",
+      "label": {
+        "en": "Reels",
+        "uz": "Reels"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a reel is a format; CLIP sees only the centre square, so a vertical video looks like any other."
+      }
+    },
+    {
+      "id": "vibe",
+      "label": {
+        "en": "Vibe",
+        "uz": "Vayb"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a vibe is about mood, music and pace, which frames can’t show."
+      }
+    },
+    {
+      "id": "velocity",
+      "label": {
+        "en": "Velocity",
+        "uz": "Velocity"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a velocity edit is about speed changes to music, which frames can’t show."
+      }
+    },
+    {
+      "id": "vlog",
+      "label": {
+        "en": "Vlog",
+        "uz": "Vlog"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy tarmoqlar"
+      },
+      "media": "video",
+      "prompts": [
+        "a daily life vlog",
+        "a handheld selfie video",
+        "a vlogger filming himself"
+      ],
+      "about": {
+        "en": "Handheld selfie videos and daily-life vlogs. Untested: it never reached the bar."
+      },
+      "vec": "PB39ou6YOR+pof6bBh8crxsjlx+4o/uiJRRGJXsieRzypGGbHZZNn3AprpwHJvCk15ajnfyi0R6WoKGcfyc1oJOb0puYDe6V5pu/n9qYE51gpbAi/p8kHAcibCSzI0UkdSXAoAEcPZ5yEPOkI5wyl6OVs5PCmuQadSBGoZWglpvZn12ZcKBqH7iZviH3ppSkNRhFH3+kyZ/9ktqSVCGDn+8YYRWAHvKD+x/mIYkmxBiEHSKjVwyWnz6xkJ0QmQGZ/R0roFUlZ6SCFYEXThzKoEKh5aWrI2ggBibTnZEgbylrlxYgIaJinF0leSDyJaqhvqGlnwGkLKX7IlocuqBPJuCgrxxFl3OmR6USOdSgJiOulG2kcRFfFXIeUBlplHIeqptoF1ocBpW5G16eFpxXnrce9hOEliKJb5IwJu2kpxA/nMicsxy5p/6fa51AJOAZBZojnhQhJqG0oKejqqDbIXUgYJ4cpBEP16BxkXegUx+KoQEVnSOCGQEiNB83pVkcYSQHI4AkHaBro3OlvBr0HHShqxv4pYogLSDplNKjFR3YJM2YKhpKpbaV15thJDEWMYsbFKmgCiM/HwKjJZ0dnpMiRaITFCcUwCKaGIgctx0qo6qd75+3IZsiDI51oz2f5aERKFWj/plHoXcglSU1JFsYjJlXmGcZQyA6obWfYZ5BIdOhrSS5H7GYPiS4HxeX85+nm2EXshyOoEGhp55oFnmltyC6HVUifpWvoGsfMI4PllUeCiaoHM0jMCRyIEyXVZ4jpJ0mhRvKnFOfqB17lWGjpQ2/nncRRJsMHnyPoCHlozkXnhkIoggiQqVMnoClETm0n04cCyCIH26m8iV6KA6c6iG7nY4kq6WAoLCk0JX7IXO0tBnuIPmdKiSKHXCd/B8uJECeFaQYIssZLiW3pZKh9KBToccgoaHcpQskfhyPH5YiuR4MKHohDyXNnRmDaaNvnbQmDx2pGvCfZJ3tpuIkHCJCnkmZBhtcG++c8CMPIgqklqTVGDYjM6ASHmufWxmZFyshoB+ZoVmSrpH3oNugIh3Fo6qacCBnpvugdp/ZIVIYAiEgG4WExxjRjiKW9B7zJlEdjSJ+GeojBSJaHx0ZbKjZHTinbJ/wnMcmh5glmBYi/hM1FjKaQRdTmvSkjanKGmgiryGZobMgcyRQnSAkjB1PFkOhByEiHyijwaCBJEUmSR2YnyecWqEqIAWda6RdpWWlERgcnZWaVxwHIjScYaHvDxkh15KUnLQhtSHTo6+kpqNMlf6QJiQ1mRYhPh14rbIfgRsIo8SjeBrEJLYhCqG0pNgikiGdpbeh9Z7UIcMhaKIrHcEk0RplmbyaJiTDjlMZxxfJpAMdQKTVpA=="
+    },
+    {
+      "id": "meme",
+      "label": {
+        "en": "Meme",
+        "uz": "Mem"
+      },
+      "media": "picture",
+      "prompts": [
+        "a funny meme",
+        "an internet meme with caption",
+        "a reaction meme"
+      ],
+      "about": {
+        "en": "Memes, on pictures only: in the video test of 2026-11-20 it was suggested on the wrong footage. Untested on pictures."
+      },
+      "vec": "rSLtIuEd+RxADWeUTyT7rVMfwCR6HwScTSTtmgca0yApnzMFjBlMopckaJ8mJOehzp8MHzkbahtnHq4RAiBJorYZqSIFITWbkyGKnwkdraA5oA6kHZmAJBUJCCluIgugcBuxoJyiPyALJTaRQZw8p8UD+J5cHBuIyCXVGK0hmhqvlGycXCUCJEaelxHvlwukAphnJLuj7pn5GV8kUh2RIOIhBBuxiKme7R7+ne4gcItcHEubCqHoF66wdCNXnIIiVp3ro88gPh4emLuhZBT/GHSpbCOGjm0lG6D0H7eWoyXoknoW656TIkUhiSAjoXsl/JeoqBQYHKCMIX6ZQh2oHD+CYiCDIl6loJcrOdwgAiJ7GZulI6TGmaCgZRn8GaSbGqX3mCudB6Q1pDQhHSYUlRolJSTcG9ggxiXsoduoMSSoowyg8CAUHBCh+4wUKMwa7ByUoXmhmhfinCEeYqJYJM2l+Jq+FBud0yBNIQunxJx/ojMcG6VcoiCl6hxCHTqlSSbQHaIMBJT8H0+ilqTBIF2dNCMroTYjQiBnGVwlYRzBIcQasZixIk6kCSDlntKgNaSSH4OiAaImmwkht5gzIFYNuKIGnzcb+57xGuwb/iIKkUejLyIuoiuNEh6SpAUgLZpGnkelURfhoFgoJx8tIRciJCSrnhOg9pqFIcwghB3umvafr5jKIaqlOSESIs6Zc6LcIWuQF58fHDCehJxgIbIYHaI1nbodwiD7mNwjTZptmzggjiR3EQogR52dHF8VASAygZmY75lBnCinpxwgFbSkdppmnnahyxuIojQZrRw5IXsahRSbmo4PZZx/HDGjKzmsnwmk5iFBFucmKBm1Jxof8SLTGJUab6ZymRydgSCJoN6zLZ3mIgYUDCPKJCqlwCDhHeegLp7EIaCf1qKvm1GXjh4NmZCdJRk3FMwnjqHpBsOXWZzDJo2b2p6DnoQjGSAloTAWnSPsm8UdhRtOI+oi5qAVIeoXGBnAo2ycIh/xJC0Z+6vho6ocuaJ2pGMTf5/8H3MjYBvcn2al46OlH0ubByF/oXOcXKa9oxSjrqVqmH6cmyCHInQizKJPlF2YnB4QEbqk5BnrB0gRF42MFiwhi6FPlryUuBxrHSoaiBhMlAEifJzPmpugISVzmvyh+qU5GA+ZJqC3mGoSzRg0nkobpiTOGLcaiJtVIKOV6KNNG+2PLCfloUea36JfIHYO2KT2h3+c+xu1nGIghIihHSyiNx1xHHsTWJUjH6IeKySTjDqnZB4uIgWMPxwZGUEmFxG+qlIkqRqFmM4WwKRIITAgHaETo9ocaSOXJw2kgJnzIgIfCxeWD60hZiVRmj2YuCa3HUgZ/xi2n2SqiZnGmQ=="
+    },
+    {
+      "id": "tutorial",
+      "label": {
+        "en": "Tutorial",
+        "uz": "Video dars"
+      },
+      "group": {
+        "en": "Education",
+        "uz": "Ta’lim"
+      },
+      "media": "video",
+      "prompts": [
+        "a how-to tutorial",
+        "a step-by-step lesson",
+        "a design software tutorial"
+      ],
+      "about": {
+        "en": "Shared with the thumbnail lens, which describes it for pictures; this entry covers how-to videos. Untested on videos: it never reached the bar."
+      },
+      "vec": "9huRGzCgNKQypTah5yTar90ldRMHnLifmqA0IGyhrCHqGTSVn513o8okIaI9KF6jPKU+ES6h/STmn2IcpiGcE2yUFiWdIGgXfKH/Ee4Xt6VJo/mZJ52dHkQlj5tqGb4fuBsInpubRhy6IbcdsZNmE1UcEaHDne4fuiTvHDOmqqJfIOqVNpzsk40UHB7oGJOkHKEdIbWlrZ2poOcb6B3FIFsbTaCsFgIjkRB4I4koYJ3fJAGj56FlIVmxzidlpYYeLJ11HUciGqboEWulaBtmCiOY1Z3Ln6YgVhyonSAdPCgKndOdK57qmQ0ftpzhGAuhPJi9og6hWKIsIbEkTJ0ZIqoe6iKbnhGk7qEJOQwcpCOeoAShQCCYIoeUEaEZnAMdwqL4HTuhXxSDnnWYGiWpnkchfKG5m3KheZ74JkiicyPNFBufSp5Qor+fsqFuIMkh1pxEHXAZsZsfmy6gopHJIrydwCC8GBOS9qMBo3Cmep9KpnycLCQzHASlvZigpA6kNh8OJHoYkBySim2k2xWVHEYd5o0rEpYiiB6zGJYlyh3+IIwgU6FEGj+guyNGnAMhwqUAo/+gDiYhHz6hlp/KI3okaBXQmokaliFPnX0gEiEZoxeY5p1aorwf5aISpHAgHpoSHp8egKBnpcgmPCIdID4jbJzTHNsZXSTvIJmelKRZIDGf3yFkJiOlOJcmIGYg1KB7o/KiQxxQpE+gGqPIGwIYwaCsI38lN54LIzsi/prwIO8gzCAZGywccCQ7ITmipSDpnqiR6CENnzukdyADJM6nzZ0vo1id5BY+oGiErRjHoGgkCyIRpimhTqCOHWufCDlCGKicQiHHH9QZzSBQH7MdxSl+oficFKhapqaYAiEDIKK0aRumGOgdPCHXH9aiUCaBGtsdFx/qJbeach8vo6gi7x98pBEiWxwaHM4iXqQsk2kjKyE7G4ydVB3aEa4kTxlAmRAkqhtrqE2TBiIAIG0hjp/hILUf0aEMkvKkQSQII6YYPKVbpHQaTiANikijOiHzmaoWXhsJmHkgWhqdCSajryVvHISNB6H5D86d/KKtHgYc6SSMEgmcn6KKoAIddCMcIfEkpp2/ISQlZSYtnTUk5aGJmsujVpLGHMUguqDLEiYldB2opNikQp0xGEScT6LUmSSkVKPynXyhxiIHomMVKRjvng2h9iW8nnmXXaFeIxQd0x5uGzWYtKVjJIufC51rosWmpZ9rnOGctKBDIdek35TmDiKhI6T1HsSbfCZEi6qmTqRAJ7YZ2yJ5jgElRJ7urSwKRZw4Im2hbBl1JCwkt6AiCnOd/h+Ep++gDSU5JaoVSKTHHLwfS6QRJXkcpCYjIW2guSV3mlqi16KMGw=="
+    },
+    {
+      "id": "screencast",
+      "label": {
+        "en": "Screencast",
+        "uz": "Screencast"
+      },
+      "group": {
+        "en": "Education",
+        "uz": "Ta’lim"
+      },
+      "media": "video",
+      "prompts": [
+        "a screen recording",
+        "an editing timeline on a monitor",
+        "a video editing software interface"
+      ],
+      "about": {
+        "en": "Screen recordings and editing software on screen. 2 shown on the test library, both partly right: both were screens filmed with a phone, not screen recordings."
+      },
+      "vec": "fSDimXmiXaRsohyhQyWErycoV5CnIOGgNBkBG66gBSWIn+kiDCOHmPQm+aTxIm+ly6NZHCWjAZccD6UcKBkpmnmicCaLFZmfrpe6mqccNKC4pdAghSCcGXoiACCbIgwjbyWwpKUceIcCISMUSZWQDa+kOB0aH/AhSJKhnh4ak6P0HcGdspwao5Ae9yGKn7Gk95DTIN6mVqGPIIabBiLhHyGdcB1DIC6cj51+JBwnkKAwJmKjrKCXJFexqpo5o/qYGREooagjSqgJpbKgSKRzoP2j1KM0pVmloCQWlGeXICFVovakKJxjIiclGJ6tGN2Y7B5PptakgKXPJDYhgxZfIogdAyTYG2CoVqT9OAokCyA4oLikSB7TIAagh6IemFiZaqMOm2uW36Cok/whRQttmGoggBnroc6ighyEJgSi3SImIjKanJpoox+aj6QJIsclZpTmHLYfdaW0ojWethQdJCegCJjqHCmaT6fXoNKlBRjnpfygOCRMmyqkD6Dbp+2jFyWIJwMOuKHMnYyheKGPIe8e950MnowlmCKXlAohgaSYJJ8iDaX+mLyiICRPo46d/p0Wo5MMHyYXIemlh6EkIMMkjqKiIJwdtZYhIjImIiS/o1ahKR/joqUY855voVaVsaapHwkkFJmHo9Yl3iUTKOIg4hwDHEYgNyQnHKGhU51BH0OdBCKpJVSkuSQ1Hg4UkppRpVGjZJk3pLShmqZEI/iiIqRmIpkk4iKLmuQkj6NVoFseIiZ+o6UgKyatI/OjcJjKo3yceiO/mUWiFhgyn0Wli5t1pCuSigrgloSh35ywoYcZPh3Bok2htKRmntGg/DgKnZsZ/yQSIsmewCJNJj2hryUAnO4VZKnto9eilCICIJe0o5lvIGiQ8iLKIJ6kRiZ5IVgiN6F0Jx2lvyIdqLcgnxdGmfuZWx0fpF0h5J1kIz4X5h/JGbEe5yGzHGQkkKUWHmsiLSbSp7eP2xzOpFMgW6ZVDPgdT6C5F3eooCKrI0sbm6WdodMcUST4INCWbiDenIclpZkBoowfO5genPGdQybjF8CYXQuMpQ6gc6UGlGoiOiBSnjQa5xQaoVcZZCG1HRki6J4woRklmyKVnI0mCaBrI/2kbhmEoeUe05/6nZ0e+5/5pTWgYZnwGBOmdal3ITMcKaTjpuGdrZgrn3gfV6K3o9WeoSAVml6dAh5UJQMcvR4AIWecR6XYIf2dSaL/pH6j4B/Po9Uer6PdHpui5SAGmv2V85jQIB6GiCdaHU2j6qVrERIh/SRnF6khbJ5Brqwh75SQJbaaZZqiI08ZapdPH0YfGR5PpD6faB1UIAWat6VtIKYfxpQlIekiIyjjH6+hViG4nXYbPyBdHA=="
+    },
+    {
+      "id": "course",
+      "label": {
+        "en": "Course",
+        "uz": "Kurs"
+      },
+      "group": {
+        "en": "Education",
+        "uz": "Ta’lim"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a course is about its purpose; it looks like Tutorial or Screencast."
+      }
+    },
+    {
+      "id": "science",
+      "label": {
+        "en": "Science",
+        "uz": "Ilm-fan"
+      },
+      "group": {
+        "en": "Education",
+        "uz": "Ta’lim"
+      },
+      "media": "any",
+      "prompts": [
+        "a science animation",
+        "molecules and atoms",
+        "a DNA helix"
+      ],
+      "about": {
+        "en": "Science animations: molecules, atoms, DNA. On pictures and videos. Untested."
+      },
+      "vec": "2ySrIJyhnqV9pg2UeCTyryUmgiDQn/+gNKNkHjOkyCJnGzKDyqEXHSoacaBPJe6dLqCroeEh55WioDOivh5toZGXJQ6mnouNGJW9oLwjNKWOpEuhraClH8QeEyLan04YNpioneGdJY7GHpeYOBxBHR6mK6TSjU8jTieRpNSkwISUIPejoJ2rnyaKXyTLlQClNRlKJPWc16aynGAmnJoKkgslEyGlpZeeYJgiJTsqi6FzJfMZO5STHS6xDSWnoSwc4SKNp7MfoKH6ni6miB0dFIyWxJdhnLolYxs8kzMk+iVUJaIgrKScJOokhRqUnU8ieaLGon4a1Zj9JKcWrpounHqGQBkughOiuaAOOXAh8CK4lyKoipxcneWhD6MipcsgpKQ5Gmifq4dTInYZsB6YGeEh9aNwmZSejSNKJCWjCCdJHa6jdQz8pk4W1xwnpIkbsKASkgMlFJ2sEzQZ0pCLJv6oSCC0pcqh3aStm1KkepcCoH2gmhwImT+lXh0FoCylayUiIGMkFhsuEcWj7h4eoWqmI5UnpVWfPyB9nmwbwp8pJCQoDpllDmWgix9WnAAgaaV/I1qospxJG5CcLJlhGKQlNJ+CoYCk7pxcmN8fhSUIIT0k9aP3I/qhnJj0pUMi3qIoIxChb6HZpL4XpCMWIugckZVdHl8A0iK1IeehtJ+EHsugRhsKJWOm5JMXIn0htaQ3ILciOxiCooukEyR8JBik4KXTIGod8KCwHf4lAB0QJngeNiXxG78hWCRYgVGhmh7gluCbWKLHpBSl1KDxikyiSKN+FFykbaXsoESeupgYorAjnw7moQugD6IrHCkjDjk0G+YXECR0IOii/iY0nDImRShbpLQZQKUkn80eyCTKIFG0hpxFJX8l9x/lnL2YfCXIoFchSSMgISWeMRuQjOQgHKH4kQwdvKFzIbsh1BiIJe4WFKEJFPmSfiIiIPMiR5+GlYiREKSDpgWX9CJqmMAkB6Szl+KXxBr4HNylDKFNo9EYGZ23nCWmwqH8maKkSh/FlB6dgosRGDweFZm2ISAW9iTvoQckwaKIIJqZPiYMHd4jQxdoHm8cKqRjHEygyCBnFgogQSHOIaELiyPqI+geYKMrIg6aJp8DoOegOqBYGNog+BrsItud9BjOnA2j16EhogqgZaPMpWchryCPnjsk2JFmpAmgKh8GGq2MmqL9JUkfzSJsnq8Z9aWnIumQ2KKaoYOj/aIenJGa16Q1HsGkDxwTIpyaVR5GGUSfiSQDGrKkXaJ5IXaX6aCODHokriBPrKgiBxu5H3KgIRa5JeYa7aKaiqUVMyGfo8uh9CMfIQMgNKEXIs0m8JsyIpihfiPlIFidc50fpvahF6h8oQ=="
+    },
+    {
+      "id": "transitions",
+      "label": {
+        "en": "Transitions",
+        "uz": "O‘tishlar"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a transition happens between frames, so 8 still frames can’t show it."
+      }
+    },
+    {
+      "id": "ramps",
+      "label": {
+        "en": "Speed ramp",
+        "uz": "Speed ramp"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: speed ramps are about timing, which frames can’t show."
+      }
+    },
+    {
+      "id": "sound",
+      "label": {
+        "en": "Sound",
+        "uz": "Tovush"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: CLIP sees pictures only, never sound."
+      }
+    },
+    {
+      "id": "rhythm",
+      "label": {
+        "en": "Rhythm",
+        "uz": "Ritm"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: rhythm is about timing and music, which frames can’t show."
+      }
+    },
+    {
+      "id": "text",
+      "label": {
+        "en": "Text",
+        "uz": "Matn"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "media": "video",
+      "prompts": [
+        "white text on a black background",
+        "black text on a white background",
+        "captions on a video"
+      ],
+      "about": {
+        "en": "Text animation and captions on videos. 2 of 4 right on the test library, 2 partly."
+      },
+      "vec": "vpoqIN2jMCDSoaafUyV0r1wqECAOIQClsiUZoE8eqx5nJCmdmSHYGYclYKjIJwilZJ6eHuGdsaA9oiCZJB8Cn5KgJiVDpg6njSORH74ieaG3pM+gAiQMlwciMSaUFV+c/yYooAyipKKvnH2YAqMxGH6jhKIPpy6gECTcpsAemyHTFRIcNxaQp8wU5BWIoT2jjp78IfedSaFNJKoariAoHEsjHyS4Et+cGqWmHc4jTiG0JGii+iC9HR+xTyWyndkR3xmVofAe9agbIA4ge6ZFn+mmI6MoHrmlvRTZmlCj6SYCotCenqKwJmokc5zLomQaIaBdp/if4aiYGRMjURVWIQIWGCdHHtyoCqX6OPIkQSX9HeChHJejo3qmZaConecm/ad4GrGUYJIsj+IjxhPqI34nDqDiGeEZ6x31JfSgoiD2H5Kjnp0zooEiACShJmimiSK6IWcaAKWZGpskiBUNJHScMCGZmyKjTagVn5qj8iA6pRqkzB60qLChdp7UmmqlaSXRISklLaOInGGh0KRGI4SeoCEDGXglo51vHYkjoZNQKIQb1JdJJTSmv5RvoakacaUzIYGfERzCHl+mmpfTHYwepaFcJa0jlplhHHUESSWpoTmgVpr8gyUd6iS5pdmf86QnJkCbIqS1n9Yc75FjJJUjcCOCDmYdBKRYHzWftp9FGumepyQqJhKm6yCtHmOkqZoUolAik6OqoXof5aJCIjagZKhFJ3YlZgwWHF8iIKQ9pD4lQR4ZIMUkUSTlFridzR+zpBWh5iSsGa6lwY6/HeKp+qLCIfaeABncIDchiiNupIUVfJ+Kn7SdOaQhIgWW+TiCmSSbjSalJAchbyHyIpKbxSfQIOAclKWxFn6XdZ9xITu0G58aIZIbbaS7IS6eHSbUJZ4hZiK/Ip6loqLEpKKgvCSfJH+eoyUBoq0mI560hlEkZCHmIZYhNSGunf6jTooqoLEeriUnqN4i4x8/JFcaLqGLGw6gDQsSoHCaMAi2IoAdH6r1ob0luSSVHVymFiiUnBGj6h3BHmkXkJ2Po1Wk1yRUIJmY3Z3CnkKmGaAWG6AcRJ3KGPoVqBhAH6weICYlIKEilhx1lAMl1hFMDxojgKZ7m84fkxn+pFsk05xdIKggaiRepE+jXCBRn7elwKT6oCaWk6SHpJ4hqBwwGYkiZB5gpumm8ZkVEGinKKX2IlOf9haslzihZKOXJgGjxKYvoUOgLaX6pP+c4J0vHpka0plUIjufQqArnlIiJybamMOn05IXIFQklCTdJY0ncglUrZMeTiQPjcWmDxesnr4N0qR0h6GbEaDYHy0g7ph6HK8g+qU+I14nIJTOFvua+ikcJCaifyHvnMqg4qCUmQ=="
+    },
+    {
+      "id": "impact",
+      "label": {
+        "en": "Impact",
+        "uz": "Zarba"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: impact hits, shakes and flashes are about timing, which frames can’t show."
+      }
+    },
+    {
+      "id": "split_screen",
+      "label": {
+        "en": "Splitscreen",
+        "uz": "Split-ekran"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "media": "video",
+      "prompts": [
+        "a split screen",
+        "two videos side by side",
+        "a screen split into panels"
+      ],
+      "about": {
+        "en": "A screen split into panels. Untested."
+      },
+      "vec": "EST3ld6eyZ63G8maxycSsE4k/KJAH06hf5hSIGWgUiG3nCuhyRzHIDMmqKJ9KI2l9p04HHoeZo31HLQjTxoykGGTIyagnjiZcxhXpN0fxpncpxmdVKRNIPQluSJhH+km9xwtpK6ZsaDUHzGkepsGpCWk1qEXpC8jhh2uGpGhFgqSHA8cRRo/pcmg/SWqnUqktRlsJLGbj5wGnp6dGZ/kmwugoCDhi40kGaQIITAmOSDTJOmioaBLJXKxBygWnRwkFSCfpAYkc6RVHiSggaLhpPakzaP3ndWk/hr1JKiX/yeyoUuifqHuoMQd/CSwngMX66ENpoWhAqGhHeMgjRoTIrSXfyZBGVqkw6T1OKcglwh0o8mmd57+nYYVnxiCmfQfnaIDngSdiaEyoN4eG55QFrslDZ4FmCijMB+/lmGgz5tGhYqeFaS3oT6kSRoZHTEmmhyoliueZ6NSnMKipZ36JxyiqxQOpIGfSp8Qo8am4BwjpCUhaSARmBKfAKDCpFaktSYBItaSZp56nl+RvaRDHRIgHCK7A68iRRjHojckYZ3wIZUdFqFqINSlLCLIHH6ceKHjoKEfc6JYn9WhXRpHIvcj0aV5l3EjlRZVJGiVCyY3mKiZZplqoaQfKaDWpGqhyqOdIkwb6aX5pPwiviEkKIghJCGEHjYh1ROQnG6kUpctjmajOx9aIJ+nBJ06I5ac/Zh5olCiMJwBn4WUPaLqIOaAOqQJIFkgNR82F3wk6aHsH6ud6yW2JfwiqCRIISmfdBxkpTQg4yDSoJKm3SRpF8KnWiAzo+igdKEnIGGZShw7ouIhlRBVo22knZhwn7iS9Tj0HUIaNSUBHtAmExWqKBikrSYsmdQi66j7nVQbxCRnHdu0TKTHHSwfQCEsGDqlyyLWJDsgqpifJEwYwSGeqDEawh2jl2mc35uXoFsod6CxHX4NKKCNJOekGyIKpb4Yw6MKHLwmWRsYqB6d9CAypEQgraDfIt8iGp7boMWdIRw4IoiZjKJunLYb8yT2GDybTCBJHAUdYJ9ilG0c2Rn1HLyc0CLgHLMc1ZY1pC4aZhgAHqChYSBqIQ4f5JqeFQSjIh0MH5Qh6B6gn8clDyViizom56XpIrejvgQDoLggUBPtjJkj4hjMnQCfWRTKnOClu6hJIscdcJqYpjcJSB0UHmUlQRSYpMegxh1jmdue+aL+JY0hUSQdjKOM8KT1JEKjJKiCo7ykd6EOpU+d0KTfFQylRCTQnL0dLp3+JGkhLygnmTunGKchHyAY7CKSHSAko5njrWwkeiJ2I0mitoIwIIwZdaNBoMEWxiTToyifISBoIoYkjZ3oFywS0529IEYcHiQIIQAe6SEinS2gOpRTog=="
+    },
+    {
+      "id": "rotoscoping",
+      "label": {
+        "en": "Rotoscoping",
+        "uz": "Rotoskoping"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: in tests it fired on illustrated people instead of rotoscoped footage."
+      }
+    },
+    {
+      "id": "vfx",
+      "label": {
+        "en": "VFX",
+        "uz": "VFX"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "media": "video",
+      "prompts": [
+        "an explosion visual effect",
+        "a CGI explosion with debris",
+        "magic energy effects"
+      ],
+      "about": {
+        "en": "Explosions and magic effects. Untested: it never reached the bar (an earlier draft fired on every sci-fi shot)."
+      },
+      "vec": "fyHSI1Kjv4ykoNKZChoGsJEleZPqGHikNhcVl/2l5yYvnk4erRmjoFMZC6QuKMMZfpltkKEgFhyUniGdAyBqHzufSSRxGgqkBBxIHAWdVR7qo4GijKDGJc0gQB/2IAwiLiSKmJ4bU6CVIdCh/JZEoGOo3qLBG5MidiN+okOlxKEJJJGSBKJkokGX3Zzbng+ltaI7Jfymfx4yGDYeryBjnaqd16CpoMihlpQCI5woAKV0ovGhyR/oJTSxRQlRpyUhUJ/vlCghVKXToFOovBV1oVqfCaQooyMUsSJ0JXUhHx4EJMmdAKE+IScj7ZCWIJkhi6SDqMId/J60In4V8YfXH+SgKx/nnp+ifqICOWgbXh86pN+oZButIAqcdZ3qpTodh6HbmDofBaSRobYkjRmJoGuYoKPJGEGZvyAjKEylMiB2IRKdNSBfmjqok6DfkJkk3RM/n+YgJaGonaIa4KQmKIamahyTpeuieqBVmPSl0R4KoQqiySKJISGkLhk1n6mkFydvJGSf9BUpHe4e/CalIEiiBCKRpYwgixMcpFYkHJp0JmUlUp++GMifJJ6XgFwE3qEiIvei1yVOIGye1p1OInMkCKK1olegHBqpm+ghvZwCkyQk1iQvJA4cuJU2ppaZ0IkXITyfR52/prkb9B9nJaEgJSMVF/Ci6iRHIzKdPRSSmW0apyVyJFeogCT/HgkM3KKKnWmhMBslkx6ffRkWJiMXKqR+JGgitR1iIf0ippAQmdCcnyTkAuIiAycJIhmg6xccHOmePyPEECan5x30I1Sn8KD5mvSdgpjxnzGcUB9gn/qeWBgRojQW358YIfehAzlRpJ6bjCTDHHqkQSXpHyAViyiMHXoiTqgwp9cWnCWVnmy055xNFiAkKSTHGHKkJiVbJZIbiJ/aJOcc3yFTowucPBxpo4WfR5rZF7gj45iJJdwPvR0xo+kk7CRrokkkvKJCnZoNjyEopQcliiQ0mgcpV6CGGA+g6qElIA6or534GeEil5waovkZMyJhIG+d2xtJpXKeE6GvF2oOwqAaGxWgZiZaop+W1yQTCKQjMxzYloAb0iQ/IH0hNBwsi6AeFSIbIE2dcxv4HCYdDSTkkjwifqXKFcacMiQmoIYhqRYsoRQkv53bGoAcNyI0mrCihqlmGTYbt520oXgi5CEBoKcg56Cin9ghtZ7YDZmeF55VJseWXCcdnOAd7KXrJf6hDKEJpY2gzKOOpGWcwqDXnvQhl5fgIlqf65qlJKscKhzyGI2lUaXaITgasiHuFh8gv6CJrZ4lCpO8JAqd65WhJF6Ym6bNlmkhgCNnoC+lzSEXHXcbPKXyIoAlTqUUn7mhySPKHLSkNxlapF+jAaR5JA=="
+    },
+    {
+      "id": "chromakey",
+      "label": {
+        "en": "Chromakey",
+        "uz": "Xromakey"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "media": "any",
+      "prompts": [
+        "an actor before a green backdrop",
+        "green screen footage"
+      ],
+      "about": {
+        "en": "Green screens, on pictures and videos. Untested."
+      },
+      "vec": "yiGVnpaj7KKnnFCkmxUqsEIZ9p4EnoakZqQTIEqgfiYIlE8eWRw6FSgmJaNUKEmo/KSXHWSk0B6FnEqgWBx7mvYWCBlRJPuiKCfUHH8jdCPdpO+USJoQGvAZSiGfpNEkMSRtlfYAQqgVJP8SVpfkFsyj0KGCH3QhPxwmpLCiQCQnHw+hSiPEoyyhyh6rp4yi0plQISmnSKFmHZCc+phNokyYhSZHm9ccdp4DJJcmdpK4Hm2bsZuBJFmxjqWPlW8beh4BGd6gHqNGIoYdLpdJpjCmhKizHXkZdiCHmeuZIiohoEmg6KVeHeYk+yA8j5+dRKOrpOoLtKVdmJchByOoH+sjwicXJEioEaLvOGmaFSBykUmlFCHsnemk64tro9MeA6bNpOGXeyOxH0Im8iEwG6kl7yGpDg+h1qFVJvahlRwZnVaeHCJ3o5KXeSAuIjcg6ZX+IMejw6BInI6SJpq5HjGj7R+6o2WjT540mtKd+pS0pAyd0Ze2HXyhuqKzog6ioyYwIVAZnqGSozsbpBlLHryZBRxhoIwkRSAkI0UhSCCcIiUk/qRdmK2lviFEofmipZp7HH0j8BuaJRqh35yAnDckt5b9GFalYJonGcagMSUdprKnYqJZIg0iv5t/n2+dEKN1JqEf9p+SIOAh4SFFJAgnSqTdmBwcbxVhJMmnMJ4PJbsgoyIyJIWhnBy8IEShLZ7mnY6iNqPqlc2e0KKpIg2hxKbnIR0lCaOyoDAj6KQHp7aa8SAAIuQjuSYMHIydNgTNmsylzR20n7uj85mWnZSiEZzSj2gixqF3pNOlDSQ1o0oYGJrTnBMhtxuUoUao7jhpIlCCniE0JrKblCZIJfWlpyPfjBCXLqhUIZQAL523ndK0uKFQH8Il05TRFCOkMShwJcEh96U8H2me0CPHpq6P+KCnH/eAyI8EGGooThdQIv0ksiRyHcogDiHNopMdPqVnDlkn8xc9oVcgWxjfoZwlmqUXnD+lxp2LpLClxB45HmoaRqVQENYlHSKIKI8YAJ8oHmMdpR8PpPsdXqZ8mHugZyC6nBMkpKEUGXqlu6KgoBMdF6F3osKgUY4VncOjEKHboKGgtBorJSYhpiSIpHggjqMYHAegWKFDpdEmKKYKmhgkQZiUpAIcTJV7ovml0KeLHd4W6CAKoP2aEiX+nXojACU5qN+gYyGtncujpqE7JDoityKPIIQYZaIOJuOidZi8nMWeA5cIoaqNw6KDIgcYSyCxJGajg5O0HecmWJsKoyGkB6IrIRmftRm+JUKa5hmDrV8bOyAmIXalfyCVJr+KxaBpGnGfn5wro1oYLp49F9IaxadpHykiJKT7JPIeQilZnMKdPqJZnoCX7KLGHg=="
+    },
+    {
+      "id": "reveal",
+      "label": {
+        "en": "Reveal",
+        "uz": "Paydo bo‘lish"
+      },
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a reveal is about timing, which frames can’t show."
+      }
+    },
+    {
+      "id": "retro",
+      "label": {
+        "en": "Retro",
+        "uz": "Retro"
+      },
+      "group": {
+        "en": "Niche",
+        "uz": "Nisha"
+      },
+      "media": "video",
+      "prompts": [
+        "VHS retro footage",
+        "a vintage 80s video",
+        "old film with grain"
+      ],
+      "about": {
+        "en": "Shared with the design lens, which describes it for pictures; this entry covers VHS and vintage film looks. Untested on videos: it never reached the bar."
+      },
+      "vec": "4SDeIC6VoZ5RoCakNyTorw+ed5w8mqegbx8cJdWXfSRtGpwiUSRfn8EnGaNOJ+akgpxkn7mdeSTZnMmXi57NoFmlzCRNpjGiaxFGGuIcxiGdpAGZohdDG+QhBR0CIzglyiHwowkjIZ0dHTWSmBRan3qgSZ/FkpOirZXxoYqeqZwSp/IYLpJToQ8dyB4ZpAmn/wrOIuSnFZYYHBSc85lJod8jTaKxHOGkRpujIQwoZKJwJVOgv5+XJzWx7B2gkU4lNiR2ov4dWqnInOyhO557HtGgCqSKneMFSSRqHmSY7yaamAWV1KLKJRokH6AQIsmYRKObpjOjoqUxJE0drRrIIpwjRiFPogSoLqMHOcAYMhzcojmkLx8EIKWdOqEgpTcikaIrne6OEqDOEZSiHx2WDGsfnJwMnT0bSpZmKE6gFRynH0GjcSCYooucW6AsnomXfZUgIGohD6U6m2EgQaAgIPgfURdaJHKdoqTppEqkB5o9qD2aRR+DG5QhiZbQo/Wj4yEHJmEbKqUloJSiWaAqnSmQ0J8IoUgkth4MHXYR4J6RmIMkkxGPGPChax4NI0sZk6EKnoGoyyAxHSinFp4XHfAfa6KsIREfqR4jFhYjLxyKnb6iIR3pHHkfiyBGkxGiAaf/JfUapJsnhYyZ9x/0JwYegKDUnIUhPiIxG/umiZjLHHyj3h0TI9yjxiNzJFKg+5y+pIelNKTIoPqcZ6IpIMmkHaQBJQ8jX6GlnZEjPaSfnjwl3iQMoMsiMyX7IzSiAqQKkRqbZp2Hn+qfzxbsoECc/ZZGoVSkoBzJl/6ejqCZo+wTmh6qov+hPaXlkpSkBjm5GI8jwJW2HDGfYSHwJogcuiYoEwKcTqU/pTGjjyAkmmy0LqAeHhki2h7mGP2ZhiGBIgeke6GIJ62cEJhepBekQZ8JGJKYrpuvEKwls5uXGx0lqyHYJzIiByW8orMeu6jVDxIjQySyp2YZzqLdmZ8h151pFLwitaDKCJ+lgBIzIYchwKS8nxEfxRz6lssemSLvGFojMxcUIAMdWaaemYSgKRrpGSglLYFjpHsgQ6LHIaQZrp0qIgukS5INIkUdG6H8IQMiEyPuI6shFpsfJbQk0aU8JAGnKSIdo6ofPh+epA4kBQ9DkAMgW6B9FcymKqdnllUfNZ7XokAdPKBwHpAiL6HjoyUi9yZwGpKgfxpAJbccgR9+nE+hiqJgJS6l/pyWp5KgIB7UoL4PBKCEJB4hJ6MiGI4cGaDLIVMhxxqqjWWnfKTcJB4eIyVUGB0lk6TsrS0hpBoonbig+pkGJA4frpCjpRuh0RzIoh6TgJg8j2eWz6JAn2cayyIWGaSgRSiZlDygo5U6oAGavZ6JJA=="
+    },
+    {
+      "id": "y2k",
+      "label": {
+        "en": "Y2K",
+        "uz": "Y2K"
+      },
+      "group": {
+        "en": "Niche",
+        "uz": "Nisha"
+      },
+      "media": "any",
+      "prompts": [
+        "Y2K aesthetic",
+        "chrome bubble graphics",
+        "early 2000s style design"
+      ],
+      "about": {
+        "en": "Y2K style, on pictures and videos. Untested: it never reached the bar (just under it, 1 of 1 right)."
+      },
+      "vec": "biSuIHqgupvQnMKhQScwsA8p8JmUFLmi96RrGbKhpCEhIVmYZx1oF2Yi7qJAKBel8p1sDwegCBrnored2h7poxOguR9fHvKizBauk90cRhkKogWYF5w+mAckixxWHeAd4CKMn44hpZ6aI9ugPRN3oLSlLqI2ogwdjSCQnQWk6RqElXiYeAsHpwOhTBqtmzGkTpr2IWKleZyOIm+daiNDlnEe1BNdGUEh0BvnHAwl/6HKFYqVoJ/6Hmmxlhp8pFcYdxvhoMQlUKefpMSfkxnxnTGeEKEql2ae2hsCHX8feigNnqWVh6OJIfIl+Z8HIXwbMZ1ApssSUKOrDHEgQRx5IsEePyL1nMimaJ4SOacZdyRbpDGjIyDSm0+ai554o4yX2JqYCQCZ8Z+bljiadB2aI9si9Zz2oDCbcBU0J2me4CQ4JKqkzA0hnp+hZJRsIK0PkRpDnhmiiJFelKiQrR3SJUWiKZC/k8kb5JpdmzmatRlFpB+fxBZek6KjToWyooqiSSEEIBifYZ/xIjGgphgHIBaerh41oAMhNSAiGH4kKo44JD4gnpxjnR2jepVjmmqZ3qMQnY6ltB5FoD2inZsHH+Ahp6FimJ+gNx/iIBMJwRC8HNOcIpbynu0g35hon9uYVKPvIX8gbKAiokkUwRxeIN4l65DPGLIdtR61IcyakxV+HYeeARpyIHOlrAyEG0uhW5gQGEikVqG4lmejiaE3INSjAaRWIRYeI5AVHMMhpqEUH3kkshx6nUQhiSNwJA2clR1bn3Si9xhAljOilYRYHp2mdBmvnX6XkJ2KnLec3ZuJogMjGCSnmm+Y4qK7HY2gEDn2JV+gJSMiHAUZ7g28IxWUjiZsop8d0KPzlU4e3B3al7+00R1mGj4fFR3uGcGa5CNhjG8c+BcHJUmiQJ0ioaEgvpqVmYkdMx2im4AePJ4yJFwYziCtJXOcyScyoOwbIqWoERQkgx8qpCYdIxxJIfAiKaSPHiYeMBg4nbCgBx/sFNAdlaa2ooKPCR5bl1iUbh70HAaUWBd2mnYfiJ1cmnuYfBUHmwgg553pnvwgqBHpCG8S9SN4nvUadp5AlE4kfSJ8IDwgeZ/sIMgeJSFAidsgFqANHB2kCRZinYQgpJ20oIshpgRhpGWigB9BnnaXgqBjGG6drJuYmvEeC6DKH38Y6g0LIImjFyAAA6CdFaCuIMqU1yJbE22VoaJGIwmgfaE0oVah4Z/FpD6gC5YEGT6mYp8oFHWgM6TIIqUhECZLJC2o9xBIIkGIFiCrjXIjGpyRrUkejx40IuaezZ7+HSMhp6HppP4eNyZrp4SiQyAxGwyYSaNOoUMiCB78HZ0TIiWXG8ygMBXKGMil66ADGQ=="
+    },
+    {
+      "id": "ar",
+      "label": {
+        "en": "AR",
+        "uz": "AR"
+      },
+      "group": {
+        "en": "Niche",
+        "uz": "Nisha"
+      },
+      "media": "video",
+      "prompts": [
+        "an AR face filter",
+        "a person wearing AR glasses",
+        "augmented reality"
+      ],
+      "about": {
+        "en": "AR face filters and AR glasses. Untested."
+      },
+      "vec": "lCS6GyCgapGsEWikLiYesKkkYR6UozqeQxz5oQ+cHiEsJh0k4iNCpLsod6X5IZGfRKGQlHcc7SLyl0wJXCTloRSgESPDHbGgq5TFoYEgCJCGohGdSZRHIQUYNiQuoDAjTiSipKMg1SJQJMKeJaSgoX6bc6Cpno4iKCUZoE2kUqCtJQkdzppBoCyg1iVvlnykVqAwF/ejEqP9IdoTxJOQoPyeZ55MmJWg1p1HHOIlkRBmIFeknpaPIkOxUCY8pecd0pqFnSgn9xVQmTGjbJg/F/ige59EInIchxwpGhegySWRpP8it6UOFKck76BEHyih7ZlMp36eT6EeHX2dthTfIu4eFyjyHd+d+qYLOROcqyEfpQGnPh2cllamx57ioM+g7aCJlhmQVKB5nDyhFaIIoJQlgaKMjNKhXCAGH56h7iB7H+OdYyKUpAen5KHzIaCPS4yOnUEkJqZ1oxeg+pp9IZSlkSBqoJacbZjpE2ajHqIgqP+XgyOjn/KjjZBlF9mkayiFJ50lbZtYmpQdRqAOIuoMciCSo34gByMfo84g4p4AIVUZQRjzDW2gd6HYIpChIaDllbScLCRdITWfh51jHKYg9Z7TooIWbh4QmfEg3SFNpc4huxyPocEgNaK5pnwkpqAjGOWfFJ3DplQgESOaJUmdJ47ylJcZ3CEGH+YduxpbIGGhUSOVJKWjE5yUkJkcUKNNoagh05ORFFmezaJ0JJuf8p5QIekl6h0VIvwdhZ3RoJ0kAR/snsUfqiM5F+mj9BIkpLkjJZ1yIgqn6R0pGnGkT6AhmB2eshg+pD0YK5oeoVciiaA+oZGd+aNSkxuYCjk6o2kcaiQOI2iRDCDWJAaa/yYvoqoX1ZwZoXmZyZwkGWK0AqM9IveeZBjBJIykwiXVJGMEyRCdJoKkSAxnozqk15f2nncWJZTXjUoY3QlYHjIkpiGnJaMk+yb/mUEjE6LJHKicNBJqlImO0CFvoWglIpwZnGqIt6MyIZ+o9xsVlQ2PLqiGnTEj7xsXIJgcP5hwJACkrBzNpKWOoKC9l/6iICIVGbsga6XNo1KkMqBLoi4hCCZOiDckkhqcnEmjZiK9mR2UTiF/Iu4TFR+2nQgk3qd/HAun4KK7pOsk56B3pFMljCEbpLyabx9kpEekTqVzHRsfLiAamogegiA0lk0fsxbaj8sRHaAfHwmlRhTrJdgeVSjiEGGaQaZgJFSeCqNGpESiJqDwofGj+J37GzCcUyTsGI4d2qWvJNYRCyQVIUKnV6OoH7SkN5PliIEkcY62rM0SG5svJT+ljpTzJUQeWqAxlg8gyyJ7ltqcsqMSJIOgVhtHIIsi3JYroakYTinmICaekZWsnsqnJp3nHQ=="
+    },
+    {
+      "id": "projection",
+      "label": {
+        "en": "Projection",
+        "uz": "Proyeksiya"
+      },
+      "group": {
+        "en": "Niche",
+        "uz": "Nisha"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: two sets of prompts were tried, and near the bar both picked dark buildings, stages, posters and UI screens instead of projection mapping (0 right)."
+      }
+    },
+    {
+      "id": "interactive",
+      "label": {
+        "en": "Interactive",
+        "uz": "Interaktiv"
+      },
+      "group": {
+        "en": "Niche",
+        "uz": "Nisha"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: interactivity can’t be seen in a frame."
+      }
+    },
+    {
+      "id": "anime",
+      "label": {
+        "en": "Anime",
+        "uz": "Anime"
+      },
+      "media": "any",
+      "prompts": [
+        "an anime scene",
+        "Japanese anime style",
+        "an anime character"
+      ],
+      "about": {
+        "en": "Anime style, on pictures and videos. Untested."
+      },
+      "vec": "apkJDEeZyqHCHeukpSfyr/8kIBuNn2GiQph7IQqgtCQGISoR6xohGIGSkxsUKF+hjaL2oY+kCRYAnSoUMZuBogcaOxzTHmuIMKDDoVAiowFSpKWdcR9EIDmdCCXgHrMlkyKAIfYU153AJNKiM6EVo38eRKFrGm8g4yheHeKTTptCIfsbRiJaltUgACANoSKjkqFtJqOk55TEHhkQNqA/mtoaEqCMIFAmNBp5IJgYeaSeoM2ceJ72mSyxZiASoAchVxwtnUIlAw5CoiSgMKHNoT6elqEZnAsfThrZGmMWCiYrm3CboJzrI80gEJ+FF6WazqOko5QcbaWmJe0g3BoxHBIeQh/jnjOl+aAlOS0VlJTgGPiURZ+9oiMYZBy1GC6ShaA0IEcBI6DAocQRig1yAWMYWJpfDdaQNyJAItqkUCP2m1Shr5pnpCCi7CEwlVUkDBifIfkdThjfmRKcrRtvIvymZB/TFo+czaSKkiqjcQwopGGckRYUHYCieBxkpOuiqiI0JE4b7R/oGrMgBAUHGLcgKBimkHYhUhXNnt2YBSAqlqAmdRIJoY4gXxzpnGKgxaXknhieGBRPpRigPZ42GsUjtpPmnDefoBx8jeoigRu3nD0ioiCmFo0g1ZtMpoAfu51wIxyn6Z6coX6dwiRxGTQaQxzgoXSMviQpJDOk4hwLoGGgbx8XIK6dYCCJJF2hZ6NdnY2ZryD8nckezRbXlPsX+6MnIAUhw5QaoIgZ96QxmQAg6iQvnn6diSRLJAOc6hkJoDKbFYBvoYqi7BlHl1mkkZU5oceiICAKIVqhB6MAm+QguSL4oHkV5Rh4HsqlJDk6m7qbKiRbHzop1CPZJwoPRCmnFgMgPaOnmE0hFCAjIvOz6Jf5JIQJVBznoSmc0yQ6IbCZ5KCQIduhxhXOpZggMpj/nzKdR6E1nv8iQyADHRmaShCJJfqfBybzoWMiDKYVll0kKyclnXwZrRM+nPsiw52dmWscR5vPHkChGhx+FesbLadYpg2g+BEeEiQW/520DfqiyR6GDtIgYKHhFQUWBSS3mDWXKJOIpAYZYCTIIKKbIg/xH92ZIJ3KHjCagRfaJP8YM6BiIekgoCM1njskB6LnjUabZR3dnoMkISBRoPsXxyF2mz0enyEAmkujqKL5ntigjJ2korYgUSDplNSeph/Eoy2XhyBGH/Ca26bzJbwjHCSWkI6ZXCA7JPOc9h3Wmr2j0KALoeueKp+xHW0byx5LH/uiGqTQHqAbuB2QIwik9JdaJFqavCU+gtwiG5uIrU8aux1oljukPqOeJJ8e7yB5FAQiCiSgpaudNSAYJqKSs5x4HjWDVJzMlTGhBSnHI3qh65zrGMCjQqMKIA=="
+    },
+    {
+      "id": "brutalist",
+      "label": {
+        "en": "Brutalist",
+        "uz": "Brutalizm"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: in tests it fired on bold posters and websites, not on brutalist design (0 of 33 right, 11 partly)."
+      }
+    },
+    {
+      "id": "gaming",
+      "label": {
+        "en": "Gaming",
+        "uz": "O‘yinlar"
+      },
+      "media": "video",
+      "prompts": [
+        "video game gameplay",
+        "a game screen with a HUD",
+        "a 3D video game scene"
+      ],
+      "about": {
+        "en": "Shared with the thumbnail lens, which describes it for pictures; this entry covers gameplay and game footage. 1 of 1 right on the test library."
+      },
+      "vec": "/CCenuOYO6TzoP6hCCiQr+QkHyWYnzWghCDKI4eZ0h/TGugfm5CupoEkGaQeJlOk/aMUn0icNx9ZoQugNiIWIVyWKB+EoHKgUBqDHFOSa6KgpgUhgRr+IOYdsh8UImclzCTVkJsk5CAIIO+jZqQykj2hNqS6oBohVhjxnLedkZdejNELJhzOmNAjvhzEnw2kPJgYIWKkcaDenmcgoaD3D50jOKJwGtchWx4AHh0m36SRJLKkC58GmR6xUiHgoDMhAiViGBQksqjbmj+lLh1ypHGlRqI/pXIiEx34oDaVbCSboWgj8qL9HMYhKB2zIkmhgh7upF+lDaQbJEwhyZL6JWACfCb5ndimf5wQOQagTSFTphQgE50GnlgdaAq9nm8gtaQQG16A/qI5mQedOh5NHkWUwh7xn+QgSKPTIP2eyh47ldKcG58TpKWkJyCII6QhyyCFEBcYZqa/nEWmUaAKIw+m6CKnojsgsaEvnuOhraX5pSaePB3VHAajtRUppcIbfCFuJsqgW58engCmVZ+tIG0irJ0soz8nDRizk10QNJg+IV8iHyA0oVCmkCJGGgueZ6I1l+8gCiTHF4Si3pWZlbshFqMGFLkdRSNcof4mbB8+oPwWc5oBGBoNZiG/pYmYVZjtG3Sfi6BVoSckNSWzKDUixxkMFdiWGiQUILCVgp9TIdehVSE7JlOn3CEvIDgWsKEYpAYc3p3vnqEVYZsaHPGjSqRflO4k8g0mH04V7aO+IZkiaCOOH/Em3SgsKBwEp6DAmhQkup4Nod+gliZwoE2h0qO8oVWalqHRnBGkMh1yoCOkCyZ8pnCipJJkGkGaEDndnkwk2iWYJRMj/CCdIiAkQyaBGgak/6Y3ouuaIhinHRq0H5yjJ0sgwB6JIweiwiV6IDsfd6ItKXKl7h9uoXYcp6VLorMYnhZulK8jkiCqIEsjZh+Jn8sbaiZQnusiSagZnYQjaCHHpc0FHCRroOkhnaVjIbWe2yBhIX6ieiK0JcIcRaGnoiYjNCPsHyGgXiPIo24ZNJ83mYCGhaAhn0ue45BVIsgcEqI7pbueCanHmJUYJqFWG0eiOB0ao5qjQ5vHHYUcwxveHasfJCaLGz8gVqT5DRShUBTbop0f+oNIpEAgdyCDngaaPxuGFkWoI6gjHjubAKTbpJuUqyV8nGaVDR8Ko8WfLwbUHc0IRKKoIgGYTSJJJDqdGaOdIMmfbRmSpTuiTKW9oWKcFx8TDUehMZ9zCLGcyBnDmX8gKSYOFfCl+5wNJEEcpSBelnEWqCR5roSV/R/IG+6ihZ9UJuWZEJkJnP8S1pDdmgMT6RrCHmkXNKb8h7ogug+VGFwbOCYyDJ4YKyGFGJScwKXjGw=="
+    },
+    {
+      "id": "ai",
+      "label": {
+        "en": "AI",
+        "uz": "AI"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: two sets of prompts were tried, and near the bar both picked tech, money and idea pictures instead of AI (2 of 10 right, then 0 of 8). CLIP can’t tell AI-made pictures from others."
+      }
+    }
+  ]
+}

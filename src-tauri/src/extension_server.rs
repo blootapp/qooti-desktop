@@ -304,6 +304,8 @@ pub fn start(app: AppHandle) {
                             "ok": true,
                             "ext_id": ext_id,
                             "is_frame": is_frame,
+                            // The extension's collection picker may change the title (/extension/rename)
+                            "can_rename": true,
                         }));
                     }
                     Err(_) => respond_error(request, 400, "Invalid JSON"),
@@ -485,6 +487,44 @@ pub fn start(app: AppHandle) {
                     continue;
                 }
                 app.emit("extension-add-to-collection", payload).ok();
+                respond_json(request, &serde_json::json!({ "ok": true }));
+            }
+
+            // ── Rename an item (auth required) ─────────────────────
+            // The extension's collection picker can change the title of what was just
+            // saved, without opening qooti. Same as editing it here: search follows by
+            // itself (the fts trigger), and the card shows the new title.
+            ("POST", "/extension/rename") => {
+                if !check_extension_auth(&request, &app) {
+                    respond_error(request, 401, "Unauthorized");
+                    continue;
+                }
+                let body = read_body(&mut request, MAX_SMALL_BODY);
+                let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) else {
+                    respond_error(request, 400, "Bad request");
+                    continue;
+                };
+                let id = payload.get("inspiration_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let title = payload.get("title").and_then(|v| v.as_str()).and_then(clean_title);
+                let (Some(title), true) = (title, !id.is_empty() && id.len() <= 64) else {
+                    respond_error(request, 400, "Bad request");
+                    continue;
+                };
+                let changed = {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    let now = chrono::Utc::now().timestamp_millis();
+                    db.execute(
+                        "UPDATE inspirations SET title = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![title, now, id],
+                    ).unwrap_or(0)
+                };
+                if changed == 0 {
+                    respond_error(request, 404, "not_found");
+                    continue;
+                }
+                log::info!(target: "ExtServer", "item_renamed id={id}");
+                app.emit("extension:item-renamed", serde_json::json!({ "inspiration_id": id })).ok();
                 respond_json(request, &serde_json::json!({ "ok": true }));
             }
 
@@ -744,6 +784,16 @@ fn same_secret(a: &[u8], b: &[u8]) -> bool {
 // Request bodies are read up to these sizes and no further.
 const MAX_SAVE_BODY:  u64 = 32 * 1024 * 1024;   // a captured video frame arrives as a data URL
 const MAX_SMALL_BODY: u64 = 1024 * 1024;
+
+/// A title sent by the extension, made fit to keep: one line (runs of spaces, tabs and
+/// line breaks become one space), no control characters, trimmed, at most 300
+/// characters. None when nothing is left.
+fn clean_title(raw: &str) -> Option<String> {
+    let one_line = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let clean: String = one_line.chars().filter(|c| !c.is_control()).take(300).collect();
+    let clean = clean.trim();
+    (!clean.is_empty()).then(|| clean.to_string())
+}
 const MAX_UPLOAD_BODY: u64 = 2 * 1024 * 1024 * 1024;  // a phone video, read into memory
 
 fn read_body(request: &mut tiny_http::Request, limit: u64) -> String {
@@ -1041,5 +1091,21 @@ mod pairing_tests {
         let long_ago = std::time::Instant::now() - DENIED_FOR - std::time::Duration::from_secs(1);
         pairing().lock().unwrap().insert(o.into(), PairState::Denied { at: long_ago, asks: MAX_ASKS });
         assert!(matches!(pairing_step(o, "Chrome", false), PairStep::AskNow));
+    }
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::clean_title;
+
+    #[test]
+    fn titles_from_the_extension_are_one_clean_line() {
+        assert_eq!(clean_title("  Poster   refs \n for May\t").as_deref(), Some("Poster refs for May"));
+        assert_eq!(clean_title("a\u{0007}b").as_deref(), Some("ab"));                 // control characters go
+        assert_eq!(clean_title("Ko‘k o‘rmon qooti’da").as_deref(), Some("Ko‘k o‘rmon qooti’da"));   // Uzbek letters stay
+        assert_eq!(clean_title(""), None);
+        assert_eq!(clean_title(" \n\t "), None);
+        assert_eq!(clean_title(&"x".repeat(400)).map(|t| t.chars().count()), Some(300));
+        assert_eq!(clean_title(&"é".repeat(400)).map(|t| t.chars().count()), Some(300));  // counted in letters, not bytes
     }
 }

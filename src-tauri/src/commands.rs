@@ -325,7 +325,11 @@ pub struct Inspiration {
     pub created_at: i64,
     pub updated_at: i64,
     pub auto_tag_status: Option<String>,
-    pub auto_tag_confidence: Option<String>,
+    /// The item's tag suggestions: the `lens_suggestions` column (tagging.rs). The page reads them
+    /// under this field's old JSON name, so its readers stay as they are. The old column
+    /// `auto_tag_confidence` is never read: older versions show its keys as tag names.
+    #[serde(rename = "auto_tag_confidence")]
+    pub lens_suggestions: Option<String>,
     pub auto_tag_model: Option<String>,
     #[serde(default)]
     pub duration_secs: Option<f64>,
@@ -333,6 +337,14 @@ pub struct Inspiration {
     pub collection_names: Option<String>,
     #[serde(default)]
     pub enhanced_path: Option<String>,
+    /// The Tag lens scoring signature that wrote `lens_suggestions`: NULL while the item hasn't
+    /// been scored with the installed lenses yet (tagging::signature).
+    #[serde(default)]
+    pub auto_tag_sig: Option<String>,
+    /// The picture shows a crop made with Save, and its first original is kept: "Restore original"
+    /// can bring it back (crop.rs). The paths themselves never go to the page.
+    #[serde(default)]
+    pub has_original: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -350,6 +362,9 @@ pub struct Collection {
     pub locked: bool,
 }
 
+/// A tag as the page sees it — the same shape as tagging::TagOut. A lens tag (source `lens`) has
+/// a `concept_id`, and its visible name is `labels` in the app's language, never `name`. So has a
+/// people's tag with a lens tag's name (one name, one tag: tagging.rs), which keeps its own name.
 #[derive(Serialize, Deserialize)]
 pub struct Tag {
     pub id: String,
@@ -357,6 +372,19 @@ pub struct Tag {
     pub source: String,
     pub created_at: i64,
     pub usage_count: i64,
+    #[serde(default)]
+    pub concept_id: Option<String>,
+    #[serde(default)]
+    pub labels: Option<crate::lenses::I18n>,
+}
+
+/// Columns: id, name, source, created_at, usage_count, concept_id, concepts.labels_json.
+fn row_to_tag(row: &rusqlite::Row) -> rusqlite::Result<Tag> {
+    Ok(Tag {
+        id: row.get(0)?, name: row.get(1)?, source: row.get(2)?, created_at: row.get(3)?, usage_count: row.get(4)?,
+        concept_id: row.get(5)?,
+        labels: row.get::<_, Option<String>>(6)?.as_deref().and_then(crate::lenses::parse_labels),
+    })
 }
 
 #[derive(Serialize, Deserialize)]
@@ -453,114 +481,138 @@ pub fn import_files(
     let mut skipped  = Vec::new();
     let mut existing = Vec::new();
 
+    let probe_video = |p: &std::path::Path| video_meta(p, &app);
     for path_str in paths {
-        let src = std::path::Path::new(&path_str);
-
-        let validated = match crate::media_guard::validate_path(src) {
-            Ok(v)  => v,
-            Err(e) => {
-                log::warn!(target: "Import", "guard_rejected path={path_str:?} error={e}");
-                skipped.push(path_str);
-                continue;
-            }
-        };
-        let (file_type, subdir, mime) = (validated.db_type, validated.subdir, validated.mime);
-
-        let content = match std::fs::read(src) {
-            Ok(b) => b,
-            Err(_) => { skipped.push(path_str); continue; }
-        };
-
-        let hash = {
-            let mut h = sha2::Sha256::new();
-            h.update(&content);
-            hex::encode(h.finalize())
-        };
-
-        // Exact duplicate: not imported again — reported as `existing` with the item's id
-        {
-            let db = state.db.lock().unwrap();
-            let have: Option<String> = db.query_row(
-                "SELECT id FROM inspirations WHERE file_hash = ?1 LIMIT 1",
-                params![hash],
-                |r| r.get(0),
-            ).ok();
-            if let Some(id) = have {
-                log::info!(target: "Import", "already_in_library path={path_str:?} id={id}");
-                existing.push(id);
-                continue;
-            }
+        match import_one(&state.db, &vault_path, &path_str, src_label, &probe_video)? {
+            ImportOne::Imported(item) => imported.push(item),
+            ImportOne::Existing(id)   => existing.push(id),
+            ImportOne::Skipped        => skipped.push(path_str),
         }
-
-        let id = Uuid::new_v4().to_string();
-        let dest_name = format!("{}.{}", id, validated.real_ext);
-        let dest_path = vault_path.join(subdir).join(&dest_name);
-
-        if std::fs::copy(src, &dest_path).is_err() {
-            skipped.push(path_str);
-            continue;
-        }
-
-        let stored_path = dest_path.to_string_lossy().into_owned();
-        let now = now_ms();
-
-        // Videos have no pixels to OCR or sample for palette.
-        let is_video     = file_type == "video";
-        let ocr_status   = if is_video { Some("skipped") } else { None };
-        let palette_json = if !is_video {
-            let p = stored_path.clone();
-            let colors = std::panic::catch_unwind(|| palette_from_path(&p, 5)).unwrap_or_default();
-            if colors.is_empty() { None } else { serde_json::to_string(&colors).ok() }
-        } else { None };
-        let (duration, video_ratio) = if is_video { video_meta(&dest_path, &app) } else { (None, None) };
-        // Videos → probed ratio; images → real ratio from the file header; else the
-        // format's default. Real ratios drive the native-ratio masonry layout.
-        let aspect_ratio = video_ratio
-            .or_else(|| if is_video { None } else { image_aspect_ratio(&stored_path) })
-            .unwrap_or(validated.default_ratio);
-
-        {
-            let db = state.db.lock().unwrap();
-            db.execute(
-                "INSERT INTO inspirations \
-                 (id, type, stored_path, file_hash, mime_type, aspect_ratio, ocr_text, \
-                  ocr_status, palette, duration_secs, import_source, created_at, updated_at) \
-                 VALUES (?1,?2,?3,?4,?5,?6,'',?7,?8,?9,?10,?11,?11)",
-                params![id, file_type, stored_path, hash, mime, aspect_ratio, ocr_status, palette_json, duration, src_label, now],
-            ).map_err(|e| e.to_string())?;
-        }
-
-        imported.push(Inspiration {
-            id,
-            r#type: file_type.to_string(),
-            title: None,
-            source_url: None,
-            source_platform: None,
-            stored_path,
-            thumbnail_path: None,
-            aspect_ratio,
-            palette: palette_json,
-            ocr_text: String::new(),
-            ocr_status: ocr_status.map(|s| s.to_string()),
-            ocr_language: None,
-            file_hash: Some(hash),
-            phash: None,
-            phash_source: None,
-            vault_id: None,
-            mime_type: Some(mime.to_string()),
-            created_at: now,
-            updated_at: now,
-            auto_tag_status: None,
-            auto_tag_confidence: None,
-            auto_tag_model: None,
-            duration_secs: duration,
-            collection_names: None,
-            enhanced_path: None,
-        });
     }
 
     log::info!(target: "Import", "done imported={} skipped={}", imported.len(), skipped.len());
     Ok(ImportResult { imported, skipped, existing })
+}
+
+/// What import_one did with one file.
+pub(crate) enum ImportOne {
+    Imported(Inspiration),
+    /// Already in the library: the id of the item with the same bytes (its file, or the kept first
+    /// original of a cropped picture).
+    Existing(String),
+    /// Couldn't be imported (unsupported, unreadable, copy failed).
+    Skipped,
+}
+
+/// One file into the library: guard → read → hash → dedupe → copy into the vault → palette →
+/// ratio → insert. import_files runs it for each file, and crop's "Save as copy" for its cut.
+/// `probe_video` gives a video's length and shape (video_meta). A refused insert is an error.
+pub(crate) fn import_one(
+    db: &Mutex<rusqlite::Connection>,
+    vault_path: &std::path::Path,
+    path_str: &str,
+    src_label: &str,
+    probe_video: &dyn Fn(&std::path::Path) -> (Option<f64>, Option<f64>),
+) -> Result<ImportOne, String> {
+    let src = std::path::Path::new(path_str);
+
+    let validated = match crate::media_guard::validate_path(src) {
+        Ok(v)  => v,
+        Err(e) => {
+            log::warn!(target: "Import", "guard_rejected path={path_str:?} error={e}");
+            return Ok(ImportOne::Skipped);
+        }
+    };
+    let (file_type, subdir, mime) = (validated.db_type, validated.subdir, validated.mime);
+
+    let content = match std::fs::read(src) {
+        Ok(b) => b,
+        Err(_) => return Ok(ImportOne::Skipped),
+    };
+
+    let hash = {
+        let mut h = sha2::Sha256::new();
+        h.update(&content);
+        hex::encode(h.finalize())
+    };
+
+    // Exact duplicate: not imported again — reported as `existing` with the item's id. The first
+    // original a cropped picture keeps counts too, so importing it again finds that item.
+    {
+        let db = db.lock().unwrap();
+        let have: Option<String> = db.query_row(
+            "SELECT id FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1 LIMIT 1",
+            params![hash],
+            |r| r.get(0),
+        ).ok();
+        if let Some(id) = have {
+            log::info!(target: "Import", "already_in_library path={path_str:?} id={id}");
+            return Ok(ImportOne::Existing(id));
+        }
+    }
+
+    let id = Uuid::new_v4().to_string();
+    let dest_name = format!("{}.{}", id, validated.real_ext);
+    let dest_path = vault_path.join(subdir).join(&dest_name);
+
+    if std::fs::copy(src, &dest_path).is_err() {
+        return Ok(ImportOne::Skipped);
+    }
+
+    let stored_path = dest_path.to_string_lossy().into_owned();
+    let now = now_ms();
+
+    // Videos have no pixels to OCR or sample for palette.
+    let is_video     = file_type == "video";
+    let ocr_status   = if is_video { Some("skipped") } else { None };
+    let palette_json = if !is_video {
+        let p = stored_path.clone();
+        let colors = std::panic::catch_unwind(|| palette_from_path(&p, 5)).unwrap_or_default();
+        if colors.is_empty() { None } else { serde_json::to_string(&colors).ok() }
+    } else { None };
+    let (duration, video_ratio) = if is_video { probe_video(&dest_path) } else { (None, None) };
+    let aspect_ratio = new_item_ratio(is_video, &stored_path, video_ratio, validated.default_ratio);
+
+    {
+        let db = db.lock().unwrap();
+        db.execute(
+            "INSERT INTO inspirations \
+             (id, type, stored_path, file_hash, mime_type, aspect_ratio, ocr_text, \
+              ocr_status, palette, duration_secs, import_source, created_at, updated_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,'',?7,?8,?9,?10,?11,?11)",
+            params![id, file_type, stored_path, hash, mime, aspect_ratio, ocr_status, palette_json, duration, src_label, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(ImportOne::Imported(Inspiration {
+        id,
+        r#type: file_type.to_string(),
+        title: None,
+        source_url: None,
+        source_platform: None,
+        stored_path,
+        thumbnail_path: None,
+        aspect_ratio,
+        palette: palette_json,
+        ocr_text: String::new(),
+        ocr_status: ocr_status.map(|s| s.to_string()),
+        ocr_language: None,
+        file_hash: Some(hash),
+        phash: None,
+        phash_source: None,
+        vault_id: None,
+        mime_type: Some(mime.to_string()),
+        created_at: now,
+        updated_at: now,
+        auto_tag_status: None,
+        lens_suggestions: None,
+        auto_tag_model: None,
+        duration_secs: duration,
+        collection_names: None,
+        enhanced_path: None,
+        auto_tag_sig: None,
+        has_original: false,
+    }))
 }
 
 // ─── App ─────────────────────────────────────────────────────────
@@ -714,12 +766,19 @@ pub fn set_setting(key: String, value: String, state: State<AppState>, app: AppH
     if SETTINGS_BLACKLIST.contains(&key.as_str()) || SETTINGS_READ_ONLY.contains(&key.as_str()) {
         return Err(format!("key '{key}' is not settable via this command"));
     }
-    let db = state.db.lock().unwrap();
-    db.execute(
-        "INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)",
-        params![key, value],
-    )
-    .map_err(|e| e.to_string())?;
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    // Tag suggestions switched: on → wake the indexer (video frames) and score what's stale;
+    // either way Settings › Tag lens gets the new status.
+    if key == crate::tagging::PREF_SWITCH {
+        if value == "true" { crate::tagging::suggestions_turned_on(&app); } else { crate::tagging::emit_status(&app); }
+    }
     // The tray menu follows the app's language at once
     if key == "language" {
         if let Some(tray) = app.try_state::<crate::TrayMenu>() {
@@ -801,6 +860,48 @@ fn to_fts_query(q: &str) -> String {
         .join(" ")
 }
 
+/// The apostrophes Uzbek is typed with (o‘, g‘ and the tutuq ’, also as ʻ ʼ or a backtick) all
+/// search as the plain ', so "qo'shiq" finds "qo‘shiq" and the other way round. Also the rule's
+/// last step for "the same tag name" (contract C7):
+/// `fold_apostrophes(&name.trim().to_lowercase())`.
+pub(crate) fn fold_apostrophes(s: &str) -> String {
+    s.chars().map(|c| match c { '\u{2018}' | '\u{2019}' | '\u{02BB}' | '\u{02BC}' | '`' => '\'', c => c }).collect()
+}
+
+/// `fold_apostrophes(LOWER(expr))` in SQL.
+fn fold_sql(expr: &str) -> String {
+    format!("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER({expr}), '\u{2018}', ''''), '\u{2019}', ''''), \
+             '\u{02BB}', ''''), '\u{02BC}', ''''), '`', '''')")
+}
+
+/// Text search for list_inspirations: the condition and its `?` arguments, in order. Matches the
+/// title and OCR text (through the FTS index) and the tags an item has: people's own tags by
+/// their name, lens tags by their concept's label in either language (whatever the app's
+/// language is; a people's tag that stands for a concept by both). Suggestions nobody accepted
+/// never match (Tag lens spec §0.8).
+fn search_condition(q: &str) -> (String, Vec<String>) {
+    let like = format!("%{}%", fold_apostrophes(&q.to_lowercase()));
+    let fts = to_fts_query(q);
+    let mut ors: Vec<String> = Vec::with_capacity(2);
+    let mut args: Vec<String> = Vec::with_capacity(4);
+    if !fts.is_empty() {
+        ors.push("rowid IN (SELECT rowid FROM inspirations_fts WHERE inspirations_fts MATCH ?)".into());
+        args.push(fts);
+    }
+    ors.push(format!(
+        "id IN (SELECT it.inspiration_id FROM inspiration_tags it \
+                JOIN tags t ON t.id = it.tag_id \
+                LEFT JOIN concepts c ON c.id = t.concept_id \
+                WHERE ((t.concept_id IS NULL OR t.source IN ('user', 'import')) AND {name} LIKE ?) \
+                   OR (t.concept_id IS NOT NULL AND json_valid(c.labels_json) AND ({en} LIKE ? OR {uz} LIKE ?)))",
+        name = fold_sql("t.name"),
+        en = fold_sql("json_extract(c.labels_json, '$.en')"),
+        uz = fold_sql("json_extract(c.labels_json, '$.uz')"),
+    ));
+    args.extend([like.clone(), like.clone(), like]);
+    (format!("({})", ors.join(" OR ")), args)
+}
+
 fn hex_to_rgb(hex: &str) -> Option<(i32, i32, i32)> {
     let h = hex.trim_start_matches('#');
     if h.len() != 6 { return None; }
@@ -826,7 +927,12 @@ pub fn list_inspirations(
     state: State<AppState>,
 ) -> Result<Vec<Inspiration>, String> {
     let db = state.db.lock().unwrap();
-    let plan     = get_plan_from_db(&db);
+    list_inspirations_with(&db, opts)
+}
+
+/// list_inspirations on one connection.
+fn list_inspirations_with(db: &rusqlite::Connection, opts: ListInspirationsOpts) -> Result<Vec<Inspiration>, String> {
+    let plan     = get_plan_from_db(db);
     let is_free  = is_free_plan(&plan);
     let per_page = opts.limit.unwrap_or(50) as usize;
     let page     = opts.page.unwrap_or(0) as usize;
@@ -866,30 +972,12 @@ pub fn list_inspirations(
         }
     }
 
-    // Text search: title + OCR (via FTS5) + accepted tags + auto-tag confidence.
-    // title/ocr_text go through the inspirations_fts index instead of two
-    // leading-wildcard LIKE '%q%' full scans; tag names and vocab labels stay on
-    // LIKE (small tables). The `?` push order below must match the SQL left→right.
+    // Text search: title + OCR (via FTS5) + the tags items have (search_condition). Pushed
+    // last, so its `?` arguments stay in step with the WHERE order.
     if let Some(q) = &opts.query {
-        let like = format!("%{}%", q.to_lowercase());
-        let fts  = to_fts_query(q);
-
-        let mut ors: Vec<&str> = Vec::with_capacity(3);
-        if !fts.is_empty() {
-            ors.push("rowid IN (SELECT rowid FROM inspirations_fts WHERE inspirations_fts MATCH ?)");
-        }
-        ors.push("id IN (SELECT it.inspiration_id FROM inspiration_tags it \
-                         JOIN tags t ON t.id = it.tag_id \
-                         WHERE LOWER(t.name) LIKE ?)");
-        ors.push("EXISTS (SELECT 1 FROM tag_vocab tv \
-                          WHERE LOWER(tv.labels_json) LIKE ? \
-                            AND instr(LOWER(COALESCE(auto_tag_confidence,'')), LOWER(tv.id)) > 0)");
-
-        wheres.push(format!("({})", ors.join(" OR ")));
-
-        if !fts.is_empty() { args.push(fts); } // title + ocr_text (FTS MATCH)
-        args.push(like.clone());               // accepted tag names
-        args.push(like);                       // tag_vocab display labels
+        let (cond, q_args) = search_condition(q);
+        wheres.push(cond);
+        args.extend(q_args);
     }
 
     let where_clause = if wheres.is_empty() {
@@ -992,11 +1080,11 @@ pub fn list_inspirations(
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model,
+                auto_tag_status, lens_suggestions, auto_tag_model,
                 duration_secs,
                 (SELECT json_group_array(c.name)
                  FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path, auto_tag_sig, (original_path IS NOT NULL) AS has_original
          FROM inspirations
          {}
          ORDER BY {}
@@ -1017,20 +1105,25 @@ pub fn list_inspirations(
 #[tauri::command]
 pub fn get_inspiration(id: String, state: State<AppState>) -> Result<Inspiration, String> {
     let db = state.db.lock().unwrap();
+    load_inspiration(&db, &id).map_err(|e| e.to_string())
+}
+
+/// One item with everything the page shows, `auto_tag_sig` included (it tells "not scored yet"
+/// apart from "scored, nothing to suggest"), and `has_original`.
+pub(crate) fn load_inspiration(db: &rusqlite::Connection, id: &str) -> rusqlite::Result<Inspiration> {
     db.query_row(
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model,
+                auto_tag_status, lens_suggestions, auto_tag_model,
                 duration_secs,
                 (SELECT json_group_array(c.name)
                  FROM collection_items ci JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path, auto_tag_sig, (original_path IS NOT NULL) AS has_original
          FROM inspirations WHERE id = ?1",
         params![id],
         row_to_inspiration,
     )
-    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1048,35 +1141,25 @@ pub fn update_inspiration(id: String, title: Option<String>, palette: Option<Str
 
 #[tauri::command]
 pub fn delete_inspiration(id: String, state: State<AppState>) -> Result<(), String> {
+    delete_inspiration_with(&state.db, &id)
+}
+
+/// delete_inspiration on one database: the row, then the item's files — its file, its thumbnail,
+/// the first original a cropped picture keeps, and the upscaled copy.
+fn delete_inspiration_with(db: &Mutex<rusqlite::Connection>, id: &str) -> Result<(), String> {
     // Fetch file paths before touching the DB so we know what to clean up.
-    let (stored_path, thumbnail_path): (String, Option<String>) = {
-        let db = state.db.lock().unwrap();
+    let (stored_path, thumbnail_path, original_path, enhanced_path): (String, Option<String>, Option<String>, Option<String>) = {
+        let db = db.lock().unwrap();
         db.query_row(
-            "SELECT stored_path, thumbnail_path FROM inspirations WHERE id = ?1",
+            "SELECT stored_path, thumbnail_path, original_path, enhanced_path FROM inspirations WHERE id = ?1",
             params![id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         ).map_err(|e| e.to_string())?
     };
 
     {
-        let db = state.db.lock().unwrap();
-        // Decrement counts BEFORE the ON DELETE CASCADE wipes inspiration_tags
-        db.execute(
-            "UPDATE tag_usage_counts SET count = MAX(0, count - 1)
-             WHERE tag_id IN (SELECT tag_id FROM inspiration_tags WHERE inspiration_id = ?1)",
-            params![id],
-        ).map_err(|e| e.to_string())?;
-        db.execute("DELETE FROM inspirations WHERE id = ?1", params![id])
-            .map_err(|e| e.to_string())?;
-        // Delete tags that are now unused (cascade from inspiration_tags already ran)
-        db.execute(
-            "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM inspiration_tags)",
-            [],
-        ).map_err(|e| e.to_string())?;
-        db.execute(
-            "DELETE FROM tag_usage_counts WHERE tag_id NOT IN (SELECT id FROM tags)",
-            [],
-        ).map_err(|e| e.to_string())?;
+        let db = db.lock().unwrap();
+        delete_item_row(&db, id).map_err(|e| e.to_string())?;
     } // release DB lock before file I/O
 
     // Delete the main file — ignore "not found" (already gone is fine)
@@ -1097,7 +1180,75 @@ pub fn delete_inspiration(id: String, state: State<AppState>) -> Result<(), Stri
         }
     }
 
+    // The first original a cropped picture keeps, and the upscaled copy, go with the item
+    for extra in [original_path, enhanced_path].into_iter().flatten() {
+        if extra.is_empty() || extra == stored_path { continue; }
+        if let Err(e) = std::fs::remove_file(&extra) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!(target: "Library", "delete_extra_failed path={:?} error={e}", extra);
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Delete one item's row (its tag links, answers and collection places go with it, by cascade),
+/// then tidy the tags it had.
+fn delete_item_row(db: &rusqlite::Connection, id: &str) -> rusqlite::Result<()> {
+    let tag_ids = query_ids(db, "SELECT tag_id FROM inspiration_tags WHERE inspiration_id = ?1", id)?;
+    db.execute("DELETE FROM inspirations WHERE id = ?1", params![id])?;
+    tidy_tags_after_delete(db, &tag_ids);
+    Ok(())
+}
+
+/// Delete the rows of every item in a collection, then tidy the tags they had.
+fn delete_collection_item_rows(db: &rusqlite::Connection, collection_id: &str) -> rusqlite::Result<()> {
+    let tag_ids = query_ids(db,
+        "SELECT DISTINCT it.tag_id FROM inspiration_tags it
+         JOIN collection_items ci ON ci.inspiration_id = it.inspiration_id
+         WHERE ci.collection_id = ?1",
+        collection_id)?;
+    db.execute(
+        "DELETE FROM inspirations WHERE id IN (SELECT inspiration_id FROM collection_items WHERE collection_id = ?1)",
+        params![collection_id],
+    )?;
+    tidy_tags_after_delete(db, &tag_ids);
+    Ok(())
+}
+
+/// The ids a query with one `?1` parameter returns.
+fn query_ids(db: &rusqlite::Connection, sql: &str, param: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = db.prepare(sql)?;
+    let ids = stmt.query_map(params![param], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok(ids)
+}
+
+/// After items were deleted, for the tags they had: a lens tag that no item has any more is
+/// removed (tagging::ensure_concept_tag makes it again whenever it's needed), and every other
+/// tag's count is set from the links that are left. People's own tags (source user / import) are
+/// never removed, even when no item has them any more: tags can't be typed (Tag lens decision 6),
+/// so a removed one could never be made again. Tags the deleted items didn't have are left alone.
+/// Best effort: a failure is logged and the delete itself stands.
+fn tidy_tags_after_delete(db: &rusqlite::Connection, tag_ids: &[String]) {
+    let unique: HashSet<&String> = tag_ids.iter().collect();
+    for id in unique {
+        let dropped = db.execute(
+            "DELETE FROM tags WHERE id = ?1 AND source = 'lens'
+               AND NOT EXISTS (SELECT 1 FROM inspiration_tags WHERE tag_id = ?1)",
+            params![id],
+        );
+        match dropped {
+            Ok(0) => recount_tags(db, std::slice::from_ref(id)),
+            Ok(_) => {
+                // Its count goes by cascade; this covers a connection without foreign keys.
+                if let Err(e) = db.execute("DELETE FROM tag_usage_counts WHERE tag_id = ?1", params![id]) {
+                    log::warn!(target: "Tags", "count of a removed lens tag not cleared: {e}");
+                }
+            }
+            Err(e) => log::warn!(target: "Tags", "unused lens tag not removed: {e}"),
+        }
+    }
 }
 
 // Saves a JPEG thumbnail (generated by the frontend canvas) to the vault's
@@ -1148,11 +1299,15 @@ fn row_to_inspiration(row: &rusqlite::Row) -> rusqlite::Result<Inspiration> {
         created_at:           row.get(17)?,
         updated_at:           row.get(18)?,
         auto_tag_status:      row.get(19)?,
-        auto_tag_confidence:  row.get(20)?,
+        lens_suggestions:     row.get(20)?,
         auto_tag_model:       row.get(21)?,
         duration_secs:        row.get(22).ok(),
         collection_names:     row.get(23).ok(),
         enhanced_path:        row.get("enhanced_path").ok(),
+        // By name: None for the queries that don't select it
+        auto_tag_sig:         row.get::<_, Option<String>>("auto_tag_sig").ok().flatten(),
+        // By name: false for the lean queries (OCR / object claims) that don't select it
+        has_original:         row.get::<_, Option<bool>>("has_original").ok().flatten().unwrap_or(false),
     })
 }
 
@@ -1220,7 +1375,7 @@ pub fn claim_ocr_index_candidates(
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model,
+                auto_tag_status, lens_suggestions, auto_tag_model,
                 duration_secs
          FROM inspirations WHERE id IN ({})",
         placeholders
@@ -1248,17 +1403,31 @@ pub struct OcrResult {
     pub ocr_text: String,
     pub ocr_language: Option<String>,
     pub status: String,
+    /// The file that was read (the claim's stored_path). None from a page that doesn't send it.
+    #[serde(default)]
+    pub stored_path: Option<String>,
 }
 
 #[tauri::command]
 pub fn finalize_ocr_index_result(result: OcrResult, state: State<AppState>) -> Result<(), String> {
     let db = state.db.lock().unwrap();
-    db.execute(
-        "UPDATE inspirations SET ocr_text = ?1, ocr_language = ?2, ocr_status = ?3 WHERE id = ?4",
-        params![result.ocr_text, result.ocr_language, result.status, result.id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    finalize_ocr(&db, &result).map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Write one OCR result, only while the item still shows the file that was read: a crop or a
+/// restore meanwhile reset its text (ocr_status NULL), and the words of the old picture must not
+/// come back over the new one, nor mark it done (or failed) so it's never read. The next claim
+/// reads the new file. → whether the result was written.
+fn finalize_ocr(db: &rusqlite::Connection, result: &OcrResult) -> rusqlite::Result<bool> {
+    let n = db.execute(
+        "UPDATE inspirations SET ocr_text = ?1, ocr_language = ?2, ocr_status = ?3
+         WHERE id = ?4 AND (?5 IS NULL OR stored_path = ?5)",
+        params![result.ocr_text, result.ocr_language, result.status, result.id, result.stored_path],
+    )?;
+    if n == 0 && result.stored_path.is_some() {
+        log::debug!(target: "OCR", "id={} shows another file now: the old text was dropped", result.id);
+    }
+    Ok(n > 0)
 }
 
 // ─── Object/content detection (for keyword search) ──────────────────────────
@@ -1295,7 +1464,7 @@ pub fn claim_object_candidates(batch_size: Option<i64>, state: State<AppState>) 
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs
+                auto_tag_status, lens_suggestions, auto_tag_model, duration_secs
          FROM inspirations WHERE id IN ({})", placeholders);
     let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
     let rows: Vec<Inspiration> = stmt
@@ -1344,164 +1513,9 @@ pub fn get_ocr_index_stats(state: State<AppState>) -> Result<OcrStats, String> {
     Ok(OcrStats { total, done, pending, failed, skipped })
 }
 
-// ─── Auto-tagging ────────────────────────────────────────────────
-
-#[tauri::command]
-pub fn claim_auto_tag_candidates(
-    batch_size: Option<i64>,
-    state: State<AppState>,
-) -> Result<Vec<Inspiration>, String> {
-    let db   = state.db.lock().unwrap();
-    let size = batch_size.unwrap_or(4);
-
-    db.execute_batch("BEGIN;").map_err(|e| e.to_string())?;
-
-    let ids: Vec<String> = {
-        let mut stmt = db
-            .prepare(
-                "SELECT id FROM inspirations
-                 WHERE (auto_tag_status IS NULL OR auto_tag_status = 'processing')
-                 AND type IN ('image','gif')
-                 LIMIT ?1",
-            )
-            .map_err(|e| e.to_string())?;
-        let result: Vec<String> = stmt
-            .query_map(params![size], |row| row.get(0))
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-        result
-    };
-
-    if ids.is_empty() {
-        db.execute_batch("COMMIT;").map_err(|e| e.to_string())?;
-        return Ok(vec![]);
-    }
-
-    for id in &ids {
-        db.execute(
-            "UPDATE inspirations SET auto_tag_status = 'processing' WHERE id = ?1",
-            params![id],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    db.execute_batch("COMMIT;").map_err(|e| e.to_string())?;
-
-    let placeholders: String = ids
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format!("?{}", i + 1))
-        .collect::<Vec<_>>()
-        .join(",");
-
-    let sql = format!(
-        "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
-                aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
-                phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model,
-                duration_secs
-         FROM inspirations WHERE id IN ({})",
-        placeholders
-    );
-
-    let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows: Vec<Inspiration> = stmt
-        .query_map(
-            rusqlite::params_from_iter(ids.iter().map(|s| s.as_str())),
-            row_to_inspiration,
-        )
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(rows)
-}
-
-#[tauri::command]
-pub fn finalize_auto_tag_result(
-    id: String,
-    confidence: Option<String>,
-    model: Option<String>,
-    status: String,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let db = state.db.lock().unwrap();
-    db.execute(
-        "UPDATE inspirations
-         SET auto_tag_status = ?1, auto_tag_confidence = ?2, auto_tag_model = ?3
-         WHERE id = ?4",
-        params![status, confidence, model, id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-// ─── Tag vocab (developer dictionary) ───────────────────────────
-
-#[derive(Serialize)]
-pub struct TagVocabEntry {
-    pub id:           String,
-    pub labels_json:  String,
-    pub prompts_json: String,
-    pub built_in:     bool,
-    pub sort_order:   i64,
-}
-
-#[tauri::command]
-pub fn list_tag_vocab(state: State<AppState>) -> Result<Vec<TagVocabEntry>, String> {
-    let db = state.db.lock().unwrap();
-    let mut stmt = db
-        .prepare("SELECT id, labels_json, prompts_json, built_in, sort_order FROM tag_vocab ORDER BY sort_order, id")
-        .map_err(|e| e.to_string())?;
-    let result: Vec<TagVocabEntry> = stmt
-        .query_map([], |row| Ok(TagVocabEntry {
-            id:           row.get(0)?,
-            labels_json:  row.get(1)?,
-            prompts_json: row.get(2)?,
-            built_in:     row.get::<_, i64>(3)? != 0,
-            sort_order:   row.get(4)?,
-        }))
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(result)
-}
-
-#[tauri::command]
-pub fn upsert_tag_vocab(
-    id:           String,
-    labels_json:  String,
-    prompts_json: String,
-    built_in:     bool,
-    sort_order:   i64,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let db = state.db.lock().unwrap();
-    db.execute(
-        "INSERT INTO tag_vocab (id, labels_json, prompts_json, built_in, sort_order)
-         VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(id) DO UPDATE SET
-           labels_json  = excluded.labels_json,
-           prompts_json = excluded.prompts_json,
-           built_in     = excluded.built_in,
-           sort_order   = excluded.sort_order,
-           updated_at   = strftime('%s','now')",
-        params![id, labels_json, prompts_json, built_in as i64, sort_order],
-    ).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn reset_all_auto_tags(state: State<AppState>) -> Result<u64, String> {
-    let db = state.db.lock().unwrap();
-    let count = db.execute(
-        "UPDATE inspirations SET auto_tag_status = NULL, auto_tag_confidence = NULL \
-         WHERE auto_tag_status IS NOT NULL",
-        [],
-    ).map_err(|e| e.to_string())? as u64;
-    Ok(count)
-}
+// ─── Tag suggestions ─────────────────────────────────────────────
+// Scored in Rust from stored CLIP vectors (tagging.rs); lens files and their commands are in
+// lenses.rs; video frames in frames.rs, read by the CLIP indexer (clip.rs).
 
 // ─── File system ─────────────────────────────────────────────────
 
@@ -1606,22 +1620,6 @@ pub fn copy_file_to_folder(path: String, dest_dir: String) -> Result<String, Str
     Ok(dest.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
-pub fn delete_tag_vocab(id: String, state: State<AppState>) -> Result<(), String> {
-    let db = state.db.lock().unwrap();
-    db.execute("DELETE FROM tag_vocab WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
-    // Re-queue images that were scored against this tag so they get re-tagged
-    // without it. The LIKE pattern matches the quoted key in the confidence JSON.
-    let pattern = format!("%\"{}\":%", id);
-    db.execute(
-        "UPDATE inspirations SET auto_tag_status = NULL, auto_tag_confidence = NULL \
-         WHERE auto_tag_confidence LIKE ?1",
-        params![pattern],
-    ).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 // ─── Collections ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1708,50 +1706,61 @@ pub fn update_collection(id: String, name: Option<String>, visible_on_home: Opti
 
 #[tauri::command]
 pub fn delete_collection(id: String, delete_items: bool, app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    let vault_path = if delete_items { vault::get_vault_path(&app).ok() } else { None };
+    delete_collection_with(&state.db, vault_path.as_deref(), &id, delete_items)
+}
+
+/// delete_collection on one database; `vault_path` resolves relative thumbnail paths.
+fn delete_collection_with(
+    db: &Mutex<rusqlite::Connection>,
+    vault_path: Option<&std::path::Path>,
+    id: &str,
+    delete_items: bool,
+) -> Result<(), String> {
     if delete_items {
-        // Collect stored_path + thumbnail_path for every item in this collection
-        let files: Vec<(String, Option<String>)> = {
-            let db = state.db.lock().unwrap();
+        // Collect every file of every item in this collection: the file, the thumbnail, the first
+        // original a cropped picture keeps, and the upscaled copy
+        let files: Vec<(String, Option<String>, Option<String>, Option<String>)> = {
+            let db = db.lock().unwrap();
             let mut stmt = db.prepare(
-                "SELECT i.stored_path, i.thumbnail_path \
+                "SELECT i.stored_path, i.thumbnail_path, i.original_path, i.enhanced_path \
                  FROM inspirations i \
                  JOIN collection_items ci ON ci.inspiration_id = i.id \
                  WHERE ci.collection_id = ?1"
             ).map_err(|e| e.to_string())?;
-            let rows: Vec<_> = stmt.query_map(params![id], |r| Ok((r.get(0)?, r.get(1)?)))
+            let rows: Vec<_> = stmt.query_map(params![id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
                 .map_err(|e| e.to_string())?
                 .filter_map(|r| r.ok())
                 .collect();
             rows
         };
 
-        // Delete inspiration records (collection_items cascade-delete automatically)
+        // Delete inspiration records (collection_items cascade-delete automatically) and set the
+        // counts of the tags they had (lens tags no item has any more are removed)
         {
-            let db = state.db.lock().unwrap();
-            db.execute(
-                "DELETE FROM inspirations WHERE id IN \
-                 (SELECT inspiration_id FROM collection_items WHERE collection_id = ?1)",
-                params![id],
-            ).map_err(|e| e.to_string())?;
+            let db = db.lock().unwrap();
+            delete_collection_item_rows(&db, id).map_err(|e| e.to_string())?;
         }
 
         // Remove physical files from disk (best-effort — ignore individual errors)
-        let vault_path = vault::get_vault_path(&app).ok();
-        for (stored, thumb) in &files {
+        for (stored, thumb, original, enhanced) in &files {
             std::fs::remove_file(stored).ok();
             if let Some(t) = thumb {
                 // thumbnail_path may be relative to vault
                 let abs = if std::path::Path::new(t).is_absolute() {
                     std::path::PathBuf::from(t)
                 } else {
-                    vault_path.as_ref().map(|v| v.join(t)).unwrap_or_default()
+                    vault_path.map(|v| v.join(t)).unwrap_or_default()
                 };
                 std::fs::remove_file(&abs).ok();
+            }
+            for extra in [original, enhanced].into_iter().flatten() {
+                if !extra.is_empty() && extra != stored { std::fs::remove_file(extra).ok(); }
             }
         }
     }
 
-    let db = state.db.lock().unwrap();
+    let db = db.lock().unwrap();
     db.execute("DELETE FROM collections WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -1800,22 +1809,7 @@ pub fn export_collection(
             rows
         };
 
-        let tags_map: HashMap<String, Vec<String>> = {
-            let mut stmt = db.prepare(
-                "SELECT it.inspiration_id, t.name
-                 FROM inspiration_tags it
-                 JOIN tags t ON t.id = it.tag_id
-                 JOIN collection_items ci ON ci.inspiration_id = it.inspiration_id
-                 WHERE ci.collection_id = ?1"
-            ).map_err(|e| e.to_string())?;
-            let mut map: HashMap<String, Vec<String>> = HashMap::new();
-            for row in stmt.query_map(params![collection_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()) {
-                map.entry(row.0).or_default().push(row.1);
-            }
-            map
-        };
+        let tags_map = pack_tags(&db, Some(collection_id.as_str())).map_err(|e| e.to_string())?;
 
         let extras: HashMap<String, PackExtras> = items.iter()
             .filter_map(|it| pack_extras(&db, &it.0).map(|ex| (it.0.clone(), ex)))
@@ -1842,8 +1836,9 @@ pub fn export_collection(
 
         let mut entry = serde_json::json!({
             "id": id, "type": item_type,
-            "created_at": created_at, "tags": tags, "file": file_in_zip,
+            "created_at": created_at, "file": file_in_zip,
         });
+        pack_put_tags(&mut entry, tags);
         if let Some(v) = title          { entry["title"]           = serde_json::json!(v); }
         if let Some(v) = mime_type      { entry["mime_type"]        = serde_json::json!(v); }
         if let Some(v) = source_url     { entry["source_url"]       = serde_json::json!(v); }
@@ -1907,11 +1902,97 @@ const QOOTI_PACK_KEY: &[u8] = b"Qo0t!P4ck_S3cr3t_K3y_2024#XOR$";
 
 // ─── Pack metadata (manifest v2) ─────────────────────────────────
 // A pack carries everything qooti already worked out for each item — OCR text, colours,
-// fingerprint, CLIP embedding, auto-tags (with where each tag came from), video length and
+// fingerprint, CLIP embedding, its tags (with where each tag came from), video length and
 // shape, the video thumbnail and the AI-enhanced copy — so the computer that imports it
-// doesn't redo OCR, tagging, palette extraction, hashing, embedding or thumbnails.
+// doesn't redo OCR, palette extraction, hashing, embedding or thumbnails. Tag suggestions are
+// not carried: the importing computer scores the items with its own lenses.
 // v1 packs (no "meta") still import: those items are analysed as before.
 const PACK_MANIFEST_VERSION: u32 = 2;
+
+/// The name a pack gives a tag: a lens tag's English label (so other apps and older qooti read a
+/// word, never `lens:<id>`; without a readable label, its id with spaces), any other tag its own
+/// name: a people's tag (user, import) always, also one that stands for a concept (one name, one
+/// tag). Over `tags t LEFT JOIN concepts c`.
+const PACK_TAG_NAME_SQL: &str =
+    "CASE WHEN t.concept_id IS NULL OR t.source IN ('user', 'import') THEN t.name \
+          ELSE COALESCE(CASE WHEN json_valid(c.labels_json) THEN NULLIF(TRIM(json_extract(c.labels_json, '$.en')), '') END, \
+                        REPLACE(t.concept_id, '_', ' ')) END";
+
+/// One item's tags in a pack:
+/// - `tags`: names. People's own tags by their name, lens tags by their English label;
+/// - `tag_concepts`: {name: concept id} for the tags named in `tags` that stand for a concept. A
+///   lens tag (`tag_sources` lens): the importing computer links its own tag of that concept. A
+///   people's tag that stands for a concept (`tag_sources` user or import; one name, one tag): the
+///   importing computer makes or links the people's tag by its name and source, and it stands for
+///   that concept there too (import_pack_tags);
+/// - `extra_concepts`: [concept id] for lens tags whose English label another tag of the item
+///   already uses in `tags`: a people's tag with the same name (it keeps the name and its own
+///   source), or a second lens tag with the same label. Importers link these as lens tags; older
+///   apps ignore the field and still import every name in `tags`.
+#[derive(Clone, Default)]
+struct PackTags {
+    names:    Vec<String>,
+    concepts: serde_json::Map<String, serde_json::Value>,
+    extra:    Vec<String>,
+}
+
+/// Tags of the items being exported (one collection, or the whole library), by item id.
+fn pack_tags(db: &rusqlite::Connection, collection_id: Option<&str>) -> rusqlite::Result<HashMap<String, PackTags>> {
+    let sql = format!(
+        "SELECT it.inspiration_id, {PACK_TAG_NAME_SQL}, t.concept_id, t.source IN ('user', 'import')
+         FROM inspiration_tags it
+         JOIN tags t ON t.id = it.tag_id
+         LEFT JOIN concepts c ON c.id = t.concept_id
+         {}
+         ORDER BY it.inspiration_id, 2",
+        if collection_id.is_some() {
+            "JOIN collection_items ci ON ci.inspiration_id = it.inspiration_id WHERE ci.collection_id = ?1"
+        } else { "" });
+    let mut stmt = db.prepare(&sql)?;
+    let params: Vec<&str> = collection_id.into_iter().collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(params), |r| Ok((
+        r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, bool>(3)?,
+    )))?;
+    let mut by_item: HashMap<String, Vec<(String, Option<String>, bool)>> = HashMap::new();
+    for row in rows {
+        let (item, name, concept, people) = row?;
+        by_item.entry(item).or_default().push((name, concept, people));
+    }
+    let mut map: HashMap<String, PackTags> = HashMap::with_capacity(by_item.len());
+    for (item, rows) in by_item {
+        // Tags that aren't lens tags keep their names, whatever order the rows come in: people's
+        // tags (also one that stands for a concept) and tags without a concept
+        let own: HashSet<&str> = rows.iter().filter(|(_, c, p)| *p || c.is_none()).map(|(n, _, _)| n.as_str()).collect();
+        let mut tags = PackTags::default();
+        for (name, concept, people) in &rows {
+            match concept {
+                // A people's tag that stands for a concept: its own name, and its concept
+                Some(c) if *people => {
+                    if !tags.names.contains(name) { tags.names.push(name.clone()) }
+                    tags.concepts.insert(name.clone(), c.clone().into());
+                }
+                None => if !tags.names.contains(name) { tags.names.push(name.clone()) },
+                Some(c) if own.contains(name.as_str()) || tags.concepts.contains_key(name) => {
+                    if !tags.extra.contains(c) { tags.extra.push(c.clone()) }
+                }
+                Some(c) => {
+                    tags.names.push(name.clone());
+                    tags.concepts.insert(name.clone(), c.clone().into());
+                }
+            }
+        }
+        map.insert(item, tags);
+    }
+    Ok(map)
+}
+
+/// Put an item's tags into its manifest entry: `tags`, and `tag_concepts` / `extra_concepts`
+/// when it has lens tags.
+fn pack_put_tags(entry: &mut serde_json::Value, tags: PackTags) {
+    entry["tags"] = tags.names.into();
+    if !tags.concepts.is_empty() { entry["tag_concepts"] = serde_json::Value::Object(tags.concepts); }
+    if !tags.extra.is_empty() { entry["extra_concepts"] = tags.extra.into(); }
+}
 
 struct PackExtras {
     meta:        serde_json::Value,
@@ -1924,8 +2005,7 @@ fn pack_extras(db: &rusqlite::Connection, id: &str) -> Option<PackExtras> {
     use base64::Engine;
     let mut ex = db.query_row(
         "SELECT aspect_ratio, palette, ocr_status, ocr_language, phash, phash_source,
-                auto_tag_status, auto_tag_confidence, auto_tag_model, object_tags, object_status,
-                duration_secs, thumbnail_path, enhanced_path
+                object_tags, object_status, duration_secs, thumbnail_path, enhanced_path
          FROM inspirations WHERE id = ?1",
         params![id],
         |r| {
@@ -1937,17 +2017,14 @@ fn pack_extras(db: &rusqlite::Connection, id: &str) -> Option<PackExtras> {
             put("ocr_language",        r.get::<_, Option<String>>(3)?.map(|v| v.into()));
             put("phash",               r.get::<_, Option<String>>(4)?.map(|v| v.into()));
             put("phash_source",        r.get::<_, Option<String>>(5)?.map(|v| v.into()));
-            put("auto_tag_status",     r.get::<_, Option<String>>(6)?.map(|v| v.into()));
-            put("auto_tag_confidence", r.get::<_, Option<String>>(7)?.map(|v| v.into()));
-            put("auto_tag_model",      r.get::<_, Option<String>>(8)?.map(|v| v.into()));
-            put("object_tags",         r.get::<_, Option<String>>(9)?.map(|v| v.into()));
-            put("object_status",       r.get::<_, Option<String>>(10)?.map(|v| v.into()));
-            put("duration_secs",       r.get::<_, Option<f64>>(11)?.map(|v| v.into()));
+            put("object_tags",         r.get::<_, Option<String>>(6)?.map(|v| v.into()));
+            put("object_status",       r.get::<_, Option<String>>(7)?.map(|v| v.into()));
+            put("duration_secs",       r.get::<_, Option<f64>>(8)?.map(|v| v.into()));
             Ok(PackExtras {
                 meta: serde_json::Value::Object(m),
                 tag_sources: serde_json::Map::new(),
-                thumb:    r.get::<_, Option<String>>(12)?.filter(|p| std::path::Path::new(p).is_file()),
-                enhanced: r.get::<_, Option<String>>(13)?.filter(|p| std::path::Path::new(p).is_file()),
+                thumb:    r.get::<_, Option<String>>(9)?.filter(|p| std::path::Path::new(p).is_file()),
+                enhanced: r.get::<_, Option<String>>(10)?.filter(|p| std::path::Path::new(p).is_file()),
             })
         },
     ).ok()?;
@@ -1960,11 +2037,21 @@ fn pack_extras(db: &rusqlite::Connection, id: &str) -> Option<PackExtras> {
             "emb": base64::engine::general_purpose::STANDARD.encode(emb),
         });
     }
-    if let Ok(mut stmt) = db.prepare(
-        "SELECT t.name, t.source FROM inspiration_tags it JOIN tags t ON t.id = it.tag_id WHERE it.inspiration_id = ?1"
-    ) {
-        if let Ok(rows) = stmt.query_map(params![id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
-            for (name, source) in rows.flatten() { ex.tag_sources.insert(name, source.into()); }
+    if let Ok(mut stmt) = db.prepare(&format!(
+        "SELECT {PACK_TAG_NAME_SQL}, t.source, t.concept_id IS NOT NULL AND t.source NOT IN ('user', 'import')
+         FROM inspiration_tags it
+         JOIN tags t ON t.id = it.tag_id
+         LEFT JOIN concepts c ON c.id = t.concept_id
+         WHERE it.inspiration_id = ?1"
+    )) {
+        if let Ok(rows) = stmt.query_map(params![id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, bool>(2)?))) {
+            // A people's tag and a lens tag with the same name: the name is the people's tag's,
+            // with its own source (the lens tag travels in extra_concepts, see pack_tags). A
+            // people's tag that stands for a concept is a people's tag here too.
+            for (name, source, lens) in rows.flatten() {
+                if lens { ex.tag_sources.entry(name).or_insert_with(|| source.into()); }
+                else { ex.tag_sources.insert(name, source.into()); }
+            }
         }
     }
     Some(ex)
@@ -2013,6 +2100,8 @@ fn meta_status(meta: &serde_json::Value, key: &str, allowed: &[&str]) -> Option<
 
 /// One item's analysis results as read back from an untrusted pack. Every field is
 /// checked; a missing or odd one is None and that step simply runs again on this computer.
+/// Tag suggestions (auto_tag_*) are never taken from a pack, old or new: they start empty
+/// and this computer's lenses score the item.
 #[derive(Debug, Default, PartialEq)]
 struct PackMeta {
     aspect_ratio:        Option<f64>,
@@ -2022,9 +2111,6 @@ struct PackMeta {
     ocr_language:        Option<String>,
     palette:             Option<String>,
     phash:               Option<String>,
-    auto_tag_status:     Option<String>,
-    auto_tag_confidence: Option<String>,
-    auto_tag_model:      Option<String>,
     object_tags:         Option<String>,
     object_status:       Option<String>,
     clip_emb:            Option<Vec<u8>>,
@@ -2036,7 +2122,6 @@ fn read_pack_meta(item: &serde_json::Value, is_video: bool) -> PackMeta {
     let meta = &item["meta"];
 
     let ocr_status = if is_video { Some("skipped".to_string()) } else { meta_status(meta, "ocr_status", DONE) };
-    let auto_tag_status = meta_status(meta, "auto_tag_status", DONE);
     let object_status = meta_status(meta, "object_status", DONE);
     PackMeta {
         aspect_ratio:  meta["aspect_ratio"].as_f64().filter(|r| r.is_finite() && *r > 0.01 && *r < 100.0),
@@ -2057,11 +2142,6 @@ fn read_pack_meta(item: &serde_json::Value, is_video: bool) -> PackMeta {
         phash: meta_str(meta, "phash", 2048)
             .filter(|_| meta["phash_source"].as_str() == Some(FP_VERSION))
             .filter(|ph| parse_fp(ph).is_some()),
-        auto_tag_confidence: auto_tag_status.as_ref()
-            .and_then(|_| meta_str(meta, "auto_tag_confidence", 65_536))
-            .filter(|c| serde_json::from_str::<serde_json::Value>(c).is_ok()),
-        auto_tag_model: auto_tag_status.as_ref().and_then(|_| meta_str(meta, "auto_tag_model", 128)),
-        auto_tag_status,
         object_tags: object_status.as_ref().and_then(|_| meta_str(meta, "object_tags", 65_536)),
         object_status,
         // CLIP embedding (search by meaning, find similar): same model, right size, real numbers
@@ -2081,7 +2161,7 @@ pub async fn export_all_items(
     // Phase 1: DB queries — fast, done while holding the lock briefly
     type Row = (String, Option<String>, String, Option<String>, String,
                 Option<String>, Option<String>, i64, Option<String>);
-    let (items, tags_map, extras): (Vec<Row>, HashMap<String, Vec<String>>, HashMap<String, PackExtras>) = {
+    let (items, tags_map, extras): (Vec<Row>, HashMap<String, PackTags>, HashMap<String, PackExtras>) = {
         let db = state.db.lock().unwrap();
 
         let items: Vec<Row> = {
@@ -2106,18 +2186,7 @@ pub async fn export_all_items(
             rows
         };
 
-        let tags_map: HashMap<String, Vec<String>> = {
-            let mut stmt = db.prepare(
-                "SELECT it.inspiration_id, t.name FROM inspiration_tags it JOIN tags t ON t.id = it.tag_id"
-            ).map_err(|e| e.to_string())?;
-            let mut map: HashMap<String, Vec<String>> = HashMap::new();
-            for row in stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()) {
-                map.entry(row.0).or_default().push(row.1);
-            }
-            map
-        };
+        let tags_map = pack_tags(&db, None).map_err(|e| e.to_string())?;
 
         let extras: HashMap<String, PackExtras> = items.iter()
             .filter_map(|it| pack_extras(&db, &it.0).map(|ex| (it.0.clone(), ex)))
@@ -2150,8 +2219,9 @@ pub async fn export_all_items(
 
             let mut entry = serde_json::json!({
                 "id": id, "type": item_type,
-                "created_at": created_at, "tags": tags, "file": file_in_zip,
+                "created_at": created_at, "file": file_in_zip,
             });
+            pack_put_tags(&mut entry, tags);
             if let Some(v) = title           { entry["title"]          = serde_json::json!(v); }
             if let Some(v) = mime_type       { entry["mime_type"]       = serde_json::json!(v); }
             if let Some(v) = source_url      { entry["source_url"]      = serde_json::json!(v); }
@@ -2254,6 +2324,8 @@ pub fn import_qooti_pack(
 
     let mut imported_count = 0u32;
     let mut skipped_count  = 0u32;
+    let mut touched_tags: Vec<String> = Vec::new();
+    let mut waiting_lens_tags = 0usize;
 
     for item_meta in &items_meta {
         let zip_file_path = match item_meta["file"].as_str() {
@@ -2288,7 +2360,7 @@ pub fn import_qooti_pack(
         };
         let (file_type, subdir, mime) = (validated.db_type, validated.subdir, validated.mime);
 
-        // Hash-based dedup
+        // Hash-based dedup (the first original a cropped picture keeps counts too)
         let hash = {
             let mut h = sha2::Sha256::new();
             h.update(&media_bytes);
@@ -2297,7 +2369,7 @@ pub fn import_qooti_pack(
         {
             let db = state.db.lock().unwrap();
             let count: i64 = db.query_row(
-                "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1",
+                "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1",
                 params![hash], |r| r.get(0),
             ).unwrap_or(0);
             if count > 0 { skipped_count += 1; continue; }
@@ -2314,8 +2386,7 @@ pub fn import_qooti_pack(
         let is_video = file_type == "video";
         let PackMeta {
             aspect_ratio: meta_ratio, duration_secs: meta_duration, ocr_text, ocr_status, ocr_language,
-            palette, phash, auto_tag_status, auto_tag_confidence, auto_tag_model,
-            object_tags, object_status, clip_emb,
+            palette, phash, object_tags, object_status, clip_emb,
         } = read_pack_meta(item_meta, is_video);
         let phash_source = phash.as_ref().map(|_| FP_VERSION);
 
@@ -2323,10 +2394,9 @@ pub fn import_qooti_pack(
         let (duration, video_ratio) = if is_video && (meta_ratio.is_none() || meta_duration.is_none()) {
             video_meta(&dest_path, &app)
         } else { (meta_duration, None) };
-        let aspect_ratio = meta_ratio
-            .or(video_ratio)
-            .or_else(|| if is_video { None } else { image_aspect_ratio(&stored_path) })
-            .unwrap_or(validated.default_ratio);
+        // A picture's own header wins over the pack's ratio: older qooti stored 1.0 for pictures
+        // saved by link or by the browser extension, and a pack carries that along.
+        let aspect_ratio = new_item_ratio(is_video, &stored_path, meta_ratio.or(video_ratio), validated.default_ratio);
 
         let palette_json = palette.or_else(|| if !is_video {
             let p = stored_path.clone();
@@ -2359,7 +2429,8 @@ pub fn import_qooti_pack(
         let created_at     = item_meta["created_at"].as_i64().unwrap_or(now);
         let mime_val       = item_meta["mime_type"].as_str().unwrap_or(mime);
 
-        // Insert inspiration — batch_id = col_id groups all pack items under their collection
+        // Insert inspiration — batch_id = col_id groups all pack items under their collection.
+        // Its auto-tag fields stay NULL: this computer's lenses score it.
         {
             let db = state.db.lock().unwrap();
             if db.execute(
@@ -2367,14 +2438,14 @@ pub fn import_qooti_pack(
                  (id, type, title, stored_path, file_hash, mime_type, aspect_ratio, ocr_text, \
                   ocr_status, source_url, source_platform, palette, duration_secs, \
                   import_source, batch_id, created_at, updated_at, \
-                  ocr_language, phash, phash_source, auto_tag_status, auto_tag_confidence, auto_tag_model, \
+                  ocr_language, phash, phash_source, \
                   object_tags, object_status, thumbnail_path, enhanced_path) \
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?15,?8,?9,?10,?11,?12,'pack_import',?13,?14,?14, \
-                         ?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
+                         ?16,?17,?18,?19,?20,?21,?22)",
                 params![item_id, file_type, title, stored_path, hash, mime_val, aspect_ratio,
                         ocr_status, source_url, source_platform, palette_json, duration, col_id, created_at,
-                        ocr_text, ocr_language, phash, phash_source, auto_tag_status, auto_tag_confidence,
-                        auto_tag_model, object_tags, object_status, thumbnail_path, enhanced_path],
+                        ocr_text, ocr_language, phash, phash_source,
+                        object_tags, object_status, thumbnail_path, enhanced_path],
             ).is_err() { skipped_count += 1; continue; }
             if let Some(emb) = &clip_emb {
                 db.execute(
@@ -2394,40 +2465,236 @@ pub fn import_qooti_pack(
         }
 
         // Restore tags
-        if let Some(tags) = item_meta["tags"].as_array() {
-            for tag_val in tags {
-                if let Some(tag_name) = tag_val.as_str() {
-                    let db = state.db.lock().unwrap();
-                    // Find or create tag
-                    let tag_id: Option<String> = db.query_row(
-                        "SELECT id FROM tags WHERE LOWER(name) = LOWER(?1)",
-                        params![tag_name], |r| r.get(0),
-                    ).ok();
-                    let tag_id = tag_id.unwrap_or_else(|| {
-                        let new_id = Uuid::new_v4().to_string();
-                        // Keep whether the tag was the user's own or a model's guess
-                        let source = item_meta["tag_sources"][tag_name].as_str()
-                            .filter(|s| matches!(*s, "user" | "model" | "import"))
-                            .unwrap_or("import");
-                        db.execute(
-                            "INSERT INTO tags (id, name, source, created_at) VALUES (?1,?2,?3,?4)",
-                            params![new_id, tag_name, source, now],
-                        ).ok();
-                        new_id
-                    });
-                    db.execute(
-                        "INSERT OR IGNORE INTO inspiration_tags (inspiration_id, tag_id) VALUES (?1,?2)",
-                        params![item_id, tag_id],
-                    ).ok();
-                }
-            }
+        {
+            let db = state.db.lock().unwrap();
+            let links = import_pack_tags(&db, &item_id, item_meta, now);
+            touched_tags.extend(links.tag_ids);
+            waiting_lens_tags += links.waiting;
         }
 
         imported_count += 1;
     }
 
+    // tag_usage_counts of every tag the pack linked, from the links themselves
+    if !touched_tags.is_empty() {
+        let db = state.db.lock().unwrap();
+        recount_tags(&db, &touched_tags);
+    }
+    if waiting_lens_tags > 0 {
+        log::info!(target: "Pack", "{waiting_lens_tags} lens tags are of concepts no lens here has yet: kept, \
+                                     and they take that lens's labels when it is installed");
+    }
+    // Pack items with a CLIP vector need no indexing, so the indexer won't score them: score
+    // what's stale now (does nothing while tag suggestions are off). Videos get their frames read
+    // by the indexer as usual.
+    if imported_count > 0 {
+        let app = app.clone();
+        std::thread::spawn(move || crate::tagging::score_stale(&app));
+    }
+
     log::info!(target: "Import", "qooti_pack_done collection={col_name:?} imported={imported_count} skipped={skipped_count}");
     Ok(ImportQooTiResult { collection_id: col_id, collection_name: col_name, imported_count, skipped_count })
+}
+
+/// What import_pack_tags linked for one item.
+#[derive(Debug, Default)]
+struct PackTagLinks {
+    /// The tags linked (their counts are set afterwards, with recount_tags).
+    tag_ids: Vec<String>,
+    /// Lens tags linked to a concept no lens on this computer has yet (see pack_concept_tag).
+    waiting: usize,
+}
+
+/// At most this many `extra_concepts` per item are read from a pack.
+const PACK_MAX_EXTRA_CONCEPTS: usize = 64;
+
+/// Link a pack item's tags (Tag lens spec §6.4; the pack format is described at PackTags).
+/// - A name in `tags` with a `tag_concepts` entry is a lens tag: it links this computer's tag of
+///   that concept. So does every id in `extra_concepts`.
+/// - Unless `tag_sources` says the name is a people's tag (user or import) that stands for that
+///   concept (one name, one tag): the people's tag is made or linked by its name, as below, and
+///   stands for the concept here too (pack_peoples_concept).
+/// - A concept no lens here has is kept, not dropped: pack_concept_tag makes a placeholder for it.
+/// - Old suggestion tags (`tag_sources` = model) are skipped (decision 7), and so is any other
+///   name with the prefix `lens:` (how an earlier build stored lens tags).
+/// - Other names link the people's tag of the same name (any case; also one that stands for a
+///   concept), or a tag without a concept of that name, or are created as `user` or `import` as
+///   the pack says (`import` when it doesn't). A lens tag whose label is that name becomes that
+///   people's tag (one name, one tag: tagging::lens_tag_for_peoples_name); a lens tag stored under
+///   that name otherwise gives it up first (tagging::make_room_for_name): tag names are UNIQUE.
+fn import_pack_tags(db: &rusqlite::Connection, item_id: &str, item_meta: &serde_json::Value, now: i64) -> PackTagLinks {
+    let mut out = PackTagLinks::default();
+    for tag_name in item_meta["tags"].as_array().into_iter().flatten().filter_map(|v| v.as_str()) {
+        if tag_name.trim().is_empty() || tag_name.chars().count() > 200 { continue; }
+        let concept = item_meta["tag_concepts"][tag_name].as_str().filter(|c| crate::lenses::valid_concept_id(c));
+        let source = item_meta["tag_sources"][tag_name].as_str();
+        let peoples = matches!(source, Some("user" | "import"));
+        if let Some(concept) = concept.filter(|_| !peoples) {
+            match pack_concept_tag(db, concept, Some(tag_name), now) {
+                Ok((id, waiting)) => { out.waiting += waiting as usize; pack_link_tag(db, item_id, id, &mut out.tag_ids); }
+                Err(e) => log::warn!(target: "Pack", "lens tag not linked: {e}"),
+            }
+            continue;
+        }
+        let source = source.unwrap_or("import");
+        if source == "model" || tag_name.starts_with(LENS_TAG_PREFIX) { continue; }
+        let Some(tag_id) = pack_peoples_tag(db, tag_name, source, now) else { continue };
+        pack_link_tag(db, item_id, tag_id.clone(), &mut out.tag_ids);
+        if let Some(concept) = concept {
+            match pack_peoples_concept(db, &tag_id, concept, tag_name, now) {
+                Ok((also, waiting)) => {
+                    out.waiting += waiting as usize;
+                    if let Some(other) = also { pack_link_tag(db, item_id, other, &mut out.tag_ids); }
+                }
+                Err(e) => log::warn!(target: "Pack", "tag's lens tag not linked: {e}"),
+            }
+        }
+    }
+    let extra = item_meta["extra_concepts"].as_array().into_iter().flatten()
+        .take(PACK_MAX_EXTRA_CONCEPTS)
+        .filter_map(|v| v.as_str())
+        .filter(|c| crate::lenses::valid_concept_id(c));
+    for concept in extra {
+        match pack_concept_tag(db, concept, None, now) {
+            Ok((id, waiting)) => {
+                out.waiting += waiting as usize;
+                pack_link_tag(db, item_id, id, &mut out.tag_ids);
+            }
+            Err(e) => log::warn!(target: "Pack", "lens tag not linked: {e}"),
+        }
+    }
+    out
+}
+
+fn pack_link_tag(db: &rusqlite::Connection, item_id: &str, tag_id: String, linked: &mut Vec<String>) {
+    match db.execute(
+        "INSERT OR IGNORE INTO inspiration_tags (inspiration_id, tag_id) VALUES (?1,?2)",
+        params![item_id, tag_id],
+    ) {
+        Ok(_) => linked.push(tag_id),
+        Err(e) => log::warn!(target: "Pack", "tag not linked: {e}"),
+    }
+}
+
+/// The people's tag a pack names `name` with `source` (user or import; import for anything else):
+/// the people's tag of that name (any case; also one that stands for a concept), or a tag without a
+/// concept of that name, or the lens tag whose label is that name (it becomes this people's tag:
+/// tagging::lens_tag_for_peoples_name), or a new one (a lens tag stored under the name gives it up
+/// first: tagging::make_room_for_name). None when it couldn't be made (logged).
+fn pack_peoples_tag(db: &rusqlite::Connection, name: &str, source: &str, now: i64) -> Option<String> {
+    let existing: Option<String> = db.query_row(
+        "SELECT id FROM tags WHERE LOWER(name) = LOWER(?1) AND (concept_id IS NULL OR source IN ('user', 'import'))
+         ORDER BY source IN ('user', 'import') DESC, created_at, id LIMIT 1",
+        params![name], |r| r.get(0),
+    ).optional().ok().flatten();
+    if existing.is_some() { return existing; }
+    let source = if source == "user" { "user" } else { "import" };
+    match crate::tagging::lens_tag_for_peoples_name(db, name, source) {
+        Ok(Some(id)) => return Some(id),
+        Ok(None) => {}
+        Err(e) => { log::warn!(target: "Pack", "tag not created: {e}"); return None; }
+    }
+    let new_id = Uuid::new_v4().to_string();
+    if let Err(e) = crate::tagging::make_room_for_name(db, name) {
+        log::warn!(target: "Pack", "tag not created: {e}");
+        return None;
+    }
+    if let Err(e) = db.execute(
+        "INSERT INTO tags (id, name, source, created_at) VALUES (?1,?2,?3,?4)",
+        params![new_id, name, source, now],
+    ) {
+        log::warn!(target: "Pack", "tag not created: {e}");
+        return None;
+    }
+    Some(new_id)
+}
+
+/// A people's tag that stood for `concept` on the computer that made the pack (one name, one tag)
+/// stands for it here too: `tag_id`, the people's tag this import found or made by its name,
+/// becomes the concept's tag (tagging::become_concept_tag), even when a lens here labels the concept
+/// differently, as on the other computer after a relabel. Unless the concept already has a tag here:
+/// that tag is linked too, as a lens tag of the pack would be (the next start joins the two when
+/// their names allow). Or `tag_id` stands for another concept here: the concept's own tag is linked,
+/// kept apart. A concept no lens here has gets a placeholder named like the tag (as pack_concept_tag
+/// does). Returns the other tag to link, if any, and whether the concept waits for its lens.
+fn pack_peoples_concept(db: &rusqlite::Connection, tag_id: &str, concept: &str, name: &str, now: i64) -> rusqlite::Result<(Option<String>, bool)> {
+    let waiting = pack_placeholder_concept(db, concept, Some(name), now)?;
+    let owner: Option<String> = db
+        .query_row("SELECT id FROM tags WHERE concept_id = ?1 ORDER BY created_at, id LIMIT 1", params![concept], |r| r.get(0))
+        .optional()?;
+    let mine: Option<String> = db
+        .query_row("SELECT concept_id FROM tags WHERE id = ?1", params![tag_id], |r| r.get(0))
+        .optional()?.flatten();
+    match (owner, mine) {
+        (Some(owner), _) if owner == tag_id => Ok((None, waiting)),
+        (Some(owner), _) => Ok((Some(owner), waiting)),
+        (None, None) => {
+            crate::tagging::become_concept_tag(db, tag_id, concept)?;
+            Ok((None, waiting))
+        }
+        (None, Some(_)) => Ok((Some(crate::tagging::ensure_concept_tag(db, concept)?), waiting)),
+    }
+}
+
+/// This computer's lens tag for a concept a pack names. When no lens here has the concept (the
+/// other computer had a newer lens, or a lens version this computer never got), a placeholder
+/// concepts row is made first: lens_id '', the pack's name as its label in both languages, media
+/// 'any', no vector, active 0. Nothing is scored from it and the detail picker doesn't offer it,
+/// but the tag is a lens tag like any other. When a lens with that concept is installed later,
+/// lenses::install fills in the real row (labels, vector, active = 1), so the tag then follows
+/// the app's language. Returns the tag id, and whether its concept is still waiting for its lens.
+fn pack_concept_tag(db: &rusqlite::Connection, concept: &str, name: Option<&str>, now: i64) -> rusqlite::Result<(String, bool)> {
+    let waiting = pack_placeholder_concept(db, concept, name, now)?;
+    Ok((crate::tagging::ensure_concept_tag(db, concept)?, waiting))
+}
+
+/// The placeholder concepts row pack_concept_tag describes, made when no lens here has `concept`.
+/// Returns whether the concept is still waiting for its lens.
+fn pack_placeholder_concept(db: &rusqlite::Connection, concept: &str, name: Option<&str>, now: i64) -> rusqlite::Result<bool> {
+    let lens: Option<String> = db
+        .query_row("SELECT lens_id FROM concepts WHERE id = ?1", params![concept], |r| r.get(0))
+        .optional()?;
+    if lens.is_none() {
+        let label = name.map(str::trim)
+            .filter(|n| !n.is_empty() && !n.starts_with(LENS_TAG_PREFIX))
+            .map(str::to_string)
+            .unwrap_or_else(|| label_from_concept_id(concept));
+        db.execute(
+            "INSERT OR IGNORE INTO concepts (id, lens_id, labels_json, media, aspect_json, vec, active, updated_at)
+             VALUES (?1, '', ?2, 'any', NULL, ?3, 0, ?4)",
+            params![concept, serde_json::json!({ "en": label, "uz": label }).to_string(), Vec::<u8>::new(), now],
+        )?;
+    }
+    Ok(lens.as_deref().map_or(true, str::is_empty))
+}
+
+/// A readable stand-in label made from a concept id: 'green_screen' → 'Green screen'.
+fn label_from_concept_id(id: &str) -> String {
+    let words = id.replace('_', " ");
+    let mut chars = words.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// Set the tag_usage_counts of `tag_ids` from their links. Counting the links themselves, rather
+/// than adding and subtracting, keeps a count right when the same change arrives twice and heals
+/// a count that was already wrong. Ids of tags that don't exist are skipped. Best effort: logged.
+fn recount_tags(db: &rusqlite::Connection, tag_ids: &[String]) {
+    let unique: HashSet<&String> = tag_ids.iter().collect();
+    for id in unique {
+        if let Err(e) = recount_tag(db, id) {
+            log::warn!(target: "Tags", "tag count not updated: {e}");
+        }
+    }
+}
+
+/// One tag's tag_usage_counts from its links (nothing when the tag doesn't exist).
+fn recount_tag(db: &rusqlite::Connection, tag_id: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "INSERT OR REPLACE INTO tag_usage_counts (tag_id, count)
+         SELECT t.id, (SELECT COUNT(*) FROM inspiration_tags it WHERE it.tag_id = t.id) FROM tags t WHERE t.id = ?1",
+        params![tag_id],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -2465,19 +2732,27 @@ pub fn remove_from_collection(collection_id: String, inspiration_id: String, sta
 
 // ─── Tags ─────────────────────────────────────────────────────────
 
+/// How an earlier build stored lens tags: `lens:<concept id>`. Lens tags are stored under their
+/// label now (tagging::ensure_concept_tag), and no people's tag may be named like an id.
+const LENS_TAG_PREFIX: &str = "lens:";
+
+/// A tag id that can sit in a collection-hint key `col:<tag_id>` (and so in a JSON path): what
+/// tagging::answer_suggestion accepts. Tag ids are UUIDs.
+fn hint_safe_tag_id(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+}
+
 #[tauri::command]
 pub fn list_tags(state: State<AppState>) -> Result<Vec<Tag>, String> {
     let db = state.db.lock().unwrap();
     let mut stmt = db.prepare(
-        "SELECT t.id, t.name, t.source, t.created_at, COALESCE(u.count, 0) AS usage_count
+        "SELECT t.id, t.name, t.source, t.created_at, COALESCE(u.count, 0) AS usage_count, t.concept_id, c.labels_json
          FROM tags t
          LEFT JOIN tag_usage_counts u ON u.tag_id = t.id
+         LEFT JOIN concepts c ON c.id = t.concept_id
          ORDER BY usage_count DESC, t.name"
     ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| Ok(Tag {
-        id: row.get(0)?, name: row.get(1)?, source: row.get(2)?,
-        created_at: row.get(3)?, usage_count: row.get(4)?,
-    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    let rows = stmt.query_map([], row_to_tag).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
     Ok(rows)
 }
 
@@ -2485,29 +2760,53 @@ pub fn list_tags(state: State<AppState>) -> Result<Vec<Tag>, String> {
 pub fn get_tags_for_inspiration(inspiration_id: String, state: State<AppState>) -> Result<Vec<Tag>, String> {
     let db = state.db.lock().unwrap();
     let mut stmt = db.prepare(
-        "SELECT t.id, t.name, t.source, t.created_at, COALESCE(u.count, 0)
+        "SELECT t.id, t.name, t.source, t.created_at, COALESCE(u.count, 0), t.concept_id, c.labels_json
          FROM tags t
          JOIN inspiration_tags it ON it.tag_id = t.id
          LEFT JOIN tag_usage_counts u ON u.tag_id = t.id
+         LEFT JOIN concepts c ON c.id = t.concept_id
          WHERE it.inspiration_id = ?1
          ORDER BY t.name"
     ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(params![inspiration_id], |row| Ok(Tag {
-        id: row.get(0)?, name: row.get(1)?, source: row.get(2)?,
-        created_at: row.get(3)?, usage_count: row.get(4)?,
-    })).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    let rows = stmt.query_map(params![inspiration_id], row_to_tag).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
     Ok(rows)
 }
 
+/// Kept for internal and import use only: people can't type new tags any more (Tag lens
+/// decision 6). Makes `user` or `import` tags; lens tags come from tagging::ensure_concept_tag,
+/// and suggestion (`model`) tags are retired.
 #[tauri::command]
 pub fn create_tag(name: String, source: Option<String>, state: State<AppState>) -> Result<Tag, String> {
     let db = state.db.lock().unwrap();
+    create_tag_with(&db, name, source)
+}
+
+/// create_tag on one connection. A lens tag whose label is the name becomes this people's tag,
+/// with its items (one name, one tag: tagging::lens_tag_for_peoples_name); otherwise a lens tag
+/// stored under the name gives it up first (tagging::make_room_for_name): tag names are UNIQUE,
+/// and the people's tag keeps its name as given.
+fn create_tag_with(db: &rusqlite::Connection, name: String, source: Option<String>) -> Result<Tag, String> {
+    let src = source.unwrap_or_else(|| "user".to_string());
+    if !matches!(src.as_str(), "user" | "import") {
+        return Err(format!("tags with source '{src}' aren't made here"));
+    }
+    if name.trim().is_empty() || name.trim().to_lowercase().starts_with(LENS_TAG_PREFIX) {
+        return Err("that tag name can't be used".into());
+    }
+    if let Some(id) = crate::tagging::lens_tag_for_peoples_name(db, &name, &src).map_err(|e| e.to_string())? {
+        return db.query_row(
+            "SELECT t.id, t.name, t.source, t.created_at, COALESCE(u.count, 0), t.concept_id, c.labels_json
+             FROM tags t LEFT JOIN tag_usage_counts u ON u.tag_id = t.id LEFT JOIN concepts c ON c.id = t.concept_id
+             WHERE t.id = ?1",
+            params![id], row_to_tag,
+        ).map_err(|e| e.to_string());
+    }
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
-    let src = source.unwrap_or_else(|| "user".to_string());
+    crate::tagging::make_room_for_name(db, &name).map_err(|e| e.to_string())?;
     db.execute("INSERT INTO tags (id, name, source, created_at) VALUES (?1,?2,?3,?4)", params![id, name, src, now]).map_err(|e| e.to_string())?;
     db.execute("INSERT INTO tag_usage_counts (tag_id, count) VALUES (?1, 0)", params![id]).map_err(|e| e.to_string())?;
-    Ok(Tag { id, name, source: src, created_at: now, usage_count: 0 })
+    Ok(Tag { id, name, source: src, created_at: now, usage_count: 0, concept_id: None, labels: None })
 }
 
 #[tauri::command]
@@ -2520,17 +2819,52 @@ pub fn delete_tag(id: String, state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn tag_inspiration(inspiration_id: String, tag_id: String, state: State<AppState>) -> Result<(), String> {
     let db = state.db.lock().unwrap();
-    // Only increment the count if the pair is actually new
-    let inserted = db.execute(
+    tag_item(&db, &inspiration_id, &tag_id)
+}
+
+/// Link an existing tag to an item. A lens tag goes through the answer path, as with
+/// add_concept_tag (the answer is kept and its suggestion leaves the item); for any other tag, a
+/// collection hint for it (`col:<tag_id>`) leaves the item, which now has the tag. Either way the
+/// tag's count is then set from its links (recount_tag), the same rule as untag_item, and the
+/// item's other questions that ask the name it now has leave too (spec §0b.2: nothing re-scores
+/// the item after a link, so write_results can't do it). A lens tag whose name the item already
+/// has as a people's tag isn't linked (the picker doesn't offer it either): an error.
+pub(crate) fn tag_item(db: &rusqlite::Connection, inspiration_id: &str, tag_id: &str) -> Result<(), String> {
+    let concept: Option<String> = db
+        .query_row("SELECT concept_id FROM tags WHERE id = ?1", params![tag_id], |r| r.get(0))
+        .optional().map_err(|e| e.to_string())?.flatten();
+    if let Some(cid) = concept {
+        match crate::tagging::answer_with(db, inspiration_id, &cid, "added") {
+            Ok(Some(tag)) => {
+                if let Err(e) = recount_tag(db, &tag.id) {
+                    log::warn!(target: "Tags", "tag count not updated: {e}");
+                }
+                return Ok(());
+            }
+            Ok(None) => return Err("the item already has a tag with that name".into()),
+            Err(e) => log::warn!(target: "Tags", "lens tag linked without an answer: {e}"),
+        }
+    }
+    db.execute(
         "INSERT OR IGNORE INTO inspiration_tags (inspiration_id, tag_id) VALUES (?1,?2)",
         params![inspiration_id, tag_id],
     ).map_err(|e| e.to_string())?;
-    if inserted > 0 {
-        db.execute(
-            "INSERT INTO tag_usage_counts (tag_id, count) VALUES (?1,1)
-             ON CONFLICT(tag_id) DO UPDATE SET count = count + 1",
-            params![tag_id],
-        ).map_err(|e| e.to_string())?;
+    if let Err(e) = recount_tag(db, tag_id) {
+        log::warn!(target: "Tags", "tag count not updated: {e}");
+    }
+    if hint_safe_tag_id(tag_id) {
+        let path = format!("$.\"col:{tag_id}\"");
+        if let Err(e) = db.execute(
+            "UPDATE inspirations SET lens_suggestions = json_remove(lens_suggestions, ?2)
+             WHERE id = ?1
+               AND CASE WHEN json_valid(lens_suggestions) THEN json_type(lens_suggestions, ?2) IS NOT NULL ELSE 0 END",
+            params![inspiration_id, path],
+        ) {
+            log::warn!(target: "Tags", "collection hint not removed: {e}");
+        }
+    }
+    if let Err(e) = crate::tagging::drop_questions_named_like(db, inspiration_id, tag_id) {
+        log::warn!(target: "Tags", "questions with the same name not removed: {e}");
     }
     Ok(())
 }
@@ -2538,9 +2872,18 @@ pub fn tag_inspiration(inspiration_id: String, tag_id: String, state: State<AppS
 #[tauri::command]
 pub fn untag_inspiration(inspiration_id: String, tag_id: String, state: State<AppState>) -> Result<(), String> {
     let db = state.db.lock().unwrap();
-    db.execute("DELETE FROM inspiration_tags WHERE inspiration_id = ?1 AND tag_id = ?2", params![inspiration_id, tag_id]).map_err(|e| e.to_string())?;
-    db.execute("UPDATE tag_usage_counts SET count = MAX(0, count - 1) WHERE tag_id = ?1", params![tag_id]).map_err(|e| e.to_string())?;
-    Ok(())
+    untag_item(&db, &inspiration_id, &tag_id).map_err(|e| e.to_string())
+}
+
+/// Remove a tag from an item. The tag's count is then set from the links that are left, so a
+/// second untag of the same pair (a double click on ×) changes nothing. The tag itself stays,
+/// even when no item has it any more.
+fn untag_item(db: &rusqlite::Connection, inspiration_id: &str, tag_id: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "DELETE FROM inspiration_tags WHERE inspiration_id = ?1 AND tag_id = ?2",
+        params![inspiration_id, tag_id],
+    )?;
+    recount_tag(db, tag_id)
 }
 
 // ─── OCR ──────────────────────────────────────────────────────────
@@ -2553,14 +2896,123 @@ pub fn untag_inspiration(inspiration_id: String, tag_id: String, state: State<Ap
 
 // ─── Palette extraction (Rust-side, no canvas/CORS issues) ───────
 
-/// Real aspect ratio (width/height) of an image, read from the header only
-/// (no full decode — cheap). None on failure or a zero dimension. Used so the
-/// masonry grid can lay images out at their native ratio before they load.
-fn image_aspect_ratio(path: &str) -> Option<f64> {
-    match image::image_dimensions(path) {
-        Ok((w, h)) if w > 0 && h > 0 => Some(w as f64 / h as f64),
-        _ => None,
+/// Whether the window turns a picture of this format by its EXIF orientation. WebView2 does for a
+/// JPEG and a PNG (its eXIf chunk) and shows a WebP as stored, whatever its EXIF says (checked in
+/// Chromium 156). The shapes stored here and the frames crop.rs cuts follow the window.
+pub(crate) fn exif_turns(format: image::ImageFormat) -> bool {
+    matches!(format, image::ImageFormat::Jpeg | image::ImageFormat::Png)
+}
+
+/// Real aspect ratio (width/height) of an image as it is shown, read from the header and the
+/// EXIF orientation only (no pixel decode — cheap). A JPEG or PNG stored on its side (orientation
+/// 5–8) gets its turned shape, as the window and crop.rs show it; a WebP keeps its stored shape
+/// (exif_turns). An EXIF block that can't be read means "not turned", never "no ratio". None on
+/// failure or a zero dimension. Used so the masonry grid can lay images out at their native ratio
+/// before they load.
+pub(crate) fn image_aspect_ratio(path: &str) -> Option<f64> {
+    use image::metadata::Orientation::{NoTransforms, Rotate270, Rotate270FlipH, Rotate90, Rotate90FlipH};
+    use image::ImageDecoder;
+    let reader = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+    let turns = reader.format().is_some_and(exif_turns);
+    let mut dec = reader.into_decoder().ok()?;
+    let (w, h) = dec.dimensions();
+    if w == 0 || h == 0 { return None; }
+    let turned = turns && matches!(dec.orientation().unwrap_or(NoTransforms), Rotate90 | Rotate270 | Rotate90FlipH | Rotate270FlipH);
+    Some(if turned { h as f64 / w as f64 } else { w as f64 / h as f64 })
+}
+
+/// The aspect ratio a new item is stored with, the same rule for every way in (file import, link
+/// download, browser extension, pack). A picture: its real size from the file header, else
+/// `known` (a pack's value), else the format's default. A video: `known` (probed, or a pack's),
+/// else the default. Real ratios drive the native-ratio masonry and the Tag lens shape rules
+/// (the thumbnail lens's aspect gate).
+fn new_item_ratio(is_video: bool, stored_path: &str, known: Option<f64>, default: f64) -> f64 {
+    if is_video { known } else { image_aspect_ratio(stored_path).or(known) }.unwrap_or(default)
+}
+
+/// Preference that marks fix_picture_aspects_once as done.
+const ASPECT_FIX_KEY: &str = "aspect_fix_v1";
+
+/// Before 1.2.3, pictures and GIFs saved by link download or by the browser extension were stored
+/// with aspect_ratio 1.0 whatever their real shape: the grid showed them square and the Tag lens
+/// shape rules judged them square. Once per library (preference `aspect_fix_v1`): read the real
+/// size of every picture and GIF still at 1.0 from its file and, where it differs by more than
+/// 1 %, store it and clear auto_tag_sig, so the item is scored again. Never fails the boot:
+/// problems are logged. Run it on the background thread, before tagging::score_stale.
+pub fn fix_picture_aspects_once(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    match fix_picture_aspects(&state.db) {
+        Ok(r) if r.already_done => {}
+        Ok(r) => {
+            log::info!(target: "Boot", "picture_aspects_fixed checked={} fixed={} unreadable={} done={}",
+                       r.checked, r.fixed, r.unreadable, r.marked_done);
+            if r.fixed > 0 {
+                // The masonry lays the grid out again with the real shapes (as after the old backfill)
+                if let Err(e) = app.emit("grid:reload-ratios", ()) {
+                    log::warn!(target: "Boot", "grid:reload-ratios not sent: {e}");
+                }
+            }
+        }
+        Err(e) => log::warn!(target: "Boot", "picture aspect fix skipped: {e}"),
     }
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct AspectFix {
+    already_done: bool,
+    /// Pictures and GIFs at 1.0 that were looked at.
+    checked: usize,
+    /// Ratios corrected (their signature cleared for re-scoring).
+    fixed: usize,
+    /// Files that couldn't be read (missing, or a format whose header can't be read).
+    unreadable: usize,
+    /// The preference was set: the step won't run again.
+    marked_done: bool,
+}
+
+/// fix_picture_aspects_once on one database. Files are read with the database released; each
+/// change is written under a short lock. The step is marked done unless every file is missing
+/// (the library's drive may not be connected yet): then the next start tries again.
+fn fix_picture_aspects(db: &Mutex<rusqlite::Connection>) -> Result<AspectFix, String> {
+    let lock = || db.lock().unwrap_or_else(|e| e.into_inner());
+    let rows: Vec<(String, String)> = {
+        let conn = lock();
+        let done = conn.query_row("SELECT 1 FROM preferences WHERE key = ?1", params![ASPECT_FIX_KEY], |_| Ok(()))
+            .optional().map_err(|e| e.to_string())?.is_some();
+        if done { return Ok(AspectFix { already_done: true, ..Default::default() }); }
+        let mut stmt = conn.prepare(
+            "SELECT id, stored_path FROM inspirations WHERE type IN ('image', 'gif') AND aspect_ratio = 1.0",
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?
+            .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
+        rows
+    };
+    let mut out = AspectFix { checked: rows.len(), ..Default::default() };
+    let mut missing = 0usize;
+    for (id, path) in &rows {
+        match image_aspect_ratio(path) {
+            Some(ratio) if (ratio - 1.0).abs() > 0.01 => {
+                match lock().execute(
+                    "UPDATE inspirations SET aspect_ratio = ?2, auto_tag_sig = NULL WHERE id = ?1 AND aspect_ratio = 1.0",
+                    params![id, ratio],
+                ) {
+                    Ok(n) => out.fixed += n,
+                    Err(e) => log::warn!(target: "Boot", "aspect ratio of id={id} not stored: {e}"),
+                }
+            }
+            Some(_) => {}   // really square (within 1 %)
+            None => {
+                out.unreadable += 1;
+                if !std::path::Path::new(path).exists() { missing += 1; }
+            }
+        }
+    }
+    if rows.is_empty() || missing < rows.len() {
+        lock().execute("INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, 'true')", params![ASPECT_FIX_KEY])
+            .map_err(|e| e.to_string())?;
+        out.marked_done = true;
+    }
+    Ok(out)
 }
 
 /// One-time backfill: images imported before native-ratio support were all
@@ -2595,8 +3047,9 @@ pub fn backfill_image_ratios_once(app: &AppHandle) {
     for (id, path) in rows {
         if let Some(ratio) = image_aspect_ratio(&path) {
             if let Ok(db) = state.db.lock() {
+                // A new shape is scored again (the Tag lens shape rules read it)
                 if db.execute(
-                    "UPDATE inspirations SET aspect_ratio = ?1 WHERE id = ?2 AND ABS(aspect_ratio - ?1) > 0.001",
+                    "UPDATE inspirations SET aspect_ratio = ?1, auto_tag_sig = NULL WHERE id = ?2 AND ABS(aspect_ratio - ?1) > 0.001",
                     params![ratio, id],
                 ).unwrap_or(0) > 0 {
                     updated += 1;
@@ -2617,6 +3070,63 @@ pub fn backfill_image_ratios_once(app: &AppHandle) {
         use tauri::Emitter;
         let _ = app.emit("grid:reload-ratios", ());
     }
+}
+
+/// The narrowest and widest shapes (width / height) set_item_aspect stores.
+const ASPECT_MIN: f64 = 0.05;
+const ASPECT_MAX: f64 = 20.0;
+
+/// A grid card measured its picture, thumbnail or video and found a shape that differs from the
+/// stored one (crop spec A3, C3). The shape is stored when it differs by more than 1 %, with
+/// auto_tag_sig cleared so the Tag lens shape rules look again; updated_at stays (a correction,
+/// not an edit). True when it was stored; false when nothing changed or the id is unknown. A
+/// shape outside 0.05–20 (or not a number): `bad_ratio`. While tag suggestions are on, the items
+/// whose shape changed within about a second are scored again together (`autotag:scored`).
+#[tauri::command]
+pub fn set_item_aspect(id: String, ratio: f64, app: AppHandle, state: State<AppState>) -> Result<bool, String> {
+    let (changed, rescore) = {
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = set_aspect(&db, &id, ratio)?;
+        (changed, changed && crate::tagging::suggestions_enabled(&db))
+    };
+    if rescore && queue_reshaped(id) {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            crate::tagging::score_items(&app, &take_reshaped());
+        });
+    }
+    Ok(changed)
+}
+
+/// set_item_aspect on one connection.
+fn set_aspect(db: &rusqlite::Connection, id: &str, ratio: f64) -> Result<bool, String> {
+    if !ratio.is_finite() || !(ASPECT_MIN..=ASPECT_MAX).contains(&ratio) {
+        return Err("bad_ratio".into());
+    }
+    let n = db.execute(
+        "UPDATE inspirations SET aspect_ratio = ?2, auto_tag_sig = NULL
+         WHERE id = ?1 AND ABS(aspect_ratio - ?2) > 0.01 * ?2",
+        params![id, ratio],
+    ).map_err(|e| e.to_string())?;
+    Ok(n > 0)
+}
+
+/// Items whose shape set_item_aspect changed, waiting to be scored again together (Some while a
+/// scoring run is booked).
+static RESHAPED: Mutex<Option<Vec<String>>> = Mutex::new(None);
+
+/// Add an item to the next re-scoring run. True when this booked the run (the caller starts it).
+fn queue_reshaped(id: String) -> bool {
+    let mut q = RESHAPED.lock().unwrap_or_else(|e| e.into_inner());
+    match q.as_mut() {
+        Some(ids) => { if !ids.contains(&id) { ids.push(id); } false }
+        None => { *q = Some(vec![id]); true }
+    }
+}
+
+/// The items booked for re-scoring; the next one queued books a new run.
+fn take_reshaped() -> Vec<String> {
+    RESHAPED.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or_default()
 }
 
 // ─── Duplicate detection ─────────────────────────────────────────
@@ -2878,26 +3388,28 @@ pub fn ensure_phashes(app: &AppHandle) {
     for chunk in rows.chunks(chunk_size) {
         let chunk = chunk.to_vec();
         handles.push(std::thread::spawn(move || {
-            let mut out: Vec<(String, String)> = Vec::new();
+            let mut out: Vec<(String, String, String)> = Vec::new();
             for (id, kind, thumb, stored) in chunk {
                 // Videos have no still to hash — use the generated thumbnail once it exists.
-                let src = if kind == "video" { thumb } else { Some(stored) };
+                let src = if kind == "video" { thumb } else { Some(stored.clone()) };
                 if let Some(src) = src {
-                    if let Some(ph) = phash_from_path(&src) { out.push((id, ph)); }
+                    if let Some(ph) = phash_from_path(&src) { out.push((id, ph, stored)); }
                 }
             }
             out
         }));
     }
-    let results: Vec<(String, String)> =
+    let results: Vec<(String, String, String)> =
         handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect();
 
     if !results.is_empty() {
         if let Ok(db) = state.db.lock() {
-            for (id, ph) in &results {
+            for (id, ph, stored) in &results {
+                // Only while the item still shows the file that was hashed: a crop or a restore
+                // meanwhile cleared the hash for its new file
                 let _ = db.execute(
-                    "UPDATE inspirations SET phash = ?1, phash_source = ?3 WHERE id = ?2",
-                    params![ph, id, FP_VERSION],
+                    "UPDATE inspirations SET phash = ?1, phash_source = ?3 WHERE id = ?2 AND stored_path = ?4",
+                    params![ph, id, FP_VERSION, stored],
                 );
             }
         }
@@ -3184,10 +3696,10 @@ fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<Simila
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
+                auto_tag_status, lens_suggestions, auto_tag_model, duration_secs,
                 (SELECT json_group_array(c.name) FROM collection_items ci
                  JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path, auto_tag_sig, (original_path IS NOT NULL) AS has_original
          FROM inspirations WHERE id IN ({placeholders})"
     );
     let db = state.db.lock().map_err(|_| "db lock".to_string())?;
@@ -3203,11 +3715,16 @@ fn find_similar_impl(app: &AppHandle, id: &str, limit: i64) -> Result<Vec<Simila
     }).collect())
 }
 
-fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
-    let img = match image::open(path) {
-        Ok(i) => i,
-        Err(_) => return vec![],
-    };
+pub(crate) fn palette_from_path(path: &str, num_colors: usize) -> Vec<String> {
+    match image::open(path) {
+        Ok(img) => palette_from_image(&img, num_colors),
+        Err(_) => vec![],
+    }
+}
+
+/// A picture's main colours as "#rrggbb", most frequent first, each visibly different from the
+/// others (crop.rs uses it on the cut it already has in memory).
+pub(crate) fn palette_from_image(img: &image::DynamicImage, num_colors: usize) -> Vec<String> {
     let img = img.resize(80, 80, image::imageops::FilterType::Triangle);
     let pixels: Vec<[u8; 3]> = img.pixels()
         .filter(|(_, _, p)| p[3] > 127)
@@ -3293,12 +3810,7 @@ pub fn reindex_library(state: State<AppState>) -> Result<ReindexResult, String> 
     let db = state.db.lock().unwrap();
 
     // Rebuild tag_usage_counts from ground truth
-    db.execute_batch(
-        "INSERT OR REPLACE INTO tag_usage_counts (tag_id, count)
-         SELECT tag_id, COUNT(*) FROM inspiration_tags GROUP BY tag_id;
-         INSERT OR IGNORE INTO tag_usage_counts (tag_id, count)
-         SELECT id, 0 FROM tags;"
-    ).map_err(|e| e.to_string())?;
+    db.execute_batch(crate::db::RECOUNT_ALL_TAGS).map_err(|e| e.to_string())?;
 
     let tags_rebuilt: i64 = db
         .query_row("SELECT COUNT(*) FROM tag_usage_counts", [], |r| r.get(0))
@@ -3479,31 +3991,17 @@ pub async fn relocate_vault(
     let _ = app.asset_protocol_scope().allow_directory(&new_vault, true);
 
     // ── Update absolute paths in DB ────────────────────────────────
-    // stored_path and thumbnail_path are stored as absolute paths, so they
-    // must be rewritten to reflect the new vault root.
+    // Item files, kept originals, upscaled copies and thumbnails are stored as absolute paths,
+    // so they must be rewritten to reflect the new vault root.
     if migrate {
         let old_prefix = old_vault.to_string_lossy().into_owned();
         let new_prefix = new_vault.to_string_lossy().into_owned();
         let db = state.db.lock().unwrap();
-        // stored_path is always absolute; update any row whose path starts with old root
-        db.execute(
-            "UPDATE inspirations \
-             SET stored_path = ?2 || SUBSTR(stored_path, LENGTH(?1) + 1) \
-             WHERE SUBSTR(stored_path, 1, LENGTH(?1)) = ?1",
-            params![old_prefix, new_prefix],
-        ).map_err(|e| {
+        move_library_paths(&db, &old_prefix, &new_prefix).map_err(|e| {
             // DB update failed — revert vault_path.txt so old location is restored
             let _ = vault::clear_custom_vault_path(&app);
             format!("Database path update failed: {e}. Vault location reverted.")
         })?;
-        // thumbnail_path may be absolute or relative; only rewrite absolute ones
-        db.execute(
-            "UPDATE inspirations \
-             SET thumbnail_path = ?2 || SUBSTR(thumbnail_path, LENGTH(?1) + 1) \
-             WHERE thumbnail_path IS NOT NULL \
-               AND SUBSTR(thumbnail_path, 1, LENGTH(?1)) = ?1",
-            params![old_prefix, new_prefix],
-        ).ok(); // best-effort; missing thumbnails are just cosmetic
     }
 
     // ── Remove old vault files (only after commit + DB update) ─────
@@ -3516,6 +4014,32 @@ pub async fn relocate_vault(
     let _ = app.emit("vault:relocate-complete", serde_json::json!({ "path": new_path }));
 
     Ok(RelocateResult { new_path, files_moved })
+}
+
+/// After the library folder moved (relocate_vault): every absolute item path under `old` now
+/// starts with `new`. The item's file, the first original a cropped picture keeps and the upscaled
+/// copy change in one transaction (the old files are deleted next, so none may still point
+/// there); thumbnails after it, best effort (a relative one needs nothing, a missing one is only
+/// cosmetic).
+fn move_library_paths(db: &rusqlite::Connection, old: &str, new: &str) -> rusqlite::Result<()> {
+    let tx = rusqlite::Transaction::new_unchecked(db, rusqlite::TransactionBehavior::Immediate)?;
+    for col in ["stored_path", "original_path", "enhanced_path"] {
+        tx.execute(
+            &format!("UPDATE inspirations SET {col} = ?2 || SUBSTR({col}, LENGTH(?1) + 1) \
+                      WHERE {col} IS NOT NULL AND SUBSTR({col}, 1, LENGTH(?1)) = ?1"),
+            params![old, new],
+        )?;
+    }
+    tx.commit()?;
+    // thumbnail_path may be absolute or relative; only rewrite absolute ones
+    db.execute(
+        "UPDATE inspirations \
+         SET thumbnail_path = ?2 || SUBSTR(thumbnail_path, LENGTH(?1) + 1) \
+         WHERE thumbnail_path IS NOT NULL \
+           AND SUBSTR(thumbnail_path, 1, LENGTH(?1)) = ?1",
+        params![old, new],
+    ).ok(); // best-effort; missing thumbnails are just cosmetic
+    Ok(())
 }
 
 fn root_component(p: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -5283,10 +5807,12 @@ pub fn finalize_download(
 
     let hash = stream_hash(src).map_err(|e| e.to_string())?;
 
+    // Already saved: the same bytes as an item's file, or as the first original a cropped
+    // picture keeps
     {
         let db = state.db.lock().unwrap();
         let count: i64 = db.query_row(
-            "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1",
+            "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1",
             params![hash], |r| r.get(0),
         ).unwrap_or(0);
         if count > 0 {
@@ -5320,7 +5846,8 @@ pub fn finalize_download(
         if colors.is_empty() { None } else { serde_json::to_string(&colors).ok() }
     } else { None };
     let (duration, video_ratio) = if is_video { video_meta(&dest_path, &app) } else { (None, None) };
-    let aspect_ratio = video_ratio.unwrap_or(default_ratio);
+    // Pictures: the real size from the file (this path used to store the default 1.0)
+    let aspect_ratio = new_item_ratio(is_video, &stored_path, video_ratio, default_ratio);
 
     {
         let db = state.db.lock().unwrap();
@@ -5368,11 +5895,13 @@ pub fn finalize_download(
         created_at: now,
         updated_at: now,
         auto_tag_status: None,
-        auto_tag_confidence: None,
+        lens_suggestions: None,
         auto_tag_model: None,
         duration_secs: duration,
         collection_names: None,
         enhanced_path: None,
+        auto_tag_sig: None,
+        has_original: false,
     })
 }
 
@@ -5413,7 +5942,7 @@ fn emit_download_progress(line: &str, app: &AppHandle, download_id: &str) {
     }
 }
 
-fn stream_hash(path: &std::path::Path) -> std::io::Result<String> {
+pub(crate) fn stream_hash(path: &std::path::Path) -> std::io::Result<String> {
     use std::io::Read;
     let mut f = std::fs::File::open(path)?;
     let mut h = sha2::Sha256::new();
@@ -5723,7 +6252,7 @@ fn get_plan_from_db(_db: &rusqlite::Connection) -> String {
     crate::bloot_hub::verified_plan().to_string()
 }
 
-fn is_free_plan(plan: &str) -> bool {
+pub(crate) fn is_free_plan(plan: &str) -> bool {
     !plan.starts_with("pro")
 }
 
@@ -5732,6 +6261,12 @@ fn is_free_plan(plan: &str) -> bool {
 pub(crate) fn is_collection_locked(db: &rusqlite::Connection, collection_id: &str) -> bool {
     let plan = get_plan_from_db(db);
     if !is_free_plan(&plan) { return false; }
+    collection_past_free_allowance(db, collection_id)
+}
+
+/// The collection isn't among the FREE_COLLECTION_LIMIT oldest, so the Free plan only reads it
+/// (is_collection_locked, whatever the plan is).
+pub(crate) fn collection_past_free_allowance(db: &rusqlite::Connection, collection_id: &str) -> bool {
     // Count how many collections were created strictly before this one.
     // If 3 or more are older, this one falls outside the free allowance.
     let older: i64 = db.query_row(
@@ -5819,7 +6354,7 @@ pub fn get_free_plan_info(state: State<AppState>) -> Result<FreePlanInfo, String
     })
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -5901,10 +6436,10 @@ pub fn check_url_exists(url: String, state: State<AppState>) -> Result<Option<In
         "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
+                auto_tag_status, lens_suggestions, auto_tag_model, duration_secs,
                 (SELECT json_group_array(c.name) FROM collection_items ci
                  JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path, auto_tag_sig, (original_path IS NOT NULL) AS has_original
          FROM inspirations WHERE id = ?1",
         params![id],
         row_to_inspiration,
@@ -5927,87 +6462,92 @@ pub fn track_view(id: String, state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
-// ─── Collection-context tag propagation ──────────────────────────
-// For each collection where ≥70% of tagged items share a tag,
-// inject that tag as a suggestion into untagged items in the same collection.
-// Returns the number of items updated.
+// ─── Collection hints (Tag lens spec §6.4) ───────────────────────
+// In a collection where at least 3 items carry people's own tags and ≥ 70 % of those share one,
+// the collection's items with none of people's tags are asked about it: the suggestion key
+// `col:<tag_id>` in lens_suggestions, shown on cards next to the lens suggestions.
+// Returns the number of items that got a new hint, and sends `autotag:scored {ids}` for them so
+// their cards ask about it at once.
 
 #[tauri::command]
-pub fn apply_collection_tag_suggestions(state: State<AppState>) -> Result<i64, String> {
-    let db = state.db.lock().unwrap();
-
-    let sql = "
-        WITH
-        col_tagged AS (
-            SELECT ci.collection_id, COUNT(DISTINCT ci.inspiration_id) AS cnt
-            FROM collection_items ci
-            JOIN inspiration_tags it ON it.inspiration_id = ci.inspiration_id
-            GROUP BY ci.collection_id
-            HAVING cnt >= 3
-        ),
-        tag_freq AS (
-            SELECT ci.collection_id, t.name AS tag_name,
-                   COUNT(DISTINCT ci.inspiration_id) AS freq
-            FROM collection_items ci
-            JOIN inspiration_tags it ON it.inspiration_id = ci.inspiration_id
-            JOIN tags t ON t.id = it.tag_id
-            GROUP BY ci.collection_id, t.name
-        ),
-        dominant AS (
-            SELECT tf.collection_id, tf.tag_name,
-                   CAST(tf.freq AS REAL) / ct.cnt AS confidence
-            FROM tag_freq tf
-            JOIN col_tagged ct ON ct.collection_id = tf.collection_id
-            WHERE CAST(tf.freq AS REAL) / ct.cnt >= 0.70
-        )
-        SELECT DISTINCT i.id, d.tag_name, d.confidence, i.auto_tag_confidence
-        FROM dominant d
-        JOIN collection_items ci ON ci.collection_id = d.collection_id
-        JOIN inspirations i ON i.id = ci.inspiration_id
-        WHERE NOT EXISTS (
-            SELECT 1 FROM inspiration_tags it WHERE it.inspiration_id = i.id
-        )
-        AND (i.auto_tag_confidence IS NULL
-             OR i.auto_tag_confidence NOT LIKE '%\"' || d.tag_name || '\"%')
-        ORDER BY d.confidence DESC
-    ";
-
-    let mut stmt = db.prepare(sql).map_err(|e| e.to_string())?;
-    let rows: Vec<(String, String, f64, Option<String>)> = stmt
-        .query_map([], |row| Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, f64>(2)?,
-            row.get::<_, Option<String>>(3)?,
-        )))
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    if rows.is_empty() { return Ok(0); }
-
-    // Group by inspiration_id so each item gets one UPDATE with all its new suggestions
-    let mut by_item: HashMap<String, serde_json::Map<String, serde_json::Value>> = HashMap::new();
-    for (id, tag_name, confidence, current_conf) in &rows {
-        let map = by_item.entry(id.clone()).or_insert_with(|| {
-            current_conf.as_deref()
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_default()
-        });
-        map.entry(tag_name.clone()).or_insert(serde_json::json!(confidence));
+pub fn apply_collection_tag_suggestions(app: AppHandle, state: State<AppState>) -> Result<i64, String> {
+    let ids = {
+        let db = state.db.lock().unwrap();
+        apply_collection_hints(&db).map_err(|e| e.to_string())?
+    };
+    if !ids.is_empty() {
+        if let Err(e) = app.emit("autotag:scored", serde_json::json!({ "ids": ids })) {
+            log::warn!(target: "Lens", "autotag:scored not sent: {e}");
+        }
     }
+    Ok(ids.len() as i64)
+}
 
-    let mut updated = 0i64;
-    for (id, conf_map) in &by_item {
-        let conf_str = serde_json::to_string(conf_map).map_err(|e| e.to_string())?;
-        db.execute(
-            "UPDATE inspirations SET auto_tag_confidence = ?1 WHERE id = ?2",
-            params![conf_str, id],
-        ).map_err(|e| e.to_string())?;
-        updated += 1;
+/// Only while tag suggestions are on. Only people's own tags are hinted (lens tags come from the
+/// lenses, and so does a people's tag that stands for a concept: one name, one tag, tagging.rs).
+/// A video only when its length is known and within the limit (tagging::max_tag_video_secs,
+/// §0.11): a video whose length isn't known yet, or can't be found, gets none. Never a tag the
+/// item already has, a hint already answered (`tag_answers.concept_id = 'col:<tag_id>'`), or a
+/// tag named like one the item has (a lens tag with that label: spec §0b.2). Each hint is added
+/// with json_set, so no other key of the item changes. Returns the ids of the items that got a
+/// new hint, sorted.
+fn apply_collection_hints(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<String>> {
+    if !crate::tagging::suggestions_enabled(conn) { return Ok(Vec::new()); }
+    let rows: Vec<(String, String, f64)> = {
+        let mut stmt = conn.prepare(
+            "WITH
+             people AS (
+                 SELECT it.inspiration_id, it.tag_id FROM inspiration_tags it
+                 JOIN tags t ON t.id = it.tag_id
+                 WHERE t.concept_id IS NULL AND t.source != 'model'
+             ),
+             col_tagged AS (
+                 SELECT ci.collection_id, COUNT(DISTINCT ci.inspiration_id) AS cnt
+                 FROM collection_items ci JOIN people p ON p.inspiration_id = ci.inspiration_id
+                 GROUP BY ci.collection_id
+                 HAVING cnt >= 3
+             ),
+             tag_freq AS (
+                 SELECT ci.collection_id, p.tag_id, COUNT(DISTINCT ci.inspiration_id) AS freq
+                 FROM collection_items ci JOIN people p ON p.inspiration_id = ci.inspiration_id
+                 GROUP BY ci.collection_id, p.tag_id
+             ),
+             dominant AS (
+                 SELECT tf.collection_id, tf.tag_id, CAST(tf.freq AS REAL) / ct.cnt AS confidence
+                 FROM tag_freq tf JOIN col_tagged ct ON ct.collection_id = tf.collection_id
+                 WHERE CAST(tf.freq AS REAL) / ct.cnt >= 0.70
+             )
+             SELECT i.id, d.tag_id, MAX(d.confidence)
+             FROM dominant d
+             JOIN collection_items ci ON ci.collection_id = d.collection_id
+             JOIN inspirations i ON i.id = ci.inspiration_id
+             WHERE (i.type != 'video' OR (i.duration_secs > 0 AND i.duration_secs <= ?1))
+               AND NOT EXISTS (SELECT 1 FROM people p WHERE p.inspiration_id = i.id)
+               AND NOT EXISTS (SELECT 1 FROM inspiration_tags it WHERE it.inspiration_id = i.id AND it.tag_id = d.tag_id)
+               AND NOT EXISTS (SELECT 1 FROM tag_answers a WHERE a.inspiration_id = i.id AND a.concept_id = 'col:' || d.tag_id)
+             GROUP BY i.id, d.tag_id",
+        )?;
+        let rows = stmt.query_map(params![crate::tagging::max_tag_video_secs()], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+    if rows.is_empty() { return Ok(Vec::new()); }
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    let mut items: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (id, tag_id, confidence) in &rows {
+        if !hint_safe_tag_id(tag_id) { continue; }   // a key nobody could answer (tag ids are UUIDs)
+        if crate::tagging::hint_name_taken(&tx, id, tag_id)? { continue; }
+        let n = tx.execute(
+            "UPDATE inspirations SET lens_suggestions = json_set(
+                 CASE WHEN json_valid(lens_suggestions) THEN lens_suggestions ELSE '{}' END, ?2, ?3)
+             WHERE id = ?1
+               AND CASE WHEN json_valid(lens_suggestions) THEN json_type(lens_suggestions, ?2) IS NULL ELSE 1 END",
+            params![id, format!("$.\"col:{tag_id}\""), (confidence * 10_000.0).round() / 10_000.0],
+        )?;
+        if n > 0 { items.insert(id.clone()); }
     }
-
-    Ok(updated)
+    tx.commit()?;
+    Ok(items.into_iter().collect())
 }
 
 // ─── Recommendation queries ───────────────────────────────────────
@@ -6016,10 +6556,10 @@ const INSP_SELECT: &str =
     "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
             aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
             phash, phash_source, vault_id, mime_type, created_at, updated_at,
-            auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
+            auto_tag_status, lens_suggestions, auto_tag_model, duration_secs,
             (SELECT json_group_array(c.name) FROM collection_items ci
              JOIN collections c ON c.id = ci.collection_id
-             WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+             WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path, auto_tag_sig, (original_path IS NOT NULL) AS has_original
      FROM inspirations";
 
 // Items saved 60–180 days ago, least recently viewed first.
@@ -6090,10 +6630,10 @@ pub fn list_because_you_viewed(limit: i64, state: State<AppState>) -> Result<Vec
         "SELECT inspirations.id, type, title, source_url, source_platform, stored_path, thumbnail_path,
                 aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
                 phash, phash_source, vault_id, mime_type, created_at, updated_at,
-                auto_tag_status, auto_tag_confidence, auto_tag_model, duration_secs,
+                auto_tag_status, lens_suggestions, auto_tag_model, duration_secs,
                 (SELECT json_group_array(c.name) FROM collection_items ci
                  JOIN collections c ON c.id = ci.collection_id
-                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path
+                 WHERE ci.inspiration_id = inspirations.id) AS collection_names, enhanced_path, auto_tag_sig, (original_path IS NOT NULL) AS has_original
          FROM inspirations
          WHERE inspirations.id != ?1
            AND inspirations.id IN (
@@ -6327,11 +6867,19 @@ pub async fn reset_app(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    // 1. Wipe all user-content tables (preferences, license_cache, tag_vocab, schema_meta preserved)
+    // 1. Wipe all user-content tables. Kept: preferences (so also user_role, the tag-suggestion
+    //    switch and the lens update bookkeeping), license_cache, tag_vocab, schema_meta, and the
+    //    installed Tag lenses with their on/off flags and concepts (app data, like settings).
+    //    Per-item tag data goes: tag_answers, the CLIP vectors of the wiped items, and the
+    //    placeholder concepts pack imports made for concepts no lens here has (lens_id '').
     {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         db.execute_batch(
-            "DELETE FROM inspirations;
+            "DELETE FROM tag_answers;
+             DELETE FROM concepts WHERE lens_id = '';
+             DELETE FROM clip_embeddings;
+             DELETE FROM clip_frames;
+             DELETE FROM inspirations;
              DELETE FROM collections;
              DELETE FROM tags;
              DELETE FROM milestones;
@@ -6570,9 +7118,9 @@ mod pack_meta_tests {
         db.execute(
             "INSERT INTO inspirations (id, type, stored_path, created_at, updated_at, aspect_ratio, palette,
                 ocr_text, ocr_status, ocr_language, phash, phash_source, auto_tag_status, auto_tag_confidence,
-                auto_tag_model, object_tags, object_status, duration_secs, thumbnail_path)
+                auto_tag_model, object_tags, object_status, duration_secs, thumbnail_path, lens_suggestions)
              VALUES ('a','image',?1,0,0,1.3333,'[\"#112233\",\"#AABBCC\"]','hello world','done','eng',?2,?3,
-                'done','{\"sunset\":0.81}','clip-vit-base-patch32','person car','done',NULL,?4)",
+                'done','{\"sunset\":0.81}','clip-vit-base-patch32','person car','done',NULL,?4,'{\"poster\":0.6}')",
             params![img.to_string_lossy(), phash, FP_VERSION, thumb.to_string_lossy()],
         ).unwrap();
         db.execute("INSERT INTO clip_embeddings (id, model, emb) VALUES ('a', ?1, ?2)", params![crate::clip::MODEL_TAG, emb]).unwrap();
@@ -6588,6 +7136,10 @@ mod pack_meta_tests {
         assert_eq!(entry["thumb"], "thumbs/a.jpg");
         assert_eq!(entry["tag_sources"]["sunset"], "model");
         assert_eq!(entry["tag_sources"]["moodboard"], "user");
+        // Tag suggestions never travel (the importing computer scores with its own lenses)
+        for k in ["auto_tag_status", "auto_tag_confidence", "auto_tag_model", "lens_suggestions"] {
+            assert!(entry["meta"].get(k).is_none(), "{k} exported");
+        }
 
         // Through JSON text, as in the real pack
         let entry: serde_json::Value = serde_json::from_str(&serde_json::to_string(&entry).unwrap()).unwrap();
@@ -6602,9 +7154,6 @@ mod pack_meta_tests {
             ocr_language:        Some("eng".into()),
             palette:             Some("[\"#112233\",\"#AABBCC\"]".into()),
             phash:               Some(phash.clone()),
-            auto_tag_status:     Some("done".into()),
-            auto_tag_confidence: Some("{\"sunset\":0.81}".into()),
-            auto_tag_model:      Some("clip-vit-base-patch32".into()),
             object_tags:         Some("person car".into()),
             object_status:       Some("done".into()),
             clip_emb:            Some(emb.clone()),
@@ -6692,5 +7241,1056 @@ mod url_guard_tests {
         assert!(!is_web_url("https:// a.com"));
         assert!(!is_web_url(" https://a.com"));
         assert!(!is_web_url("javascript:alert(1)"));
+    }
+}
+
+#[cfg(test)]
+mod tag_lens_tests {
+    use super::*;
+    use rusqlite::Connection;
+    use serde_json::json;
+
+    /// A migrated database with two concepts, as an installed lens leaves them.
+    fn db() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        crate::db::migrate(&db).unwrap();
+        db.execute_batch("
+            INSERT INTO concepts (id, lens_id, labels_json, media, vec, active, updated_at) VALUES
+              ('green_screen', 'motion', '{\"en\":\"Green screen\",\"uz\":\"Yashil ekran\"}', 'any', x'00', 1, 0),
+              ('music_video', 'motion', '{\"en\":\"Music video\",\"uz\":\"Qo\u{2018}shiq klipi\"}', 'video', x'00', 1, 0);
+        ").unwrap();
+        db
+    }
+    fn item(db: &Connection, id: &str, kind: &str, title: &str) {
+        db.execute("INSERT INTO inspirations (id, type, stored_path, title, created_at, updated_at) VALUES (?1, ?2, 'x', ?3, 0, 0)",
+            params![id, kind, title]).unwrap();
+    }
+    /// A people's tag with a given id: a lens tag stored under the name moves on. (create_tag itself
+    /// first lets a lens tag whose label is the name become the people's tag: one name, one tag.)
+    fn user_tag(db: &Connection, id: &str, name: &str) {
+        crate::tagging::make_room_for_name(db, name).unwrap();
+        db.execute("INSERT INTO tags (id, name, source, created_at) VALUES (?1, ?2, 'user', 0)", params![id, name]).unwrap();
+    }
+    fn stored_name(db: &Connection, tag: &str) -> String {
+        db.query_row("SELECT name FROM tags WHERE id = ?1", [tag], |r| r.get(0)).unwrap()
+    }
+    fn link(db: &Connection, item: &str, tag: &str) {
+        db.execute("INSERT INTO inspiration_tags (inspiration_id, tag_id) VALUES (?1, ?2)", params![item, tag]).unwrap();
+    }
+    fn conf(db: &Connection, id: &str) -> serde_json::Map<String, serde_json::Value> {
+        let s: Option<String> = db.query_row("SELECT lens_suggestions FROM inspirations WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        s.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    }
+    fn search(db: &Connection, q: &str) -> Vec<String> {
+        let (cond, args) = search_condition(q);
+        let mut stmt = db.prepare(&format!("SELECT id FROM inspirations WHERE {cond} ORDER BY id")).unwrap();
+        stmt.query_map(rusqlite::params_from_iter(args.iter()), |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+    }
+    fn count(db: &Connection, tag: &str) -> i64 {
+        db.query_row("SELECT count FROM tag_usage_counts WHERE tag_id = ?1", [tag], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn search_matches_accepted_tags_only_and_lens_labels_in_both_languages() {
+        let db = db();
+        item(&db, "a", "image", "");                       // has the green_screen lens tag
+        item(&db, "b", "image", "");                       // green_screen only suggested
+        item(&db, "c", "image", "");                       // people's tag "Moodboard"
+        item(&db, "d", "image", "green screen tutorial");  // title
+        item(&db, "e", "video", "");                       // music_video lens tag (Uzbek label with ‘)
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();
+        link(&db, "a", &gs);
+        db.execute(r#"UPDATE inspirations SET lens_suggestions = '{"green_screen":0.9,"music_video":0.8}',
+                      auto_tag_confidence = '{"green_screen":0.9,"music_video":0.8}' WHERE id = 'b'"#, []).unwrap();
+        user_tag(&db, "u1", "Moodboard");
+        link(&db, "c", "u1");
+        let mv = crate::tagging::ensure_concept_tag(&db, "music_video").unwrap();
+        link(&db, "e", &mv);
+
+        assert_eq!(search(&db, "green"), vec!["a", "d"], "pending suggestions never match");
+        assert_eq!(search(&db, "Yashil"), vec!["a"], "Uzbek label");
+        assert_eq!(search(&db, "ekran"), vec!["a"]);
+        assert_eq!(search(&db, "moodboard"), vec!["c"]);
+        assert_eq!(search(&db, "music"), vec!["e"]);
+        assert_eq!(search(&db, "qo'shiq"), vec!["e"], "an ASCII apostrophe finds o\u{2018}");
+        assert_eq!(search(&db, "Qo\u{2018}shiq"), vec!["e"]);
+        assert_eq!(search(&db, "\u{2019}"), vec!["e"], "no FTS term: the tag condition alone");
+        assert!(search(&db, "lens:").is_empty(), "lens tags never match by their stored name");
+        // A lens tag stored as "… (Tag lens)" (another tag has its label as its name) isn't found by
+        // that name either.
+        db.execute("INSERT INTO tags (id, name, source, created_at) VALUES ('x1', 'music VIDEO', 'extension', 0)", []).unwrap();
+        assert_eq!(crate::tagging::name_lens_tags(&db).unwrap(), 1);
+        assert_eq!(stored_name(&db, &mv), "Music video (Tag lens)");
+        assert!(search(&db, "tag lens").is_empty(), "lens tags never match by their stored name");
+        assert_eq!(search(&db, "music"), vec!["e"]);
+        // A people's tag made with a lens tag's label is that tag (one name, one tag): found by its
+        // labels, and by its own name too, even after a new lens version renames the concept.
+        let t = create_tag_with(&db, "GREEN screen".into(), None).unwrap();
+        assert_eq!((t.id.as_str(), t.concept_id.as_deref()), (gs.as_str(), Some("green_screen")));
+        assert_eq!(search(&db, "green"), vec!["a", "d"]);
+        assert_eq!(search(&db, "yashil"), vec!["a"]);
+        db.execute(r#"UPDATE concepts SET labels_json = '{"en":"Chroma key","uz":"Xromakey"}' WHERE id = 'green_screen'"#, []).unwrap();
+        assert_eq!(search(&db, "chroma"), vec!["a"]);
+        assert_eq!(search(&db, "green screen"), vec!["a", "d"], "the people's own name");
+        assert!(search(&db, "yashil").is_empty());
+        assert_eq!(search(&db, "video"), vec!["e"], "b only has music_video suggested");
+    }
+
+    #[test]
+    fn a_new_peoples_tag_with_a_lens_tags_name_is_that_tag() {
+        // One name, one tag (owner, 2026-11-20). A lens tag is stored under its English label
+        // (qooti 1.2.2 shows tags.name as it is), and tag names are UNIQUE. A people's tag made with
+        // that name (create_tag, a pack import) is the lens tag, in place: it gets the name exactly
+        // as given and the source, and keeps the lens tag's id, concept, items and count. A lens tag
+        // only stored under the name (its label changed since) moves on to "<label> (Tag lens)".
+        let db = db();
+        item(&db, "x", "image", "");
+        item(&db, "y", "image", "");
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();
+        let mv = crate::tagging::ensure_concept_tag(&db, "music_video").unwrap();
+        link(&db, "x", &gs);
+        recount_tags(&db, &[gs.clone()]);
+        assert_eq!((stored_name(&db, &gs), stored_name(&db, &mv)), ("Green screen".to_string(), "Music video".to_string()));
+        let t = create_tag_with(&db, "green SCREEN".into(), None).unwrap();
+        assert_eq!((t.id.as_str(), t.name.as_str(), t.source.as_str(), t.concept_id.as_deref(), t.usage_count),
+                   (gs.as_str(), "green SCREEN", "user", Some("green_screen"), 1), "the lens tag, with its item");
+        assert_eq!(t.labels.map(|l| l.en), Some("Green screen".to_string()), "it carries its concept's labels; the page shows its own name");
+        // A second people's tag with that name is a tag of its own (two people's tags with one name
+        // stay apart from each other and from lens tags)
+        let t2 = create_tag_with(&db, "Green Screen".into(), Some("import".into())).unwrap();
+        assert!(t2.id != gs && t2.concept_id.is_none());
+        assert_eq!(stored_name(&db, &gs), "green SCREEN", "a people's tag never moves on, also one that stands for a concept");
+        // A pack's people's tag named like a lens tag's label: the lens tag becomes it, with the
+        // item linked; the next pack with that name links the same tag
+        let links = import_pack_tags(&db, "y", &json!({ "tags": ["Music video"], "tag_sources": { "Music video": "user" } }), 5);
+        assert_eq!(links.tag_ids, vec![mv.clone()]);
+        recount_tags(&db, &links.tag_ids);
+        assert_eq!(item_tags(&db, "y"), vec![("Music video".to_string(), "user".to_string(), Some("music_video".to_string()), 1)]);
+        let again = import_pack_tags(&db, "x", &json!({ "tags": ["music VIDEO"] }), 6);
+        assert_eq!(again.tag_ids, vec![mv.clone()], "found by name, any case");
+        // A lens tag only stored under the name (its label was "Rotoscope" when it was named, and a
+        // new lens version changed it) moves on instead: "rotoscope" isn't its label
+        db.execute(r#"INSERT INTO concepts (id, lens_id, labels_json, media, vec, active, updated_at)
+                      VALUES ('chroma', 'motion', '{"en":"Chroma key","uz":"Xromakey"}', 'any', x'00', 1, 0)"#, []).unwrap();
+        let ck = crate::tagging::ensure_concept_tag(&db, "chroma").unwrap();
+        db.execute("UPDATE tags SET name = 'Rotoscope' WHERE id = ?1", [&ck]).unwrap();
+        let t3 = create_tag_with(&db, "rotoscope".into(), None).unwrap();
+        assert!(t3.id != ck && t3.concept_id.is_none());
+        assert_eq!(stored_name(&db, &ck), "Chroma key");
+        // A name that reads as an id is refused
+        assert!(create_tag_with(&db, "lens:green_screen".into(), None).is_err());
+        assert!(create_tag_with(&db, " LENS:x".into(), None).is_err());
+        // One tag per concept, and the next start keeps every name
+        let lens: Vec<String> = db.prepare("SELECT id || '|' || concept_id FROM tags WHERE concept_id IS NOT NULL ORDER BY concept_id").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(lens, vec![format!("{ck}|chroma"), format!("{gs}|green_screen"), format!("{mv}|music_video")]);
+        assert_eq!(crate::tagging::join_same_name_tags(&db).unwrap().joined, 0);
+        assert_eq!(crate::tagging::name_lens_tags(&db).unwrap(), 0);
+        let names: Vec<String> = db.prepare("SELECT name FROM tags").unwrap().query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert!(names.iter().all(|n| !n.contains('_') && !n.to_lowercase().starts_with("lens:") && !n.contains("(Tag lens")), "{names:?}");
+    }
+
+    #[test]
+    fn collection_hints_add_their_key_and_leave_the_rest_alone() {
+        let db = db();
+        db.execute("INSERT INTO collections (id, name, created_at, updated_at) VALUES ('col', 'Client', 0, 0)", []).unwrap();
+        for (id, kind) in [("a", "image"), ("b", "image"), ("c", "image"), ("d", "image"), ("e", "image"),
+                           ("f", "image"), ("g", "image"), ("v", "video"), ("w", "video"), ("x", "video"), ("z", "video")] {
+            item(&db, id, kind, "");
+            db.execute("INSERT INTO collection_items (collection_id, inspiration_id, created_at) VALUES ('col', ?1, 0)", [id]).unwrap();
+        }
+        db.execute("UPDATE inspirations SET duration_secs = 120 WHERE id = 'v'", []).unwrap();   // over the limit
+        db.execute("UPDATE inspirations SET duration_secs = 20 WHERE id = 'w'", []).unwrap();
+        // x: length not known (yet, or ever); z: a length of 0 is no length either (C8)
+        db.execute("UPDATE inspirations SET duration_secs = 0 WHERE id = 'z'", []).unwrap();
+        user_tag(&db, "u1", "clientx");
+        user_tag(&db, "u2", "other");
+        for id in ["a", "b", "c"] { link(&db, id, "u1"); }   // 3 of the 4 items with people's tags
+        link(&db, "e", "u2");                                // has a people's tag: not asked
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();
+        for id in ["a", "b", "c", "d"] { link(&db, id, &gs); }   // lens tags are never hinted
+        db.execute(r#"UPDATE inspirations SET lens_suggestions = '{"green_screen":0.7,"col:old":0.5}',
+                      auto_tag_confidence = '{"web_design":0.4}' WHERE id = 'f'"#, []).unwrap();
+        db.execute("INSERT INTO tag_answers (inspiration_id, concept_id, answer, answered_at) VALUES ('g', 'col:u1', 'dismissed', 0)", []).unwrap();
+
+        assert!(apply_collection_hints(&db).unwrap().is_empty(), "nothing while tag suggestions are off");
+        db.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES ('tag_recommendations_enabled', 'true')", []).unwrap();
+        // The ids come back for `autotag:scored` (C5)
+        assert_eq!(apply_collection_hints(&db).unwrap(), vec!["d", "f", "w"]);
+        for id in ["x", "z"] {
+            assert!(conf(&db, id).is_empty(), "a video of unknown length got a hint: {id}");
+        }
+        let f = conf(&db, "f");
+        assert_eq!(f.len(), 3, "{f:?}");
+        assert_eq!(f.get("green_screen").and_then(|v| v.as_f64()), Some(0.7), "other keys untouched");
+        assert_eq!(f.get("col:old").and_then(|v| v.as_f64()), Some(0.5));
+        assert_eq!(f.get("col:u1").and_then(|v| v.as_f64()), Some(0.75));
+        assert_eq!(conf(&db, "d").keys().collect::<Vec<_>>(), vec!["col:u1"], "a lens tag doesn't count as tagged");
+        assert!(conf(&db, "w").contains_key("col:u1"));
+        for id in ["a", "b", "c", "e", "g", "v"] {
+            assert!(!conf(&db, id).contains_key("col:u1"), "{id}");
+        }
+        let gs_key = format!("col:{gs}");
+        for id in ["a", "b", "c", "d", "e", "f", "g", "v", "w"] {
+            assert!(!conf(&db, id).contains_key(&gs_key), "lens tag hinted on {id}");
+        }
+        assert!(apply_collection_hints(&db).unwrap().is_empty(), "nothing new the second time");
+        let old: Vec<Option<String>> = db.prepare("SELECT auto_tag_confidence FROM inspirations ORDER BY id").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(old.iter().flatten().collect::<Vec<_>>(), vec![r#"{"web_design":0.4}"#], "the old column is never written");
+        // Once x's length is measured and short, the next run hints it
+        db.execute("UPDATE inspirations SET duration_secs = 12.5 WHERE id = 'x'", []).unwrap();
+        assert_eq!(apply_collection_hints(&db).unwrap(), vec!["x"]);
+    }
+
+    #[test]
+    fn linking_a_lens_tag_answers_it_and_a_hint_leaves_with_its_tag() {
+        let db = db();
+        item(&db, "a", "image", "");
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();
+        user_tag(&db, "u1", "Moodboard");
+        db.execute(r#"UPDATE inspirations SET auto_tag_status = 'done',
+                      lens_suggestions = '{"green_screen":0.9,"col:u1":0.8,"music_video":0.4}' WHERE id = 'a'"#, []).unwrap();
+        tag_item(&db, "a", &gs).unwrap();
+        let answer: String = db.query_row(
+            "SELECT answer FROM tag_answers WHERE inspiration_id = 'a' AND concept_id = 'green_screen'", [], |r| r.get(0)).unwrap();
+        assert_eq!(answer, "added");
+        assert!(!conf(&db, "a").contains_key("green_screen"));
+        tag_item(&db, "a", "u1").unwrap();
+        tag_item(&db, "a", "u1").unwrap();
+        assert_eq!(conf(&db, "a").keys().collect::<Vec<_>>(), vec!["music_video"]);
+        assert_eq!((count(&db, &gs), count(&db, "u1")), (1, 1), "counted once");
+        let status: String = db.query_row("SELECT auto_tag_status FROM inspirations WHERE id = 'a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(status, "done");
+        assert!(tag_item(&db, "a", "no-such-tag").is_err());
+    }
+
+    #[test]
+    fn a_tag_linked_later_drops_the_questions_that_ask_its_name() {
+        // Spec §0b.2 when a tag is linked, not only when scores are written (final review R2,
+        // WT1): a card never asks a name its item already has, and Add never gives it twice.
+        let db = db();
+        for id in ["a", "b", "c", "d"] { item(&db, id, "image", ""); }
+        user_tag(&db, "u_gs", "  green SCREEN ");   // green_screen's English label: other case, spaces
+        user_tag(&db, "u_mv", "qo'shiq klipi");     // music_video's Uzbek label, typed with a plain '
+        user_tag(&db, "u_mb", "Moodboard");
+        let set = |id: &str, json: &str| {
+            db.execute("UPDATE inspirations SET lens_suggestions = ?2, auto_tag_status = 'done', auto_tag_model = 'lens-1',
+                        auto_tag_sig = 's' WHERE id = ?1", params![id, json]).unwrap();
+        };
+        let keys = |id: &str| -> Vec<String> { let mut k: Vec<String> = conf(&db, id).keys().cloned().collect(); k.sort(); k };
+        let tags = |id: &str| -> Vec<String> { let mut t: Vec<String> = item_tags(&db, id).into_iter().map(|t| t.0).collect(); t.sort(); t };
+
+        // 1. The detail picker links a people's tag: the lens question with its name goes, the rest stays.
+        set("a", r#"{"green_screen":0.9,"music_video":0.5,"col:u_mb":0.7}"#);
+        tag_item(&db, "a", "u_gs").unwrap();
+        assert_eq!(keys("a"), vec!["col:u_mb", "music_video"]);
+        tag_item(&db, "a", "u_mv").unwrap();
+        assert_eq!(keys("a"), vec!["col:u_mb"]);
+        // A card read before that still asks "Green screen": Add links nothing (null), the key goes.
+        set("a", r#"{"green_screen":0.9}"#);
+        assert_eq!(crate::tagging::answer_with(&db, "a", "green_screen", "added").unwrap(), None);
+        assert!(keys("a").is_empty());
+        assert_eq!(tags("a"), vec!["  green SCREEN ", "qo'shiq klipi"]);
+
+        // 2. Adding a collection hint for a people's tag does the same.
+        set("b", r#"{"green_screen":0.9,"music_video":0.5,"col:u_gs":0.8}"#);
+        let t = crate::tagging::answer_with(&db, "b", "col:u_gs", "added").unwrap().unwrap();
+        assert_eq!(t.id, "u_gs");
+        assert_eq!(keys("b"), vec!["music_video"]);
+
+        // 3. Adding a lens question whose label a people's tag has as its name links that tag (one
+        //    name, one tag): it stands for the concept from now on, so its hints leave every item…
+        set("c", r#"{"green_screen":0.9,"col:u_gs":0.8,"col:u_mb":0.7}"#);
+        let t = crate::tagging::answer_with(&db, "c", "green_screen", "added").unwrap().unwrap();
+        assert_eq!((t.id.as_str(), t.concept_id.as_deref()), ("u_gs", Some("green_screen")));
+        assert_eq!(keys("c"), vec!["col:u_mb"]);
+        // …and a card read before that: Add on the hint links the tag the item already has.
+        set("c", r#"{"col:u_gs":0.8}"#);
+        assert_eq!(crate::tagging::answer_with(&db, "c", "col:u_gs", "added").unwrap().map(|t| t.id), Some("u_gs".to_string()));
+        assert!(keys("c").is_empty());
+        assert_eq!(tags("c"), vec!["  green SCREEN "], "one tag, the people's own name");
+
+        // 4. The picker's lens path (tag_item with a lens tag) drops the hint named like it too.
+        set("d", r#"{"col:u_mv":0.8,"green_screen":0.4}"#);
+        let mv = crate::tagging::ensure_concept_tag(&db, "music_video").unwrap();
+        tag_item(&db, "d", &mv).unwrap();
+        assert_eq!(keys("d"), vec!["green_screen"]);
+
+        // Only real adds are kept as answers; status, model and signature never change.
+        let answers: Vec<(String, String)> = db.prepare(
+            "SELECT inspiration_id, concept_id FROM tag_answers WHERE answer = 'added' ORDER BY inspiration_id, concept_id").unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(answers, vec![("b".into(), "col:u_gs".into()), ("c".into(), "col:u_gs".into()), ("c".into(), "green_screen".into()),
+                                 ("d".into(), "music_video".into())]);
+        let untouched: i64 = db.query_row("SELECT COUNT(*) FROM inspirations WHERE auto_tag_status = 'done'
+                                            AND auto_tag_model = 'lens-1' AND auto_tag_sig = 's'", [], |r| r.get(0)).unwrap();
+        assert_eq!(untouched, 4);
+        assert_eq!((count(&db, "u_gs"), count(&db, "u_mv")), (3, 1));
+    }
+
+    #[test]
+    fn a_scored_lens_question_goes_when_its_people_tag_is_picked() {
+        // Review R2's case with real scores: the item was scored with d_one ("L d one"); then
+        // the person picks their own tag " l D ONE ". Nothing re-scores the item afterwards.
+        use crate::lenses::testkit::{install_texts, standard_texts};
+        let db = db();
+        install_texts(&db, &standard_texts(1)).unwrap();
+        let cat = crate::lenses::Catalogue::load(&db);
+        let d_one = cat.lenses.iter().flat_map(|l| l.concepts.iter()).find(|c| c.id == "d_one").unwrap().vec.clone();
+        item(&db, "x", "image", "");
+        let blob: Vec<u8> = d_one.iter().flat_map(|v| v.to_le_bytes()).collect();
+        db.execute("INSERT INTO clip_embeddings (id, model, emb) VALUES ('x', ?1, ?2)", params![crate::clip::MODEL_TAG, blob]).unwrap();
+        crate::tagging::score_chunk(&db, &cat, &["x".to_string()]).unwrap();
+        assert!(conf(&db, "x").contains_key("d_one"));
+        user_tag(&db, "mine", " l D ONE ");
+        tag_item(&db, "x", "mine").unwrap();
+        assert!(!conf(&db, "x").contains_key("d_one"), "{:?}", conf(&db, "x"));
+    }
+
+    #[test]
+    fn a_collection_hint_never_asks_a_name_the_item_has_as_a_lens_tag() {
+        let db = db();
+        db.execute("INSERT INTO collections (id, name, created_at, updated_at) VALUES ('col', 'Client', 0, 0)", []).unwrap();
+        for id in ["a", "b", "c", "x", "y"] {
+            item(&db, id, "image", "");
+            db.execute("INSERT INTO collection_items (collection_id, inspiration_id, created_at) VALUES ('col', ?1, 0)", [id]).unwrap();
+        }
+        db.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES ('tag_recommendations_enabled', 'true')", []).unwrap();
+        // A people's tag with green_screen's Uzbek label stays a tag of its own (one name, one tag
+        // goes by the English label, the name lens tags are stored under)
+        user_tag(&db, "u_gs", "Yashil Ekran");
+        for id in ["a", "b", "c"] { link(&db, id, "u_gs"); }
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();
+        assert_ne!(gs, "u_gs");
+        link(&db, "x", &gs);   // x has the lens tag "Yashil ekran": asking "Yashil Ekran" would be the same name
+        assert_eq!(apply_collection_hints(&db).unwrap(), vec!["y"]);
+        assert!(conf(&db, "x").is_empty(), "{:?}", conf(&db, "x"));
+        // With the English label it is the lens tag itself: one tag, hinted by the lenses, not by
+        // the collection
+        let db = self::db();
+        db.execute("INSERT INTO collections (id, name, created_at, updated_at) VALUES ('col', 'Client', 0, 0)", []).unwrap();
+        for id in ["a", "b", "c", "y"] {
+            item(&db, id, "image", "");
+            db.execute("INSERT INTO collection_items (collection_id, inspiration_id, created_at) VALUES ('col', ?1, 0)", [id]).unwrap();
+        }
+        db.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES ('tag_recommendations_enabled', 'true')", []).unwrap();
+        user_tag(&db, "u_gs", "Green Screen");
+        for id in ["a", "b", "c"] { link(&db, id, "u_gs"); }
+        assert_eq!(apply_collection_hints(&db).unwrap(), vec!["y"]);
+        assert_eq!(crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap(), "u_gs");
+        assert!(conf(&db, "y").is_empty(), "its hint went: {:?}", conf(&db, "y"));
+        assert!(apply_collection_hints(&db).unwrap().is_empty());
+    }
+
+    #[test]
+    fn packs_carry_lens_tags_by_concept_and_drop_old_suggestion_tags() {
+        // Export side: a lens tag goes out under its English label, plus tag_concepts.
+        let src = db();
+        item(&src, "a", "image", "");
+        let gs = crate::tagging::ensure_concept_tag(&src, "green_screen").unwrap();
+        link(&src, "a", &gs);
+        user_tag(&src, "u1", "Moodboard");
+        link(&src, "a", "u1");
+        src.execute("INSERT INTO tags (id, name, source, created_at) VALUES ('m1', 'sunset', 'model', 0)", []).unwrap();
+        link(&src, "a", "m1");
+        let tags = pack_tags(&src, None).unwrap();
+        let a = &tags["a"];
+        assert_eq!(a.names, vec!["Green screen", "Moodboard", "sunset"]);
+        assert_eq!(serde_json::Value::Object(a.concepts.clone()), json!({ "Green screen": "green_screen" }));
+        assert!(pack_tags(&src, Some("no-such-collection")).unwrap().is_empty());
+        item(&src, "b", "image", "");
+        let bare = crate::tagging::ensure_concept_tag(&src, "web_design_x").unwrap();   // no concepts row
+        link(&src, "b", &bare);
+        assert_eq!(pack_tags(&src, None).unwrap()["b"].names, vec!["web design x"], "never lens:<id>");
+        let ex = pack_extras(&src, "a").unwrap();
+        assert_eq!(serde_json::Value::Object(ex.tag_sources.clone()),
+                   json!({ "Green screen": "lens", "Moodboard": "user", "sunset": "model" }));
+
+        // Import side: a computer that has green_screen but not rotoscope.
+        let dst = db();
+        item(&dst, "x", "image", "");
+        user_tag(&dst, "local", "moodboard");
+        let meta = json!({
+            "tags": ["Green screen", "Moodboard", "sunset", "Rotoscope", "lens:green_screen", "Fresh", "", "  "],
+            "tag_concepts": { "Green screen": "green_screen", "Rotoscope": "rotoscope" },
+            "tag_sources": { "Green screen": "lens", "Moodboard": "user", "sunset": "model", "Rotoscope": "lens", "Fresh": "user" },
+        });
+        let links = import_pack_tags(&dst, "x", &meta, 5);
+        assert_eq!(links.waiting, 1, "Rotoscope waits for its lens");
+        recount_tags(&dst, &links.tag_ids);
+        let mut got = item_tags(&dst, "x");
+        got.sort();
+        assert_eq!(got, vec![
+            ("Fresh".to_string(), "user".to_string(), None, 1),
+            ("Green screen".to_string(), "lens".to_string(), Some("green_screen".to_string()), 1),
+            // A concept this computer doesn't have is kept, not dropped (rust-data D1)
+            ("Rotoscope".to_string(), "lens".to_string(), Some("rotoscope".to_string()), 1),
+            ("moodboard".to_string(), "user".to_string(), None, 1),   // the existing tag, not a copy
+        ]);
+        // ...through a placeholder concept: the pack's name in both languages, no lens, inactive
+        let placeholder: (String, String, String, i64, Vec<u8>) = dst.query_row(
+            "SELECT lens_id, labels_json, media, active, vec FROM concepts WHERE id = 'rotoscope'", [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).unwrap();
+        assert_eq!(placeholder.0, "");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&placeholder.1).unwrap(), json!({ "en": "Rotoscope", "uz": "Rotoscope" }));
+        assert_eq!((placeholder.2.as_str(), placeholder.3, placeholder.4.len()), ("any", 0, 0));
+        let roto = crate::tagging::ensure_concept_tag(&dst, "rotoscope").unwrap();
+        assert_eq!(crate::tagging::load_tag(&dst, &roto).unwrap().unwrap().labels.unwrap().en, "Rotoscope");
+        assert_eq!(search(&dst, "rotoscope"), vec!["x"], "searchable by its label");
+        let made: i64 = dst.query_row("SELECT COUNT(*) FROM tags WHERE (name IN ('sunset', 'Rotoscope') AND concept_id IS NULL) OR source = 'model'", [], |r| r.get(0)).unwrap();
+        assert_eq!(made, 0, "no suggestion tags, and the kept lens tag is a lens tag, not a plain one");
+        // A second import of the same item links the same tags without new ones.
+        let again = import_pack_tags(&dst, "x", &meta, 6);
+        assert_eq!(again.tag_ids.len(), 4);
+        let n: i64 = dst.query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 4);
+        let n: i64 = dst.query_row("SELECT COUNT(*) FROM concepts WHERE lens_id = ''", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1, "one placeholder per concept");
+
+        // The lens with rotoscope arrives later: install fills in the real concept (labels,
+        // vector, active), and the item's tag now follows the app's language.
+        use crate::lenses::testkit::{install_texts, lens_text, tc, unit};
+        install_texts(&dst, &[
+            lens_text("design", "base", 1, &[tc("d_one", unit(1)), tc("d_two", unit(2))], &[]),
+            lens_text("motion", "specialist", 1, &[tc("rotoscope", unit(3)), tc("m_two", unit(4))], &[]),
+        ]).unwrap();
+        let real: (String, i64, usize) = dst.query_row(
+            "SELECT c.lens_id, c.active, length(e.vec) FROM concepts c JOIN concept_entries e ON e.concept_id = c.id AND e.lens_id = c.lens_id WHERE c.id = 'rotoscope'", [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+        assert_eq!((real.0.as_str(), real.1), ("motion", 1));
+        assert!(real.2 > 0, "the real vector");
+        let tag = crate::tagging::load_tag(&dst, &roto).unwrap().unwrap();
+        assert_eq!(tag.labels.map(|l| (l.en, l.uz)), Some(("L rotoscope".to_string(), "U rotoscope".to_string())));
+        assert!(item_tags(&dst, "x").iter().any(|t| t.2.as_deref() == Some("rotoscope")), "still on the item");
+        // The next start stores it under its new English label (what older versions show)
+        assert_eq!(stored_name(&dst, &roto), "Rotoscope");
+        assert_eq!(crate::tagging::name_lens_tags(&dst).unwrap(), 1);
+        assert_eq!(stored_name(&dst, &roto), "L rotoscope");
+        // And the next pack with rotoscope doesn't wait any more
+        assert_eq!(import_pack_tags(&dst, "x", &meta, 7).waiting, 0);
+    }
+
+    /// (name, source, concept_id, count) of an item's tags.
+    fn item_tags(db: &Connection, id: &str) -> Vec<(String, String, Option<String>, i64)> {
+        db.prepare(
+            "SELECT t.name, t.source, t.concept_id, u.count FROM inspiration_tags it JOIN tags t ON t.id = it.tag_id
+             LEFT JOIN tag_usage_counts u ON u.tag_id = t.id WHERE it.inspiration_id = ?1").unwrap()
+            .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap().map(|r| r.unwrap()).collect()
+    }
+
+    /// A manifest entry's tags as export writes them, read back through JSON text as in a real pack.
+    fn entry_tags(db: &Connection, id: &str) -> serde_json::Value {
+        let mut entry = json!({ "id": id });
+        pack_put_tags(&mut entry, pack_tags(db, None).unwrap().remove(id).unwrap_or_default());
+        if let Some(ex) = pack_extras(db, id) { pack_attach_extras(&mut entry, id, &ex, &mut Vec::new()); }
+        serde_json::from_str(&entry.to_string()).unwrap()
+    }
+
+    #[test]
+    fn a_people_tag_and_a_lens_tag_with_the_same_name_both_travel() {
+        // Export side: b has the people's tag "Green screen" and the lens tag whose English
+        // label is "Green screen" (two tags until the next start joins them, or for good when they
+        // can't be one: tagging.rs, one name, one tag); c has two lens tags with one English label.
+        let src = db();
+        src.execute("INSERT INTO concepts (id, lens_id, labels_json, media, vec, active, updated_at)
+                     VALUES ('green_screen_old', 'motion', '{\"en\":\"Green screen\",\"uz\":\"Eski yashil ekran\"}', 'any', x'00', 0, 0)", []).unwrap();
+        item(&src, "b", "image", "");
+        item(&src, "c", "image", "");
+        let gs = crate::tagging::ensure_concept_tag(&src, "green_screen").unwrap();
+        let old = crate::tagging::ensure_concept_tag(&src, "green_screen_old").unwrap();
+        user_tag(&src, "u1", "Green screen");
+        for (i, t) in [("b", "u1"), ("b", gs.as_str()), ("c", gs.as_str()), ("c", old.as_str())] { link(&src, i, t); }
+
+        let b = entry_tags(&src, "b");
+        assert_eq!(b["tags"], json!(["Green screen"]));
+        assert!(b.get("tag_concepts").is_none(), "{b}");
+        assert_eq!(b["extra_concepts"], json!(["green_screen"]));
+        assert_eq!(b["tag_sources"], json!({ "Green screen": "user" }), "the name keeps the people's tag's source");
+        let c = entry_tags(&src, "c");
+        assert_eq!(c["tags"], json!(["Green screen"]));
+        let mut both: Vec<String> = c["tag_concepts"].as_object().unwrap().values()
+            .chain(c["extra_concepts"].as_array().unwrap()).map(|v| v.as_str().unwrap().to_string()).collect();
+        both.sort();
+        assert_eq!(both, vec!["green_screen", "green_screen_old"]);
+
+        // Import side (has green_screen, not green_screen_old): b's two arrive as one tag (one name,
+        // one tag): the people's tag "Green screen", which stands for green_screen; both of c.
+        let dst = db();
+        item(&dst, "y", "image", "");
+        item(&dst, "z", "image", "");
+        let yl = import_pack_tags(&dst, "y", &b, 5);
+        let zl = import_pack_tags(&dst, "z", &c, 5);
+        recount_tags(&dst, &[yl.tag_ids, zl.tag_ids].concat());
+        let y = item_tags(&dst, "y");
+        assert_eq!(y, vec![("Green screen".to_string(), "user".to_string(), Some("green_screen".to_string()), 2)]);
+        let mut z: Vec<Option<String>> = item_tags(&dst, "z").into_iter().map(|t| t.2).collect();
+        z.sort();
+        assert_eq!(z, vec![Some("green_screen".to_string()), Some("green_screen_old".to_string())]);
+        assert_eq!(zl.waiting, 1);
+
+        // An older app ignores extra_concepts: it still imports the people's tag.
+        let older = db();
+        item(&older, "y", "image", "");
+        let mut b_old = b.clone();
+        b_old.as_object_mut().unwrap().remove("extra_concepts");
+        recount_tags(&older, &import_pack_tags(&older, "y", &b_old, 5).tag_ids);
+        assert_eq!(item_tags(&older, "y").into_iter().map(|t| (t.0, t.1)).collect::<Vec<_>>(),
+                   vec![("Green screen".to_string(), "user".to_string())]);
+    }
+
+    #[test]
+    fn a_peoples_tag_that_stands_for_a_concept_travels_as_its_own() {
+        // DS-ON-2: the owner's own "ui" became ui_design's tag (one name, one tag). A pack carries it
+        // as the person's tag, by its own name and source with its concept, never as a lens tag
+        // named by the label. It arrives as that people's tag, standing for the concept: in a
+        // library with the lens (also one where the lens tag already is), after Settings › Reset,
+        // and in a library without the lens (a placeholder concept), where it is never swept with
+        // its last item. A relabel never changes the name it travels by.
+        let ui_concept = "INSERT INTO concepts (id, lens_id, labels_json, media, vec, active, updated_at)
+                          VALUES ('ui_design', 'design', '{\"en\":\"UI\",\"uz\":\"UI\"}', 'any', x'00', 1, 0)";
+        let src = db();
+        src.execute(ui_concept, []).unwrap();
+        for id in ["a", "b"] { item(&src, id, "image", ""); }
+        src.execute_batch("
+            INSERT INTO tags (id, name, source, created_at) VALUES ('mine', 'ui', 'user', 0);
+            INSERT INTO tags (id, name, source, created_at, concept_id) VALUES ('lt', 'UI (Tag lens)', 'lens', 1, 'ui_design');").unwrap();
+        link(&src, "a", "mine");
+        link(&src, "b", "lt");
+        src.execute_batch(crate::db::RECOUNT_ALL_TAGS).unwrap();
+        assert_eq!(crate::tagging::join_same_name_tags(&src).unwrap().joined, 1);
+        let a = entry_tags(&src, "a");
+        assert_eq!(a["tags"], json!(["ui"]));
+        assert_eq!(a["tag_sources"], json!({ "ui": "user" }));
+        assert_eq!(a["tag_concepts"], json!({ "ui": "ui_design" }));
+        assert!(a.get("extra_concepts").is_none(), "{a}");
+        let mine = |conn: &Connection, id: &str| -> Vec<(String, String, Option<String>)> {
+            item_tags(conn, id).into_iter().map(|t| (t.0, t.1, t.2)).collect()
+        };
+        let want = vec![("ui".to_string(), "user".to_string(), Some("ui_design".to_string()))];
+        // A library with the lens: the people's tag "ui", standing for ui_design
+        let dst = db();
+        dst.execute(ui_concept, []).unwrap();
+        item(&dst, "x", "image", "");
+        let l = import_pack_tags(&dst, "x", &a, 5);
+        assert_eq!(l.waiting, 0);
+        recount_tags(&dst, &l.tag_ids);
+        assert_eq!(mine(&dst, "x"), want);
+        // ...also where its lens tag already is: that tag becomes the people's tag, in place
+        let dst2 = db();
+        dst2.execute(ui_concept, []).unwrap();
+        for id in ["x", "w"] { item(&dst2, id, "image", ""); }
+        let lt2 = crate::tagging::ensure_concept_tag(&dst2, "ui_design").unwrap();
+        link(&dst2, "w", &lt2);
+        let l2 = import_pack_tags(&dst2, "x", &a, 5);
+        recount_tags(&dst2, &l2.tag_ids);
+        assert_eq!(mine(&dst2, "x"), want);
+        assert_eq!(item_tags(&dst2, "w"), vec![("ui".to_string(), "user".to_string(), Some("ui_design".to_string()), 2)], "one tag");
+        // Restored after Settings › Reset (the concepts stay, the tags go)
+        src.execute_batch("DELETE FROM tag_answers; DELETE FROM inspirations; DELETE FROM tags;").unwrap();
+        item(&src, "a", "image", "");
+        recount_tags(&src, &import_pack_tags(&src, "a", &a, 6).tag_ids);
+        assert_eq!(mine(&src, "a"), want);
+        // A library without the lens: a placeholder concept named like the tag, waiting for its lens
+        let bare = db();
+        item(&bare, "x", "image", "");
+        let l3 = import_pack_tags(&bare, "x", &a, 7);
+        assert_eq!(l3.waiting, 1);
+        recount_tags(&bare, &l3.tag_ids);
+        assert_eq!(mine(&bare, "x"), want);
+        // Deleting its last item there never sweeps it: it is a people's tag
+        let tag_id: String = bare.query_row("SELECT tag_id FROM inspiration_tags WHERE inspiration_id = 'x'", [], |r| r.get(0)).unwrap();
+        delete_item_row(&bare, "x").unwrap();
+        tidy_tags_after_delete(&bare, &[tag_id.clone()]);
+        assert_eq!(bare.query_row("SELECT COUNT(*) FROM tags WHERE id = ?1", [&tag_id], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        // Where its name stands for another concept: the people's tag keeps that one, and the pack's
+        // concept comes with its own tag (kept apart)
+        let other = db();
+        other.execute(ui_concept, []).unwrap();
+        item(&other, "x", "image", "");
+        other.execute("INSERT INTO tags (id, name, source, created_at, concept_id) VALUES ('p', 'UI', 'user', 0, 'green_screen')", []).unwrap();
+        recount_tags(&other, &import_pack_tags(&other, "x", &a, 8).tag_ids);
+        let mut got = mine(&other, "x");
+        got.sort();
+        assert_eq!(got, vec![("UI".to_string(), "user".to_string(), Some("green_screen".to_string())),
+                             ("UI (Tag lens)".to_string(), "lens".to_string(), Some("ui_design".to_string()))]);
+        // After a relabel on the exporting side, it still travels by its own name
+        src.execute(r#"UPDATE concepts SET labels_json = '{"en":"Interface","uz":"Interfeys"}' WHERE id = 'ui_design'"#, []).unwrap();
+        assert_eq!(entry_tags(&src, "a")["tags"], json!(["ui"]));
+        // An app that knows no tag_concepts (qooti 1.2.2) still makes the people's tag
+        let older = db();
+        item(&older, "y", "image", "");
+        let mut a_old = a.clone();
+        a_old.as_object_mut().unwrap().remove("tag_concepts");
+        recount_tags(&older, &import_pack_tags(&older, "y", &a_old, 5).tag_ids);
+        assert_eq!(mine(&older, "y"), vec![("ui".to_string(), "user".to_string(), None)]);
+    }
+
+    #[test]
+    fn deleting_an_item_keeps_peoples_tags_and_drops_only_its_unused_lens_tags() {
+        let db = db();
+        for id in ["a", "b"] { item(&db, id, "image", ""); }
+        user_tag(&db, "moodboard", "moodboard");   // on no item (its last link was removed before)
+        user_tag(&db, "client", "client");         // only on a
+        user_tag(&db, "shared", "shared");         // on a and b
+        db.execute("UPDATE tags SET source = 'import' WHERE id = 'client'", []).unwrap();
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();   // only on a
+        let mv = crate::tagging::ensure_concept_tag(&db, "music_video").unwrap();    // on a and b
+        let idle = crate::tagging::ensure_concept_tag(&db, "rotoscope").unwrap();    // on no item, not a's
+        for (i, t) in [("a", "client"), ("a", "shared"), ("b", "shared"), ("a", gs.as_str()), ("a", mv.as_str()), ("b", mv.as_str())] {
+            link(&db, i, t);
+        }
+        db.execute_batch(crate::db::RECOUNT_ALL_TAGS).unwrap();
+
+        delete_item_row(&db, "a").unwrap();
+
+        let tags: HashSet<String> = db.prepare("SELECT id FROM tags").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        for kept in ["moodboard", "client", "shared", mv.as_str(), idle.as_str()] {
+            assert!(tags.contains(kept), "{kept} was removed");
+        }
+        assert!(!tags.contains(&gs), "a's lens tag that no item has any more goes");
+        assert_eq!((count(&db, "client"), count(&db, "shared"), count(&db, &mv)), (0, 1, 1));
+        let left: i64 = db.query_row("SELECT COUNT(*) FROM tag_usage_counts WHERE tag_id = ?1", [&gs], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
+        assert!(load_inspiration(&db, "a").is_err(), "the item is gone");
+        // The lens tag comes back whenever it's needed
+        item(&db, "c", "image", "");
+        crate::tagging::answer_with(&db, "c", "green_screen", "added").unwrap();
+        assert_eq!(item_tags(&db, "c")[0].2.as_deref(), Some("green_screen"));
+    }
+
+    #[test]
+    fn deleting_a_collection_with_its_items_sets_the_counts_of_their_tags() {
+        let db = db();
+        db.execute("INSERT INTO collections (id, name, created_at, updated_at) VALUES ('col', 'Client', 0, 0)", []).unwrap();
+        for id in ["x", "y", "z"] { item(&db, id, "image", ""); }
+        for id in ["x", "y"] {
+            db.execute("INSERT INTO collection_items (collection_id, inspiration_id, created_at) VALUES ('col', ?1, 0)", [id]).unwrap();
+        }
+        user_tag(&db, "p", "poster");   // x and z (z isn't in the collection)
+        user_tag(&db, "q", "quiet");    // only y
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();   // x and y
+        for (i, t) in [("x", "p"), ("z", "p"), ("y", "q"), ("x", gs.as_str()), ("y", gs.as_str())] { link(&db, i, t); }
+        db.execute_batch(crate::db::RECOUNT_ALL_TAGS).unwrap();
+
+        delete_collection_item_rows(&db, "col").unwrap();
+
+        assert_eq!((count(&db, "p"), count(&db, "q")), (1, 0), "counts follow the links that are left");
+        let gone: i64 = db.query_row("SELECT COUNT(*) FROM tags WHERE id = ?1", [&gs], |r| r.get(0)).unwrap();
+        assert_eq!(gone, 0, "the lens tag no item has any more goes");
+        let items: i64 = db.query_row("SELECT COUNT(*) FROM inspirations", [], |r| r.get(0)).unwrap();
+        assert_eq!(items, 1, "only z is left");
+    }
+
+    #[test]
+    fn removing_a_tag_twice_counts_it_once() {
+        let db = db();
+        for id in ["a", "b", "c"] { item(&db, id, "image", ""); }
+        user_tag(&db, "u1", "moodboard");
+        tag_item(&db, "a", "u1").unwrap();
+        tag_item(&db, "b", "u1").unwrap();
+        assert_eq!(count(&db, "u1"), 2);
+        // A double click on × sends the same untag twice
+        untag_item(&db, "a", "u1").unwrap();
+        untag_item(&db, "a", "u1").unwrap();
+        assert_eq!(count(&db, "u1"), 1, "b still has it");
+        // The same for a lens tag
+        let gs = crate::tagging::ensure_concept_tag(&db, "green_screen").unwrap();
+        tag_item(&db, "a", &gs).unwrap();
+        tag_item(&db, "b", &gs).unwrap();
+        untag_item(&db, "b", &gs).unwrap();
+        untag_item(&db, "b", &gs).unwrap();
+        assert_eq!(count(&db, &gs), 1);
+        // A count that was already wrong is healed by the next change
+        db.execute("UPDATE tag_usage_counts SET count = 9 WHERE tag_id = 'u1'", []).unwrap();
+        tag_item(&db, "c", "u1").unwrap();
+        assert_eq!(count(&db, "u1"), 2);
+        db.execute("UPDATE tag_usage_counts SET count = 0 WHERE tag_id = 'u1'", []).unwrap();
+        untag_item(&db, "a", "u1").unwrap();   // a doesn't have it any more: nothing to remove
+        assert_eq!(count(&db, "u1"), 2);
+        // An unknown tag is no error and makes no count
+        untag_item(&db, "a", "no-such-tag").unwrap();
+        let n: i64 = db.query_row("SELECT COUNT(*) FROM tag_usage_counts WHERE tag_id = 'no-such-tag'", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+        // The tag stays even when no item has it
+        untag_item(&db, "b", "u1").unwrap();
+        untag_item(&db, "c", "u1").unwrap();
+        assert_eq!(count(&db, "u1"), 0);
+    }
+
+    #[test]
+    fn items_carry_their_scoring_signature() {
+        let db = db();
+        item(&db, "a", "image", "");
+        item(&db, "b", "image", "");
+        db.execute("UPDATE inspirations SET auto_tag_sig = 'abc123' WHERE id = 'a'", []).unwrap();
+        assert_eq!(load_inspiration(&db, "a").unwrap().auto_tag_sig.as_deref(), Some("abc123"));
+        assert_eq!(load_inspiration(&db, "b").unwrap().auto_tag_sig, None, "not scored yet");
+        let rows: Vec<Inspiration> = db.prepare(&format!("{INSP_SELECT} ORDER BY id")).unwrap()
+            .query_map([], row_to_inspiration).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(rows.iter().map(|r| r.auto_tag_sig.clone()).collect::<Vec<_>>(), vec![Some("abc123".to_string()), None]);
+        // A query that doesn't select it still reads the row
+        let lean: Inspiration = db.query_row(
+            "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
+                    aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
+                    phash, phash_source, vault_id, mime_type, created_at, updated_at,
+                    auto_tag_status, lens_suggestions, auto_tag_model, duration_secs
+             FROM inspirations WHERE id = 'a'", [], row_to_inspiration).unwrap();
+        assert_eq!(lean.auto_tag_sig, None);
+        let json = serde_json::to_value(load_inspiration(&db, "a").unwrap()).unwrap();
+        assert_eq!(json["auto_tag_sig"], "abc123", "the page gets it");
+    }
+}
+
+#[cfg(test)]
+mod picture_aspect_tests {
+    use super::*;
+
+    /// A folder of test pictures of known sizes: (file name, width, height).
+    fn pictures(sizes: &[(&str, u32, u32)]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("qooti-aspect-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, w, h) in sizes {
+            image::RgbImage::from_pixel(*w, *h, image::Rgb([200, 120, 40])).save(dir.join(name)).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn new_items_get_their_real_shape() {
+        let dir = pictures(&[("wide.png", 160, 90), ("tall.jpg", 60, 120), ("anim.gif", 40, 30)]);
+        let p = |n: &str| dir.join(n).to_string_lossy().into_owned();
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        // Pictures: their real size, whatever the caller passes (a link download passed nothing
+        // and got the format's 1.0; a pack may carry an old 1.0)
+        assert!(close(new_item_ratio(false, &p("wide.png"), None, 1.0), 160.0 / 90.0));
+        assert!(close(new_item_ratio(false, &p("tall.jpg"), Some(1.0), 1.0), 0.5));
+        assert!(close(new_item_ratio(false, &p("anim.gif"), None, 1.0), 40.0 / 30.0));
+        // A picture whose header can't be read: the known ratio, else the default
+        assert!(close(new_item_ratio(false, &p("missing.png"), Some(1.5), 1.0), 1.5));
+        assert!(close(new_item_ratio(false, &p("missing.png"), None, 1.0), 1.0));
+        // Videos: the probed (or the pack's) ratio, else the default; never a picture header
+        assert!(close(new_item_ratio(true, &p("wide.png"), Some(0.5625), 1.78), 0.5625));
+        assert!(close(new_item_ratio(true, &p("wide.png"), None, 1.78), 1.78));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn picture_aspects_are_fixed_once() {
+        let dir = pictures(&[("wide.png", 160, 90), ("tall.jpg", 60, 120), ("anim.gif", 40, 30),
+                             ("square.png", 50, 50), ("near.png", 201, 200)]);
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrate(&conn).unwrap();
+        let add = |id: &str, kind: &str, file: &str, ratio: f64| {
+            conn.execute(
+                "INSERT INTO inspirations (id, type, stored_path, aspect_ratio, auto_tag_sig, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 'old', 0, 0)",
+                params![id, kind, dir.join(file).to_string_lossy(), ratio],
+            ).unwrap();
+        };
+        add("wide", "image", "wide.png", 1.0);
+        add("tall", "image", "tall.jpg", 1.0);
+        add("anim", "gif", "anim.gif", 1.0);
+        add("square", "image", "square.png", 1.0);
+        add("near", "image", "near.png", 1.0);     // 0.5 % off: left alone
+        add("gone", "image", "missing.png", 1.0);  // file missing
+        add("set", "image", "wide.png", 1.5);      // already has a ratio: not looked at
+        add("clip", "video", "wide.png", 1.0);     // videos are never read as pictures
+        let db = Mutex::new(conn);
+
+        let r = fix_picture_aspects(&db).unwrap();
+        assert_eq!(r, AspectFix { already_done: false, checked: 6, fixed: 3, unreadable: 1, marked_done: true });
+        let conn = db.lock().unwrap();
+        let row = |id: &str| -> (f64, Option<String>) {
+            conn.query_row("SELECT aspect_ratio, auto_tag_sig FROM inspirations WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+        };
+        assert!((row("wide").0 - 160.0 / 90.0).abs() < 1e-9);
+        assert!((row("tall").0 - 0.5).abs() < 1e-9);
+        assert!((row("anim").0 - 40.0 / 30.0).abs() < 1e-9);
+        for id in ["wide", "tall", "anim"] { assert_eq!(row(id).1, None, "{id} is scored again"); }
+        for id in ["square", "near", "gone", "clip"] { assert_eq!(row(id), (1.0, Some("old".to_string())), "{id}"); }
+        assert_eq!(row("set"), (1.5, Some("old".to_string())));
+        drop(conn);
+
+        // Once only
+        assert_eq!(fix_picture_aspects(&db).unwrap(), AspectFix { already_done: true, ..Default::default() });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn picture_aspects_wait_when_no_file_can_be_read() {
+        // The library's drive isn't connected: nothing could be read, so the next start tries again
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn.execute("INSERT INTO inspirations (id, type, stored_path, aspect_ratio, created_at, updated_at)
+                      VALUES ('a', 'image', 'Z:/offline/a.png', 1.0, 0, 0)", []).unwrap();
+        let db = Mutex::new(conn);
+        let r = fix_picture_aspects(&db).unwrap();
+        assert_eq!((r.checked, r.unreadable, r.marked_done), (1, 1, false));
+        assert!(!fix_picture_aspects(&db).unwrap().already_done, "tried again");
+        // A file that is there but can't be read as a picture (a format without a readable
+        // header): the drive is connected, so the step is done; it isn't retried at every start
+        let dir = std::env::temp_dir().join(format!("qooti-aspect-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let odd = dir.join("photo.heic");
+        std::fs::write(&odd, b"not a picture this crate reads").unwrap();
+        db.lock().unwrap().execute("UPDATE inspirations SET stored_path = ?1", params![odd.to_string_lossy()]).unwrap();
+        let r = fix_picture_aspects(&db).unwrap();
+        assert_eq!((r.checked, r.fixed, r.unreadable, r.marked_done), (1, 0, 1, true));
+        assert!(fix_picture_aspects(&db).unwrap().already_done);
+        // A library without pictures at 1.0 is done at once
+        db.lock().unwrap().execute_batch("DELETE FROM inspirations; DELETE FROM preferences;").unwrap();
+        assert!(fix_picture_aspects(&db).unwrap().marked_done);
+        assert!(fix_picture_aspects(&db).unwrap().already_done);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The fix on a COPY of a real library (never the live file), with test pictures in a
+    /// scratch folder. Every item's file is first pointed into that folder, so nothing else is
+    /// ever read:
+    /// QOOTI_DB_COPY=<copy of qooti.db> QOOTI_SCRATCH=<empty folder> cargo test --lib real_library_copy_picture_aspects -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn real_library_copy_picture_aspects() {
+        let copy = std::env::var("QOOTI_DB_COPY").expect("QOOTI_DB_COPY");
+        let scratch = std::path::PathBuf::from(std::env::var("QOOTI_SCRATCH").expect("QOOTI_SCRATCH"));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let conn = rusqlite::Connection::open(&copy).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        let square_before = count("SELECT COUNT(*) FROM inspirations WHERE type IN ('image','gif') AND aspect_ratio = 1.0");
+        // Point every item at the scratch folder: the pictures at 1.0 get test files of
+        // different shapes (one in five really square), everything else a file that isn't there.
+        conn.execute("UPDATE inspirations SET stored_path = ?1 || '/missing-' || id", params![scratch.to_string_lossy()]).unwrap();
+        let ids: Vec<String> = conn.prepare("SELECT id FROM inspirations WHERE type IN ('image','gif') AND aspect_ratio = 1.0 ORDER BY id").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        let shapes = [(1600u32, 900u32), (600, 1200), (500, 500), (1280, 720), (720, 1280)];
+        let mut expect_fixed = 0usize;
+        for (k, id) in ids.iter().enumerate() {
+            let (w, h) = shapes[k % shapes.len()];
+            let file = scratch.join(format!("{id}.png"));
+            image::RgbImage::from_pixel(w / 10, h / 10, image::Rgb([90, 90, 90])).save(&file).unwrap();
+            conn.execute("UPDATE inspirations SET stored_path = ?2, auto_tag_sig = 'old' WHERE id = ?1",
+                         params![id, file.to_string_lossy()]).unwrap();
+            if w != h { expect_fixed += 1; }
+        }
+        let outside = count(&format!(
+            "SELECT COUNT(*) FROM inspirations WHERE substr(stored_path, 1, {}) != '{}'",
+            scratch.to_string_lossy().chars().count(), scratch.to_string_lossy().replace('\'', "''")));
+        assert_eq!(outside, 0, "every file is in the scratch folder");
+        let db = Mutex::new(conn);
+        let r = fix_picture_aspects(&db).unwrap();
+        println!("pictures at 1.0 before: {square_before}; {r:?}");
+        assert_eq!(r.checked, ids.len());
+        assert_eq!(r.fixed, expect_fixed);
+        assert!(r.marked_done);
+        let conn = db.lock().unwrap();
+        let left = conn.query_row("SELECT COUNT(*) FROM inspirations WHERE type IN ('image','gif') AND aspect_ratio = 1.0", [], |r| r.get::<_, i64>(0)).unwrap();
+        let rescore = conn.query_row("SELECT COUNT(*) FROM inspirations WHERE auto_tag_sig IS NULL AND type IN ('image','gif')", [], |r| r.get::<_, i64>(0)).unwrap();
+        println!("left at 1.0 (really square): {left}; pictures to score again: {rescore}");
+        assert_eq!(left as usize, ids.len() - expect_fixed);
+        drop(conn);
+        assert!(fix_picture_aspects(&db).unwrap().already_done);
+    }
+}
+
+/// The parts of the crop contract (crop spec C2, C3, C7) that live in this file; crop.rs tests
+/// the crop itself.
+#[cfg(test)]
+mod crop_contract_tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn db() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        crate::db::migrate(&db).unwrap();
+        db
+    }
+
+    fn folder() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("qooti-crop-contract-{}", Uuid::new_v4()));
+        vault::ensure_structure(&dir).unwrap();
+        dir
+    }
+
+    fn picture(path: &std::path::Path, w: u32, h: u32) {
+        image::RgbImage::from_pixel(w, h, image::Rgb([30, 60, 90])).save(path).unwrap();
+    }
+
+    fn ratio_and_sig(db: &Connection, id: &str) -> (f64, Option<String>) {
+        db.query_row("SELECT aspect_ratio, auto_tag_sig FROM inspirations WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+    }
+
+    #[test]
+    fn set_aspect_checks_and_saves_only_real_changes() {
+        let db = db();
+        db.execute("INSERT INTO inspirations (id, type, stored_path, aspect_ratio, auto_tag_sig, created_at, updated_at)
+                    VALUES ('a', 'image', 'a.png', 1.0, 'sig', 5, 5)", []).unwrap();
+        for bad in [0.04, 21.0, f64::NAN, f64::INFINITY, -1.0, 0.0] {
+            assert_eq!(set_aspect(&db, "a", bad), Err("bad_ratio".to_string()), "{bad}");
+        }
+        // Within 1 %: nothing is written, the signature stays
+        assert_eq!(set_aspect(&db, "a", 1.005), Ok(false));
+        assert_eq!(ratio_and_sig(&db, "a"), (1.0, Some("sig".into())));
+        // A real change: stored, scored again, updated_at untouched (a correction, not an edit)
+        assert_eq!(set_aspect(&db, "a", 1.6), Ok(true));
+        assert_eq!(ratio_and_sig(&db, "a"), (1.6, None));
+        let updated: i64 = db.query_row("SELECT updated_at FROM inspirations WHERE id = 'a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(updated, 5);
+        assert_eq!(set_aspect(&db, "a", 1.6), Ok(false), "the same shape again");
+        // The limits themselves are allowed
+        assert_eq!(set_aspect(&db, "a", 0.05), Ok(true));
+        assert_eq!(set_aspect(&db, "a", 20.0), Ok(true));
+        assert_eq!(set_aspect(&db, "nobody", 1.5), Ok(false), "an unknown id is no error");
+
+        // Re-scoring: every item queued while a run is booked goes into that run, once
+        assert!(queue_reshaped("x".into()), "the first books the run");
+        assert!(!queue_reshaped("y".into()));
+        assert!(!queue_reshaped("x".into()));
+        assert_eq!(take_reshaped(), vec!["x".to_string(), "y".to_string()]);
+        assert!(queue_reshaped("z".into()), "after the run, the next one books a new run");
+        assert_eq!(take_reshaped(), vec!["z".to_string()]);
+    }
+
+    #[test]
+    fn has_original_reaches_the_page() {
+        let db = db();
+        db.execute_batch(
+            "INSERT INTO inspirations (id, type, stored_path, original_path, original_hash, crop_rect, created_at, updated_at)
+                 VALUES ('a', 'image', 'a_crop_1.png', 'a.png', 'h', '{\"x\":0,\"y\":0,\"w\":0.5,\"h\":1}', 2, 2);
+             INSERT INTO inspirations (id, type, stored_path, created_at, updated_at) VALUES ('b', 'image', 'b.png', 1, 1);",
+        ).unwrap();
+        assert!(load_inspiration(&db, "a").unwrap().has_original);
+        assert!(!load_inspiration(&db, "b").unwrap().has_original);
+        let rows: Vec<Inspiration> = db.prepare(&format!("{INSP_SELECT} ORDER BY id")).unwrap()
+            .query_map([], row_to_inspiration).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(rows.iter().map(|r| r.has_original).collect::<Vec<_>>(), vec![true, false]);
+        let opts: ListInspirationsOpts = serde_json::from_value(serde_json::json!({ "sort": "recent" })).unwrap();
+        let listed = list_inspirations_with(&db, opts).unwrap();
+        assert_eq!(listed.iter().map(|r| (r.id.as_str(), r.has_original)).collect::<Vec<_>>(), vec![("a", true), ("b", false)]);
+        // A lean query (the OCR claim) still reads the row, as false
+        let lean: Inspiration = db.query_row(
+            "SELECT id, type, title, source_url, source_platform, stored_path, thumbnail_path,
+                    aspect_ratio, palette, ocr_text, ocr_status, ocr_language, file_hash,
+                    phash, phash_source, vault_id, mime_type, created_at, updated_at,
+                    auto_tag_status, lens_suggestions, auto_tag_model, duration_secs
+             FROM inspirations WHERE id = 'a'", [], row_to_inspiration).unwrap();
+        assert!(!lean.has_original);
+        // The page gets the flag, never the kept file's path
+        let json = serde_json::to_value(load_inspiration(&db, "a").unwrap()).unwrap();
+        assert_eq!(json["has_original"], true);
+        assert!(json.get("original_path").is_none() && json.get("original_hash").is_none() && json.get("crop_rect").is_none());
+    }
+
+    #[test]
+    fn deleting_a_cropped_item_removes_both_files() {
+        let dir = folder();
+        let p = |name: &str| dir.join("images").join(name);
+        for name in ["a.png", "a_crop_1.png", "a_crop_1_enhanced.png", "b.png", "b_crop_2.png", "c.png"] { picture(&p(name), 20, 20); }
+        let s = |name: &str| p(name).to_string_lossy().into_owned();
+        let db = Mutex::new(db());
+        db.lock().unwrap().execute_batch(&format!(
+            "INSERT INTO inspirations (id, type, stored_path, original_path, enhanced_path, created_at, updated_at)
+                 VALUES ('a', 'image', '{}', '{}', '{}', 0, 0);
+             INSERT INTO inspirations (id, type, stored_path, original_path, created_at, updated_at)
+                 VALUES ('b', 'image', '{}', '{}', 0, 0);
+             INSERT INTO inspirations (id, type, stored_path, created_at, updated_at) VALUES ('c', 'image', '{}', 0, 0);
+             INSERT INTO collections (id, name, created_at, updated_at) VALUES ('col', 'Posters', 0, 0);
+             INSERT INTO collection_items (collection_id, inspiration_id, created_at) VALUES ('col', 'b', 0);",
+            s("a_crop_1.png"), s("a.png"), s("a_crop_1_enhanced.png"), s("b_crop_2.png"), s("b.png"), s("c.png"),
+        )).unwrap();
+
+        delete_inspiration_with(&db, "a").unwrap();
+        for name in ["a.png", "a_crop_1.png", "a_crop_1_enhanced.png"] { assert!(!p(name).exists(), "{name}"); }
+        delete_collection_with(&db, Some(&dir), "col", true).unwrap();
+        for name in ["b.png", "b_crop_2.png"] { assert!(!p(name).exists(), "{name}"); }
+        assert!(p("c.png").exists(), "other items keep their files");
+        let left: i64 = db.lock().unwrap().query_row("SELECT COUNT(*) FROM inspirations", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn moving_the_library_moves_kept_originals_and_upscaled_copies() {
+        let db = db();
+        db.execute_batch(
+            "INSERT INTO inspirations (id, type, stored_path, thumbnail_path, original_path, enhanced_path, created_at, updated_at)
+                 VALUES ('a', 'image', 'D:/old/images/a_crop_1.png', NULL, 'D:/old/images/a.png', 'D:/old/images/a_crop_1_enhanced.png', 0, 0),
+                        ('v', 'video', 'D:/old/videos/v.mp4', 'D:/old/thumbnails/v_thumb.jpg', NULL, NULL, 0, 0),
+                        ('x', 'image', 'E:/elsewhere/x.png', NULL, 'E:/elsewhere/x0.png', NULL, 0, 0);",
+        ).unwrap();
+        move_library_paths(&db, "D:/old", "F:/new").unwrap();
+        let row = |id: &str| -> (String, Option<String>, Option<String>, Option<String>) {
+            db.query_row("SELECT stored_path, thumbnail_path, original_path, enhanced_path FROM inspirations WHERE id = ?1", [id],
+                         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap()
+        };
+        assert_eq!(row("a"), ("F:/new/images/a_crop_1.png".into(), None, Some("F:/new/images/a.png".into()),
+                              Some("F:/new/images/a_crop_1_enhanced.png".into())));
+        assert_eq!(row("v"), ("F:/new/videos/v.mp4".into(), Some("F:/new/thumbnails/v_thumb.jpg".into()), None, None));
+        assert_eq!(row("x"), ("E:/elsewhere/x.png".into(), None, Some("E:/elsewhere/x0.png".into()), None), "not in the old folder");
+    }
+
+    #[test]
+    fn import_one_is_the_import_loop() {
+        let dir = folder();
+        let db = Mutex::new(db());
+        let src = dir.join("downloads");
+        std::fs::create_dir_all(&src).unwrap();
+        picture(&src.join("wide.png"), 160, 90);
+        std::fs::write(src.join("notes.txt"), b"not a picture").unwrap();
+        let none = |_: &std::path::Path| (None, None);
+        let path = |n: &str| src.join(n).to_string_lossy().into_owned();
+        let ImportOne::Imported(item) = import_one(&db, &dir, &path("wide.png"), "file_import", &none).unwrap() else { panic!("not imported") };
+        assert!(item.stored_path.starts_with(&*dir.join("images").to_string_lossy()));
+        assert!((item.aspect_ratio - 160.0 / 90.0).abs() < 1e-9);
+        assert!(!item.has_original);
+        assert!(matches!(import_one(&db, &dir, &path("wide.png"), "file_import", &none).unwrap(), ImportOne::Existing(ref id) if *id == item.id));
+        assert!(matches!(import_one(&db, &dir, &path("notes.txt"), "file_import", &none).unwrap(), ImportOne::Skipped));
+        assert!(matches!(import_one(&db, &dir, &path("missing.png"), "file_import", &none).unwrap(), ImportOne::Skipped));
+        let (source, n): (String, i64) = db.lock().unwrap()
+            .query_row("SELECT import_source, (SELECT COUNT(*) FROM inspirations) FROM inspirations", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((source.as_str(), n), ("file_import", 1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn text_read_from_an_old_file_never_lands_on_a_crop() {
+        let db = db();
+        db.execute("INSERT INTO inspirations (id, type, stored_path, created_at, updated_at) VALUES ('a', 'image', 'a.png', 0, 0)", []).unwrap();
+        let result = |file: Option<&str>, text: &str, status: &str| OcrResult {
+            id: "a".into(), ocr_text: text.into(), ocr_language: Some("en".into()), status: status.into(),
+            stored_path: file.map(String::from),
+        };
+        let row = || -> (String, Option<String>) {
+            db.query_row("SELECT ocr_text, ocr_status FROM inspirations WHERE id = 'a'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+        };
+        let found = |word: &str| -> i64 {
+            db.query_row("SELECT COUNT(*) FROM inspirations_fts WHERE inspirations_fts MATCH ?1", [word], |r| r.get(0)).unwrap()
+        };
+        // Read and written while the item shows that file: kept
+        assert!(finalize_ocr(&db, &result(Some("a.png"), "big sale", "done")).unwrap());
+        assert_eq!(row(), ("big sale".to_string(), Some("done".to_string())));
+        assert_eq!(found("big"), 1);
+
+        // The reader took the item, then a crop gave it a new file and reset its text…
+        db.execute("UPDATE inspirations SET stored_path = 'a_crop_1.png', ocr_text = '', ocr_status = NULL WHERE id = 'a'", []).unwrap();
+        // …so the old file's words are dropped, and so is a failure (the file read may be gone)
+        assert!(!finalize_ocr(&db, &result(Some("a.png"), "big sale", "done")).unwrap());
+        assert!(!finalize_ocr(&db, &result(Some("a.png"), "", "failed")).unwrap());
+        assert_eq!(row(), (String::new(), None), "waiting to be read again");
+        assert_eq!(found("big"), 0, "not found by the words that were cut away");
+        // The cut, read next, is kept
+        assert!(finalize_ocr(&db, &result(Some("a_crop_1.png"), "sale", "done")).unwrap());
+        assert_eq!(row(), ("sale".to_string(), Some("done".to_string())));
+
+        // A page that doesn't say which file it read is written as before
+        let old: OcrResult = serde_json::from_value(serde_json::json!({ "id": "a", "ocr_text": "", "ocr_language": null, "status": "skipped" })).unwrap();
+        assert_eq!(old.stored_path, None);
+        assert!(finalize_ocr(&db, &old).unwrap());
+        assert_eq!(row(), (String::new(), Some("skipped".to_string())));
+        assert!(!finalize_ocr(&db, &OcrResult { id: "nobody".into(), ..result(None, "x", "done") }).unwrap());
     }
 }

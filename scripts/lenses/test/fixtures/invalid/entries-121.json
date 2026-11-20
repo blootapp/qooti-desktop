@@ -1,0 +1,1308 @@
+{
+  "id": "motion",
+  "version": 1,
+  "role": "specialist",
+  "name": {
+    "en": "Video editor / Motion designer",
+    "uz": "Videomontajchi / Motion dizayner"
+  },
+  "summary": {
+    "en": "Film looks, titles, screen recordings",
+    "uz": "Kino uslubi, titrlar, ekran yozuvlari"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.2
+  },
+  "borrows": [],
+  "concepts": [
+    {
+      "id": "m_c0",
+      "label": {
+        "en": "Motion 0",
+        "uz": "Harakat 0"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 0 one",
+        "motion prompt 0 two"
+      ]
+    },
+    {
+      "id": "m_c1",
+      "label": {
+        "en": "Motion 1",
+        "uz": "Harakat 1"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 1 one",
+        "motion prompt 1 two"
+      ]
+    },
+    {
+      "id": "m_c2",
+      "label": {
+        "en": "Motion 2",
+        "uz": "Harakat 2"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 2 one",
+        "motion prompt 2 two"
+      ]
+    },
+    {
+      "id": "m_c3",
+      "label": {
+        "en": "Motion 3",
+        "uz": "Harakat 3"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 3 one",
+        "motion prompt 3 two"
+      ]
+    },
+    {
+      "id": "m_c4",
+      "label": {
+        "en": "Motion 4",
+        "uz": "Harakat 4"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 4 one",
+        "motion prompt 4 two"
+      ]
+    },
+    {
+      "id": "m_c5",
+      "label": {
+        "en": "Motion 5",
+        "uz": "Harakat 5"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 5 one",
+        "motion prompt 5 two"
+      ]
+    },
+    {
+      "id": "m_c6",
+      "label": {
+        "en": "Motion 6",
+        "uz": "Harakat 6"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 6 one",
+        "motion prompt 6 two"
+      ]
+    },
+    {
+      "id": "m_c7",
+      "label": {
+        "en": "Motion 7",
+        "uz": "Harakat 7"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 7 one",
+        "motion prompt 7 two"
+      ]
+    },
+    {
+      "id": "m_c8",
+      "label": {
+        "en": "Motion 8",
+        "uz": "Harakat 8"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 8 one",
+        "motion prompt 8 two"
+      ]
+    },
+    {
+      "id": "m_c9",
+      "label": {
+        "en": "Motion 9",
+        "uz": "Harakat 9"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 9 one",
+        "motion prompt 9 two"
+      ]
+    },
+    {
+      "id": "m_c10",
+      "label": {
+        "en": "Motion 10",
+        "uz": "Harakat 10"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 10 one",
+        "motion prompt 10 two"
+      ]
+    },
+    {
+      "id": "m_c11",
+      "label": {
+        "en": "Motion 11",
+        "uz": "Harakat 11"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 11 one",
+        "motion prompt 11 two"
+      ]
+    },
+    {
+      "id": "m_c12",
+      "label": {
+        "en": "Motion 12",
+        "uz": "Harakat 12"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 12 one",
+        "motion prompt 12 two"
+      ]
+    },
+    {
+      "id": "m_c13",
+      "label": {
+        "en": "Motion 13",
+        "uz": "Harakat 13"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 13 one",
+        "motion prompt 13 two"
+      ]
+    },
+    {
+      "id": "m_c14",
+      "label": {
+        "en": "Motion 14",
+        "uz": "Harakat 14"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 14 one",
+        "motion prompt 14 two"
+      ]
+    },
+    {
+      "id": "m_c15",
+      "label": {
+        "en": "Motion 15",
+        "uz": "Harakat 15"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 15 one",
+        "motion prompt 15 two"
+      ]
+    },
+    {
+      "id": "m_c16",
+      "label": {
+        "en": "Motion 16",
+        "uz": "Harakat 16"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 16 one",
+        "motion prompt 16 two"
+      ]
+    },
+    {
+      "id": "m_c17",
+      "label": {
+        "en": "Motion 17",
+        "uz": "Harakat 17"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 17 one",
+        "motion prompt 17 two"
+      ]
+    },
+    {
+      "id": "m_c18",
+      "label": {
+        "en": "Motion 18",
+        "uz": "Harakat 18"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 18 one",
+        "motion prompt 18 two"
+      ]
+    },
+    {
+      "id": "m_c19",
+      "label": {
+        "en": "Motion 19",
+        "uz": "Harakat 19"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 19 one",
+        "motion prompt 19 two"
+      ]
+    },
+    {
+      "id": "m_c20",
+      "label": {
+        "en": "Motion 20",
+        "uz": "Harakat 20"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 20 one",
+        "motion prompt 20 two"
+      ]
+    },
+    {
+      "id": "m_c21",
+      "label": {
+        "en": "Motion 21",
+        "uz": "Harakat 21"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 21 one",
+        "motion prompt 21 two"
+      ]
+    },
+    {
+      "id": "m_c22",
+      "label": {
+        "en": "Motion 22",
+        "uz": "Harakat 22"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 22 one",
+        "motion prompt 22 two"
+      ]
+    },
+    {
+      "id": "m_c23",
+      "label": {
+        "en": "Motion 23",
+        "uz": "Harakat 23"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 23 one",
+        "motion prompt 23 two"
+      ]
+    },
+    {
+      "id": "m_c24",
+      "label": {
+        "en": "Motion 24",
+        "uz": "Harakat 24"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 24 one",
+        "motion prompt 24 two"
+      ]
+    },
+    {
+      "id": "m_c25",
+      "label": {
+        "en": "Motion 25",
+        "uz": "Harakat 25"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 25 one",
+        "motion prompt 25 two"
+      ]
+    },
+    {
+      "id": "m_c26",
+      "label": {
+        "en": "Motion 26",
+        "uz": "Harakat 26"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 26 one",
+        "motion prompt 26 two"
+      ]
+    },
+    {
+      "id": "m_c27",
+      "label": {
+        "en": "Motion 27",
+        "uz": "Harakat 27"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 27 one",
+        "motion prompt 27 two"
+      ]
+    },
+    {
+      "id": "m_c28",
+      "label": {
+        "en": "Motion 28",
+        "uz": "Harakat 28"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 28 one",
+        "motion prompt 28 two"
+      ]
+    },
+    {
+      "id": "m_c29",
+      "label": {
+        "en": "Motion 29",
+        "uz": "Harakat 29"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 29 one",
+        "motion prompt 29 two"
+      ]
+    },
+    {
+      "id": "m_c30",
+      "label": {
+        "en": "Motion 30",
+        "uz": "Harakat 30"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 30 one",
+        "motion prompt 30 two"
+      ]
+    },
+    {
+      "id": "m_c31",
+      "label": {
+        "en": "Motion 31",
+        "uz": "Harakat 31"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 31 one",
+        "motion prompt 31 two"
+      ]
+    },
+    {
+      "id": "m_c32",
+      "label": {
+        "en": "Motion 32",
+        "uz": "Harakat 32"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 32 one",
+        "motion prompt 32 two"
+      ]
+    },
+    {
+      "id": "m_c33",
+      "label": {
+        "en": "Motion 33",
+        "uz": "Harakat 33"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 33 one",
+        "motion prompt 33 two"
+      ]
+    },
+    {
+      "id": "m_c34",
+      "label": {
+        "en": "Motion 34",
+        "uz": "Harakat 34"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 34 one",
+        "motion prompt 34 two"
+      ]
+    },
+    {
+      "id": "m_c35",
+      "label": {
+        "en": "Motion 35",
+        "uz": "Harakat 35"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 35 one",
+        "motion prompt 35 two"
+      ]
+    },
+    {
+      "id": "m_c36",
+      "label": {
+        "en": "Motion 36",
+        "uz": "Harakat 36"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 36 one",
+        "motion prompt 36 two"
+      ]
+    },
+    {
+      "id": "m_c37",
+      "label": {
+        "en": "Motion 37",
+        "uz": "Harakat 37"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 37 one",
+        "motion prompt 37 two"
+      ]
+    },
+    {
+      "id": "m_c38",
+      "label": {
+        "en": "Motion 38",
+        "uz": "Harakat 38"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 38 one",
+        "motion prompt 38 two"
+      ]
+    },
+    {
+      "id": "m_c39",
+      "label": {
+        "en": "Motion 39",
+        "uz": "Harakat 39"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 39 one",
+        "motion prompt 39 two"
+      ]
+    },
+    {
+      "id": "m_c40",
+      "label": {
+        "en": "Motion 40",
+        "uz": "Harakat 40"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 40 one",
+        "motion prompt 40 two"
+      ]
+    },
+    {
+      "id": "m_c41",
+      "label": {
+        "en": "Motion 41",
+        "uz": "Harakat 41"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 41 one",
+        "motion prompt 41 two"
+      ]
+    },
+    {
+      "id": "m_c42",
+      "label": {
+        "en": "Motion 42",
+        "uz": "Harakat 42"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 42 one",
+        "motion prompt 42 two"
+      ]
+    },
+    {
+      "id": "m_c43",
+      "label": {
+        "en": "Motion 43",
+        "uz": "Harakat 43"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 43 one",
+        "motion prompt 43 two"
+      ]
+    },
+    {
+      "id": "m_c44",
+      "label": {
+        "en": "Motion 44",
+        "uz": "Harakat 44"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 44 one",
+        "motion prompt 44 two"
+      ]
+    },
+    {
+      "id": "m_c45",
+      "label": {
+        "en": "Motion 45",
+        "uz": "Harakat 45"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 45 one",
+        "motion prompt 45 two"
+      ]
+    },
+    {
+      "id": "m_c46",
+      "label": {
+        "en": "Motion 46",
+        "uz": "Harakat 46"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 46 one",
+        "motion prompt 46 two"
+      ]
+    },
+    {
+      "id": "m_c47",
+      "label": {
+        "en": "Motion 47",
+        "uz": "Harakat 47"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 47 one",
+        "motion prompt 47 two"
+      ]
+    },
+    {
+      "id": "m_c48",
+      "label": {
+        "en": "Motion 48",
+        "uz": "Harakat 48"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 48 one",
+        "motion prompt 48 two"
+      ]
+    },
+    {
+      "id": "m_c49",
+      "label": {
+        "en": "Motion 49",
+        "uz": "Harakat 49"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 49 one",
+        "motion prompt 49 two"
+      ]
+    },
+    {
+      "id": "m_c50",
+      "label": {
+        "en": "Motion 50",
+        "uz": "Harakat 50"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 50 one",
+        "motion prompt 50 two"
+      ]
+    },
+    {
+      "id": "m_c51",
+      "label": {
+        "en": "Motion 51",
+        "uz": "Harakat 51"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 51 one",
+        "motion prompt 51 two"
+      ]
+    },
+    {
+      "id": "m_c52",
+      "label": {
+        "en": "Motion 52",
+        "uz": "Harakat 52"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 52 one",
+        "motion prompt 52 two"
+      ]
+    },
+    {
+      "id": "m_c53",
+      "label": {
+        "en": "Motion 53",
+        "uz": "Harakat 53"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 53 one",
+        "motion prompt 53 two"
+      ]
+    },
+    {
+      "id": "m_c54",
+      "label": {
+        "en": "Motion 54",
+        "uz": "Harakat 54"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 54 one",
+        "motion prompt 54 two"
+      ]
+    },
+    {
+      "id": "m_c55",
+      "label": {
+        "en": "Motion 55",
+        "uz": "Harakat 55"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 55 one",
+        "motion prompt 55 two"
+      ]
+    },
+    {
+      "id": "m_c56",
+      "label": {
+        "en": "Motion 56",
+        "uz": "Harakat 56"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 56 one",
+        "motion prompt 56 two"
+      ]
+    },
+    {
+      "id": "m_c57",
+      "label": {
+        "en": "Motion 57",
+        "uz": "Harakat 57"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 57 one",
+        "motion prompt 57 two"
+      ]
+    },
+    {
+      "id": "m_c58",
+      "label": {
+        "en": "Motion 58",
+        "uz": "Harakat 58"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 58 one",
+        "motion prompt 58 two"
+      ]
+    },
+    {
+      "id": "m_c59",
+      "label": {
+        "en": "Motion 59",
+        "uz": "Harakat 59"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 59 one",
+        "motion prompt 59 two"
+      ]
+    },
+    {
+      "id": "m_c60",
+      "label": {
+        "en": "Motion 60",
+        "uz": "Harakat 60"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 60 one",
+        "motion prompt 60 two"
+      ]
+    },
+    {
+      "id": "m_c61",
+      "label": {
+        "en": "Motion 61",
+        "uz": "Harakat 61"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 61 one",
+        "motion prompt 61 two"
+      ]
+    },
+    {
+      "id": "m_c62",
+      "label": {
+        "en": "Motion 62",
+        "uz": "Harakat 62"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 62 one",
+        "motion prompt 62 two"
+      ]
+    },
+    {
+      "id": "m_c63",
+      "label": {
+        "en": "Motion 63",
+        "uz": "Harakat 63"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 63 one",
+        "motion prompt 63 two"
+      ]
+    },
+    {
+      "id": "m_c64",
+      "label": {
+        "en": "Motion 64",
+        "uz": "Harakat 64"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 64 one",
+        "motion prompt 64 two"
+      ]
+    },
+    {
+      "id": "m_c65",
+      "label": {
+        "en": "Motion 65",
+        "uz": "Harakat 65"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 65 one",
+        "motion prompt 65 two"
+      ]
+    },
+    {
+      "id": "m_c66",
+      "label": {
+        "en": "Motion 66",
+        "uz": "Harakat 66"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 66 one",
+        "motion prompt 66 two"
+      ]
+    },
+    {
+      "id": "m_c67",
+      "label": {
+        "en": "Motion 67",
+        "uz": "Harakat 67"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 67 one",
+        "motion prompt 67 two"
+      ]
+    },
+    {
+      "id": "m_c68",
+      "label": {
+        "en": "Motion 68",
+        "uz": "Harakat 68"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 68 one",
+        "motion prompt 68 two"
+      ]
+    },
+    {
+      "id": "m_c69",
+      "label": {
+        "en": "Motion 69",
+        "uz": "Harakat 69"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 69 one",
+        "motion prompt 69 two"
+      ]
+    },
+    {
+      "id": "m_c70",
+      "label": {
+        "en": "Motion 70",
+        "uz": "Harakat 70"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 70 one",
+        "motion prompt 70 two"
+      ]
+    },
+    {
+      "id": "m_c71",
+      "label": {
+        "en": "Motion 71",
+        "uz": "Harakat 71"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 71 one",
+        "motion prompt 71 two"
+      ]
+    },
+    {
+      "id": "m_c72",
+      "label": {
+        "en": "Motion 72",
+        "uz": "Harakat 72"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 72 one",
+        "motion prompt 72 two"
+      ]
+    },
+    {
+      "id": "m_c73",
+      "label": {
+        "en": "Motion 73",
+        "uz": "Harakat 73"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 73 one",
+        "motion prompt 73 two"
+      ]
+    },
+    {
+      "id": "m_c74",
+      "label": {
+        "en": "Motion 74",
+        "uz": "Harakat 74"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 74 one",
+        "motion prompt 74 two"
+      ]
+    },
+    {
+      "id": "m_c75",
+      "label": {
+        "en": "Motion 75",
+        "uz": "Harakat 75"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 75 one",
+        "motion prompt 75 two"
+      ]
+    },
+    {
+      "id": "m_c76",
+      "label": {
+        "en": "Motion 76",
+        "uz": "Harakat 76"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 76 one",
+        "motion prompt 76 two"
+      ]
+    },
+    {
+      "id": "m_c77",
+      "label": {
+        "en": "Motion 77",
+        "uz": "Harakat 77"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 77 one",
+        "motion prompt 77 two"
+      ]
+    },
+    {
+      "id": "m_c78",
+      "label": {
+        "en": "Motion 78",
+        "uz": "Harakat 78"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 78 one",
+        "motion prompt 78 two"
+      ]
+    },
+    {
+      "id": "m_c79",
+      "label": {
+        "en": "Motion 79",
+        "uz": "Harakat 79"
+      },
+      "media": "any",
+      "prompts": [
+        "motion prompt 79 one",
+        "motion prompt 79 two"
+      ]
+    },
+    {
+      "id": "m_h0",
+      "label": {
+        "en": "Hand 0",
+        "uz": "Qo‘lda 0"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h1",
+      "label": {
+        "en": "Hand 1",
+        "uz": "Qo‘lda 1"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h2",
+      "label": {
+        "en": "Hand 2",
+        "uz": "Qo‘lda 2"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h3",
+      "label": {
+        "en": "Hand 3",
+        "uz": "Qo‘lda 3"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h4",
+      "label": {
+        "en": "Hand 4",
+        "uz": "Qo‘lda 4"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h5",
+      "label": {
+        "en": "Hand 5",
+        "uz": "Qo‘lda 5"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h6",
+      "label": {
+        "en": "Hand 6",
+        "uz": "Qo‘lda 6"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h7",
+      "label": {
+        "en": "Hand 7",
+        "uz": "Qo‘lda 7"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h8",
+      "label": {
+        "en": "Hand 8",
+        "uz": "Qo‘lda 8"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h9",
+      "label": {
+        "en": "Hand 9",
+        "uz": "Qo‘lda 9"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h10",
+      "label": {
+        "en": "Hand 10",
+        "uz": "Qo‘lda 10"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h11",
+      "label": {
+        "en": "Hand 11",
+        "uz": "Qo‘lda 11"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h12",
+      "label": {
+        "en": "Hand 12",
+        "uz": "Qo‘lda 12"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h13",
+      "label": {
+        "en": "Hand 13",
+        "uz": "Qo‘lda 13"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h14",
+      "label": {
+        "en": "Hand 14",
+        "uz": "Qo‘lda 14"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h15",
+      "label": {
+        "en": "Hand 15",
+        "uz": "Qo‘lda 15"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h16",
+      "label": {
+        "en": "Hand 16",
+        "uz": "Qo‘lda 16"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h17",
+      "label": {
+        "en": "Hand 17",
+        "uz": "Qo‘lda 17"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h18",
+      "label": {
+        "en": "Hand 18",
+        "uz": "Qo‘lda 18"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h19",
+      "label": {
+        "en": "Hand 19",
+        "uz": "Qo‘lda 19"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h20",
+      "label": {
+        "en": "Hand 20",
+        "uz": "Qo‘lda 20"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h21",
+      "label": {
+        "en": "Hand 21",
+        "uz": "Qo‘lda 21"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h22",
+      "label": {
+        "en": "Hand 22",
+        "uz": "Qo‘lda 22"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h23",
+      "label": {
+        "en": "Hand 23",
+        "uz": "Qo‘lda 23"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h24",
+      "label": {
+        "en": "Hand 24",
+        "uz": "Qo‘lda 24"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h25",
+      "label": {
+        "en": "Hand 25",
+        "uz": "Qo‘lda 25"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h26",
+      "label": {
+        "en": "Hand 26",
+        "uz": "Qo‘lda 26"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h27",
+      "label": {
+        "en": "Hand 27",
+        "uz": "Qo‘lda 27"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h28",
+      "label": {
+        "en": "Hand 28",
+        "uz": "Qo‘lda 28"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h29",
+      "label": {
+        "en": "Hand 29",
+        "uz": "Qo‘lda 29"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h30",
+      "label": {
+        "en": "Hand 30",
+        "uz": "Qo‘lda 30"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h31",
+      "label": {
+        "en": "Hand 31",
+        "uz": "Qo‘lda 31"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h32",
+      "label": {
+        "en": "Hand 32",
+        "uz": "Qo‘lda 32"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h33",
+      "label": {
+        "en": "Hand 33",
+        "uz": "Qo‘lda 33"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h34",
+      "label": {
+        "en": "Hand 34",
+        "uz": "Qo‘lda 34"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h35",
+      "label": {
+        "en": "Hand 35",
+        "uz": "Qo‘lda 35"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h36",
+      "label": {
+        "en": "Hand 36",
+        "uz": "Qo‘lda 36"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h37",
+      "label": {
+        "en": "Hand 37",
+        "uz": "Qo‘lda 37"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h38",
+      "label": {
+        "en": "Hand 38",
+        "uz": "Qo‘lda 38"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h39",
+      "label": {
+        "en": "Hand 39",
+        "uz": "Qo‘lda 39"
+      },
+      "suggest": false
+    },
+    {
+      "id": "m_h40",
+      "label": {
+        "en": "Hand 40",
+        "uz": "Qo‘lda 40"
+      },
+      "suggest": false
+    }
+  ]
+}

@@ -11,12 +11,14 @@ export const GRID_RELOAD      = 'grid:reload'      // { collectionId?, tagIds?, 
 export const GRID_ITEM_ADDED  = 'grid:item-added'  // { inspiration: Inspiration }
 export const GRID_ITEM_DELETED = 'grid:item-deleted' // { id: string }
 export const GRID_ITEM_UPDATED = 'grid:item-updated' // { inspiration: Inspiration }
+export const ITEM_FILE_CHANGED = 'item:file-changed' // { inspiration: Inspiration, cause?: 'crop' | 'restore' } — an item's picture file was replaced (crop Save, Restore original)
 
 // ─── Collections ─────────────────────────────────────────────────
 export const COLLECTION_CREATED = 'collection:created' // { collection }
 export const COLLECTION_UPDATED = 'collection:updated' // { collection }
 export const COLLECTION_DELETED = 'collection:deleted' // { id }
 export const COLLECTION_SELECTED = 'collection:selected' // { id }
+export const GRID_HOME = 'grid:home' // {} — Home or the logo was pressed: an open collection closes (grid.js)
 
 // ─── Tags ────────────────────────────────────────────────────────
 export const TAG_CREATED        = 'tag:created'        // { tag }
@@ -69,9 +71,11 @@ export const MILESTONE_ACHIEVED = 'milestone:achieved' // { milestone }
 // ─── Settings ────────────────────────────────────────────────────
 export const SETTINGS_CHANGED = 'settings:changed' // { key, value }
 
-// ─── Auto-tagging ────────────────────────────────────────────────
-export const AUTO_TAG_BATCH_DONE  = 'autotag:batch-done'   // { processed: number, ids: string[] }
-export const TAG_VOCAB_CHANGED    = 'autotag:vocab-changed' // vocab dictionary updated
+// ─── Auto-tagging / Tag lens ─────────────────────────────────────
+export const AUTO_TAG_BATCH_DONE  = 'autotag:batch-done'   // { processed: number, ids: string[] } — Rust scored these items (autotag:scored)
+export const LENS_CHANGED         = 'lens:changed'         // {} — lens state changed in the backend (a lens on/off, installed, a role applied). lenses.js reloads on it; views listen to LENS_LOADED
+export const LENS_STATUS          = 'lens:status'          // { enabled, total, scored, waiting_videos, last_check, per_lens: { [lensId]: n } } — tagging progress (≤ 2/s while working). The backend sends it only while watched (api.lensStatusWatch: Settings › Library); refreshLensStatus() emits it on demand
+export const LENS_LOADED          = 'lens:loaded'          // { lenses, concepts } — lenses.js has fresh data (load, LENS_CHANGED, language, suggestions switch, tag list): re-render suggestions, lens names and labels
 
 // ─── Downloader ──────────────────────────────────────────────────
 export const DOWNLOAD_STARTED  = 'download:started'   // { downloadId, url, quality, importSource }
@@ -91,5 +95,6 @@ export const EXT_SAVE_QUEUED = 'ext:save-queued' // { queued_count, used, limit 
 // ─── System ──────────────────────────────────────────────────────
 export const SYSTEM_TOAST    = 'system:toast'    // { type: 'info'|'warning'|'error', message: string, duration?: number }
 export const UPDATE_AVAILABLE = 'update:available' // { version: string, notes: string }
+export const UPDATE_PROGRESS  = 'update:progress'  // { phase: 'downloading', downloaded, total: number|null } | { phase: 'installing' }
 export const SESSION_EXPIRED = 'session:expired'  // bloot apps signed out (or the ticket ran out) — sign-in screen
 export const HUB_SIGNED_IN   = 'session:hub-signed-in'  // bloot apps is signed in — leave the sign-in screen

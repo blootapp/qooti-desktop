@@ -79,6 +79,28 @@ fn read_json(name: &str) -> Option<serde_json::Value> {
 
 fn now_ms() -> i64 { chrono::Utc::now().timestamp_millis() }
 
+/// The raw signed ticket bloot apps keeps, for announcements.rs to send to api.bloot.app (the
+/// server verifies it to count people without keeping who they are). Read here, in Rust, so
+/// it never passes through the page. None: no ticket, or not ticket-shaped.
+pub(crate) fn raw_ticket() -> Option<String> {
+    let path = shared("licence.ticket");
+    if std::fs::metadata(&path).ok()?.len() > 16 * 1024 { return None; }
+    ticket_text(&std::fs::read_to_string(path).ok()?)
+}
+
+/// `v1.<payload>.<signature>`, base64url parts only.
+fn ticket_text(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    let shaped = raw.starts_with("v1.") && raw.split('.').count() == 3 && raw.split('.').all(|p| !p.is_empty())
+        && raw.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'));
+    shaped.then(|| raw.to_string())
+}
+
+/// This computer's id in the shared device.json (the one bloot apps and its ticket use).
+pub(crate) fn shared_device_id() -> Option<String> {
+    read_json("device.json")?["device_id"].as_str().map(str::to_string)
+}
+
 // ── ticket ───────────────────────────────────────────────────────────────────
 
 /// Signature + key id + device check (§5.3 steps 2–4). Expiry is checked by the caller.
@@ -378,6 +400,15 @@ mod tests {
         assert!(verify(&format!("v1.{unknown}.{s}"), "d").is_none());
         let known = URL_SAFE_NO_PAD.encode(br#"{"kid":"lic-2026-10","bloot_id":"B","tier":"pro","device_id":"d","iat":0,"exp":0}"#);
         assert!(verify(&format!("v1.{known}.{s}"), "d").is_none());
+    }
+
+    /// What announcements.rs may send as the ticket: only ticket-shaped text.
+    #[test]
+    fn ticket_text_is_ticket_shaped() {
+        assert_eq!(ticket_text(" v1.eyJh-_b.c2ln \r\n").as_deref(), Some("v1.eyJh-_b.c2ln"));
+        for bad in ["", "v1..sig", "v1.a.b.c", "v2.a.b", "v1.a b.c", "v1.a.b\"}", "{\"ticket\":1}"] {
+            assert!(ticket_text(bad).is_none(), "{bad}");
+        }
     }
 
     /// The real ticket bloot apps keeps on this computer, if signed in:

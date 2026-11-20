@@ -9,6 +9,7 @@ import { t } from './i18n.js'
 import { open as openDetail } from './card-detail.js'
 import * as motion from './motion.js'
 import { setPageBar } from './page-bar.js'
+import { matchRealShape } from './media-shape.js'
 
 const log = makeLogger('Collections')
 
@@ -30,6 +31,8 @@ export function init(el) {
   store.on(events.COLLECTION_DELETED, () => reload())
   store.on(events.NAV_CHANGE, ({ view }) => { if (view === 'collections') reload() })
   document.addEventListener('i18n:changed', () => { if (container?.childElementCount) reload() })
+  // Crop Save / Restore original: a "Not in a collection" tile takes the new file and shape
+  store.on(events.ITEM_FILE_CHANGED, ({ inspiration }) => refreshTileFile(inspiration))
 }
 
 async function reload() {
@@ -107,12 +110,19 @@ async function renderUncollected() {
   list.replaceChildren(...items.map(it => {
     const tile = document.createElement('button')
     tile.className = 'uncol-tile'
+    tile.dataset.id = it.id
+    // The item's own shape, as in the grid (no clamp: a clamped tile cut tall and wide
+    // pictures), corrected to the real one once the media loads
     const ar = it.aspect_ratio > 0 ? it.aspect_ratio : 1
-    tile.style.aspectRatio = String(Math.min(2, Math.max(0.5, ar)))
+    tile.style.aspectRatio = String(ar)
     const src = toSrc(it.thumbnail_path || it.stored_path)
     tile.innerHTML = it.type === 'video' && !it.thumbnail_path
       ? `<video src="${escHtml(src)}#t=1" muted preload="metadata" playsinline></video>`
       : `<img src="${escHtml(src)}" alt="" loading="lazy" decoding="async" draggable="false" />`
+    tile._item = it
+    const media = tile.querySelector('img, video')
+    if (media?.tagName === 'IMG') media.addEventListener('load', () => matchRealShape(it, tile, media.naturalWidth, media.naturalHeight))
+    else media?.addEventListener('loadedmetadata', () => matchRealShape(it, tile, media.videoWidth, media.videoHeight))
     if (it.duration_secs != null) tile.insertAdjacentHTML('beforeend', `<span class="card-duration">${fmtDur(it.duration_secs)}</span>`)
     tile.addEventListener('click', () => { if (!_justDragged) openDetail(it, items, items.indexOf(it)) })
     // Filed into a collection by drag: it isn't "not in a collection" any more
@@ -124,6 +134,22 @@ async function renderUncollected() {
     return tile
   }))
   section.hidden = false
+}
+
+// A "Not in a collection" tile after its item's picture was replaced (crop Save, Restore
+// original): the new file (a new name, so no cached picture) and the new shape
+function refreshTileFile(insp) {
+  if (!insp?.id || !container) return
+  const tile = [...container.querySelectorAll('.uncol-tile')].find(t => t.dataset.id === insp.id)
+  if (!tile) return
+  if (tile._item) {
+    const fields = { ...insp }
+    if (fields.collection_names == null) delete fields.collection_names
+    Object.assign(tile._item, fields)
+  }
+  tile.style.aspectRatio = String(insp.aspect_ratio > 0 ? insp.aspect_ratio : 1)
+  const img = tile.querySelector('img')
+  if (img) img.src = toSrc(insp.thumbnail_path || insp.stored_path)
 }
 
 // ─── Drag an item onto a collection ──────────────────────────────

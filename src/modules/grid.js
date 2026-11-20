@@ -6,14 +6,18 @@ import { sfx } from './sfx.js'
 import { open as openDetail } from './card-detail.js'
 import { openSimilarCanvas } from './similar-canvas.js'
 import { isOpen as isImporterOpen, openWith as openImporterWith } from './importer.js'
-import { getTagLabel } from './auto-tag.js'
-import { showPrompt, confirmDeleteItem } from './dialog.js'
+import { visibleSuggestions, parseConfidence, tagLabel, getTag, questionsNamedLike, tagConceptId, isLoaded as lensesLoaded } from './lenses.js'
+import { startupBusy } from './role-step.js'
+import { linksPending } from './browser-queue.js'
+import { showPrompt, confirmDeleteItem, isDialogOpen } from './dialog.js'
 import { t } from './i18n.js'
 import { getSetting } from './settings.js'
 import { getPlan } from './licensing.js'
 import { makeLogger } from './logger.js'
 import * as motion from './motion.js'
 import { setPageBar, setPageBarCount } from './page-bar.js'
+import { installUpdate } from './update-screen.js'
+import { matchRealShape } from './media-shape.js'
 
 const log = makeLogger('Grid')
 
@@ -138,7 +142,12 @@ export function init(el, _settings) {
   store.on(events.GRID_ITEM_ADDED,   ()           => reload())
   store.on(events.GRID_ITEM_DELETED, ({ id })          => { removeCard(id); checkEmpty() })
   store.on(events.GRID_ITEM_UPDATED, ({ inspiration }) => updateCardTitle(inspiration))
-  store.on(events.TAG_CREATED,       ()           => refreshTagChips())
+  // Crop Save / Restore original replaced the item's picture: its card takes the new file,
+  // shape and colour in place (it sits behind the player, so nothing animates)
+  store.on(events.ITEM_FILE_CHANGED, ({ inspiration }) => refreshCardFile(inspiration))
+  // A tag was added somewhere. When it went onto one item (the detail panel's tag picker
+  // says which), that card's question may be answered now: read the item again.
+  store.on(events.TAG_CREATED,       p            => { forgetHintsOf(p?.tag); refreshTagChips(); if (p?.inspirationId) refreshCardPills([p.inspirationId]) })
   store.on(events.TAG_DELETED,       ()           => refreshTagChips())
   // Guide B5 → F1: a drop opens Import with the files already listed.
   store.on(events.FILES_DROPPED, ({ paths }) => { if (!isImporterOpen()) openImporterWith(paths) })
@@ -167,6 +176,8 @@ export function init(el, _settings) {
   store.on(events.COLLECTION_SELECTED, ({ id, name }) => {
     enterCollectionMode(id, name ?? id)
   })
+  // Home or the logo while a collection is open: back to the whole library
+  store.on(events.GRID_HOME, () => { if (filter.collectionId) exitCollectionMode(false) })
   store.on(events.COLLECTION_DELETED, () => {
     if (filter.collectionId) exitCollectionMode(false)
     else reload()
@@ -179,6 +190,18 @@ export function init(el, _settings) {
     if (view === 'grid' && _collectionBar) setPageBar(_collectionBar)
   })
   store.on(events.AUTO_TAG_BATCH_DONE, ({ ids }) => refreshCardPills(ids))
+  // Tag lens (spec §5.6): lens data arrived or changed (a lens turned on or off, an
+  // update, the suggestions switch, the tag list, the language), so every card asks its
+  // question again and every tag chip says its name again. A language change relabels at
+  // once, from the lens data already here; LENS_LOADED follows with the fresh data.
+  // A tag a chip stands for may be gone (a lens update joined it into the people's tag with its
+  // name: one name, one tag): the chips are read again.
+  store.on(events.LENS_LOADED, () => { syncAllCardRows(); relabelTagChips(); if (hasGoneTagChips()) refreshTagChips() })
+  document.addEventListener('i18n:changed', () => { syncAllCardRows(); relabelTagChips() })
+  // Rows can't be measured while the grid is hidden (another page): fit them once it shows
+  store.on(events.NAV_CHANGE, ({ view }) => {
+    if (view === 'grid') requestAnimationFrame(() => { _fitQueue.clear(); fitRows(allRows()) })
+  })
   store.on(events.UPDATE_AVAILABLE, (info) => {
     _pendingUpdate = info
     log.info('update_available', { version: info?.version })
@@ -201,9 +224,10 @@ export function init(el, _settings) {
   // teaser/limit for a few seconds after upgrading until the next validation.
   store.on(events.SETTINGS_CHANGED, ({ key }) => { if (key === 'plan') reloadOnPlanFlip() })
 
-  // Propagate dominant collection tags to untagged items once on startup.
-  // No reload needed — the auto-tagger picks up the queued items and
-  // emits AUTO_TAG_BATCH_DONE → refreshCardPills() when done.
+  // Collection hints, once on startup: an untagged item in a collection whose items
+  // mostly share a tag is asked about that tag (stored as a `col:<tag id>` key; Rust only
+  // writes them while tag suggestions are on). Sent before the first reload, which reads
+  // the items after it.
   api.applyCollectionTagSuggestions().catch(() => {})
 
   reload()
@@ -270,10 +294,12 @@ function exitCollectionMode(navigateToCollections, { keepBar = false } = {}) {
 
   if (navigateToCollections) {
     store.emit(events.NAVIGATE, { view: 'collections' })
-  } else {
-    if (!keepBar) setPageBar(null)
-    reload()
+  } else if (!keepBar) {
+    setPageBar(null)
   }
+  // Read the whole library again on every way out, "Collections ›" too: without it the grid
+  // kept the collection's items and Home showed them (owner's bug, 2026-11-20)
+  reload()
 }
 
 // Colour / media-type filters on (guide G2): the tag row becomes removable filter chips
@@ -417,20 +443,8 @@ function renderShell() {
 
 // ─── Update bar ──────────────────────────────────────────────────
 // Shown under the tag pills when the backend reports a newer version.
-// Clicking Update downloads + installs it, then the app restarts.
-// Guide H3b: while the update installs, the window shows the logo and a progress line
-// until qooti restarts itself.
-function showUpdatingScreen(version) {
-  const el = document.createElement('div')
-  el.className = 'splash splash--updating'
-  el.innerHTML = `
-    <img class="splash-logo" src="/assets/brand/lockup-white.svg" alt="qooti" />
-    <span class="splash-status">${t('update.updating_to', { version: escHtml(version ?? '') })}</span>
-    <span class="splash-bar"><span></span></span>`
-  document.body.appendChild(el)
-  return el
-}
-
+// Clicking Update downloads + installs it behind the updating screen (update-screen.js),
+// then the app restarts.
 function renderUpdateBar() {
   const bar = container?.querySelector('#update-bar')
   if (!bar) return
@@ -450,29 +464,14 @@ function renderUpdateBar() {
 
   // .onclick (not addEventListener) so re-renders never stack duplicate handlers.
   btn.onclick = async () => {
-    // Indeterminate spinner + "Installing…" — the download/install can take a
-    // while and then the app restarts, so make it clearly in-progress (not frozen).
-    btn.innerHTML = `<span class="spinner-ring" aria-hidden="true"></span><span>${t('update.installing')}</span>`
-    btn.classList.add('is-loading')
+    // The updating screen covers the window and shows the download's progress; the
+    // bar's buttons only wait underneath it.
     btn.disabled     = true
     dismiss.disabled = true
-    log.info('update_install_started', { version })
-    const screen = showUpdatingScreen(version)
-    try {
-      await api.applyUpdate()   // backend downloads, installs, then restarts the app
-    } catch (err) {
-      screen.remove()
-      log.warn('update_install_failed', { error: String(err) })
-      btn.classList.remove('is-loading')
-      btn.textContent  = t('update.failed')
-      btn.disabled     = false
-      dismiss.disabled = false
-      store.emit(events.SYSTEM_TOAST, {
-        type: 'error',
-        message: t('update.toast_fail', { error: String(err) }),
-        duration: 8000,
-      })
-    }
+    if (await installUpdate(version)) return   // qooti closes or restarts by itself
+    btn.textContent  = t('update.failed')
+    btn.disabled     = false
+    dismiss.disabled = false
   }
   dismiss.onclick = () => {
     bar.hidden = true
@@ -522,13 +521,32 @@ function makeChip(label, onClick) {
 }
 
 function makeTagChip(tag) {
-  const chip = makeChip(tag.name, () => {
+  // tagLabel: a Tag lens tag shows its name in the app's language, any other tag as typed
+  const chip = makeChip(tagLabel(tag), () => {
     filter.collectionId = null; filter.tagIds = [tag.id]; filter.page = 0
     setActiveChip(chip); reload()
   })
   chip.dataset.tagId = tag.id
+  chip._tag = tag
   chip.classList.add('chip--tag')
+  // Rebuilt chips (a tag was added or removed) keep the tag filter that's on
+  if (!filter.collectionId && filter.tagIds[0] === tag.id) chip.classList.add('active')
   return chip
+}
+
+// The tag chips' names again, in the app's language (a language change, new lens data)
+function relabelTagChips() {
+  container?.querySelectorAll('#filter-chips-bar .chip--tag').forEach(chip => {
+    const tag = getTag(chip.dataset.tagId) ?? chip._tag
+    const label = tag ? tagLabel(tag) : ''
+    if (label && chip.textContent !== label) chip.textContent = label
+  })
+}
+
+// A tag chip whose tag the lens data's tag list (list_tags, read with it) doesn't have any more
+function hasGoneTagChips() {
+  if (!lensesLoaded()) return false
+  return [...(container?.querySelectorAll('#filter-chips-bar .chip--tag') ?? [])].some(chip => !getTag(chip.dataset.tagId))
 }
 
 async function refreshTagChips() {
@@ -907,6 +925,7 @@ function render(items, colCount, trimOrphans = false) {
   scrollEl.appendChild(masonry)
   gridEls.push(masonry)
   gridEl = masonry
+  flushFit()   // narrow cards get the icon-only Add before the first paint
   if (before) motion.playGridChange(scrollEl, before)
   // after the entrance motion has settled, so the tip points at the row's final spot
   setTimeout(maybeShowSuggestTip, 500)
@@ -1057,7 +1076,9 @@ function makeShelfCard(item, idx) {
     img.draggable = false
     img.alt = item.title ?? ''
     img.src = itemSrc(item)
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+    // contain, never cover: this shelf isn't drawn any more, but if it comes back it
+    // must not cut pictures either
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block'
     img.addEventListener('load',  () => img.classList.add('loaded'), { once: true })
     img.addEventListener('error', () => img.classList.add('loaded'), { once: true })
     media.appendChild(img)
@@ -1067,7 +1088,7 @@ function makeShelfCard(item, idx) {
     vid.muted       = true
     vid.preload     = 'none'
     vid.playsInline = true
-    vid.style.cssText = 'display:none;width:100%;height:100%;object-fit:cover'
+    vid.style.cssText = 'display:none;width:100%;height:100%;object-fit:contain'
     media.appendChild(vid)
 
     media.addEventListener('mouseenter', () => {
@@ -1105,7 +1126,7 @@ function makeShelfCard(item, idx) {
   titleEl.className = 'shelf-card-title'
   titleEl.textContent = item.title ?? ''
 
-  card.addEventListener('click', () => openDetail(item, renderedItems, idx))
+  card.addEventListener('click', () => { _suggestTip?.hide(); openDetail(item, renderedItems, idx) })
   card.addEventListener('contextmenu', e => {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, item, idx)
@@ -1146,23 +1167,30 @@ function makeCard(item, idx) {
   const media = document.createElement('div')
   media.className = 'card-media'
   // Native aspect ratio (width/height) drives the masonry card height — no crop.
-  // Falls back to 1 for items whose ratio hasn't been computed/backfilled yet.
+  // Falls back to 1 for items whose ratio hasn't been computed/backfilled yet. Once the
+  // picture (or video) has loaded, the box takes its real shape if the saved one is off
+  // (matchRealShape), and the media is fitted inside, never cut (object-fit: contain).
   const ar = item.aspect_ratio && item.aspect_ratio > 0 ? item.aspect_ratio : 1
   media.style.aspectRatio = String(ar)
   // Until the image arrives, show the picture's own main colour instead of grey.
   const tint = placeholderColor(item.palette)
   if (tint) media.style.backgroundColor = tint
+  // Every load: the first one, and a new file after a crop (refreshCardFile)
+  const fitImg = img => img.addEventListener('load', () => matchRealShape(item, media, img.naturalWidth, img.naturalHeight))
+  const fitVid = vid => vid.addEventListener('loadedmetadata', () => matchRealShape(item, media, vid.videoWidth, vid.videoHeight))
 
   if (item.type === 'video') {
     if (item.thumbnail_path) {
-      // Stored thumbnail → instant <img>; <video> loaded only on hover
+      // Stored thumbnail → instant <img>; <video> loaded only on hover. The thumbnail is
+      // a frame grab at the video's display size, so its shape is the video's.
       const img = document.createElement('img')
       img.loading   = 'lazy'
       img.decoding  = 'async'
       img.draggable = false
       img.alt = item.title ?? ''
       img.src = itemSrc(item)
-      img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+      img.style.cssText = 'width:100%;height:100%;display:block'
+      fitImg(img)
       img.addEventListener('load',  () => img.classList.add('loaded'), { once: true })
       img.addEventListener('error', () => img.classList.add('loaded'), { once: true })
       media.appendChild(img)
@@ -1172,7 +1200,8 @@ function makeCard(item, idx) {
       vid.muted       = true
       vid.preload     = 'none'
       vid.playsInline = true
-      vid.style.cssText = 'display:none;width:100%;height:100%;object-fit:cover'
+      vid.style.cssText = 'display:none;width:100%;height:100%'
+      fitVid(vid)
       media.appendChild(vid)
 
       media.addEventListener('mouseenter', () => {
@@ -1187,13 +1216,15 @@ function makeCard(item, idx) {
         img.style.display = 'block'
       })
     } else {
-      // No thumbnail yet — seek video to avoid solid intro frame; generate thumbnail in background
+      // No thumbnail yet — seek video to avoid solid intro frame; generate thumbnail in background.
+      // Chromium reports the turned (display) size, so phone videos saved as 16:9 come right.
       const vid = document.createElement('video')
       vid.src         = videoSrc(item)
       vid.muted       = true
       vid.preload     = 'metadata'
       vid.playsInline = true
-      vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+      vid.style.cssText = 'width:100%;height:100%;display:block'
+      fitVid(vid)
       seekToThumbnailFrame(vid)
       media.appendChild(vid)
       media.addEventListener('mouseenter', () => { vid.currentTime = 0; vid.play().catch(() => {}) })
@@ -1214,6 +1245,7 @@ function makeCard(item, idx) {
     img.draggable = false
     img.alt = item.title ?? ''
     img.src = itemSrc(item)
+    fitImg(img)
     img.addEventListener('load', () => {
       img.classList.add('loaded')
       if (IS_TAURI && !item.palette) extractAndSavePalette(item)
@@ -1303,6 +1335,7 @@ function makeCard(item, idx) {
   // Open detail modal on click (not on action buttons or suggestion rows)
   card.addEventListener('click', e => {
     if (e.target.closest('[data-action]') || e.target.closest('.suggestion-item')) return
+    _suggestTip?.hide()   // the tip only shows over the grid itself
     openDetail(item, renderedItems, idx)
   })
 
@@ -1319,22 +1352,52 @@ function makeCard(item, idx) {
 }
 
 // ─── Tag suggestion question rows ────────────────────────────────────────────
+// A card asks about one suggested tag at a time: "tag · Add · ×" (spec §5.6, §8.3).
+// Which suggestions may show, and in which order, is lenses.js's display rule (§0c): a
+// key shows when a lens that's on shows it on this item's media (a picture or a video),
+// and ranks with the first such lens, specialist lenses first; at most 3 for a picture and
+// 2 for a video, nothing before the lens data has loaded, unknown keys never. Add and ×
+// answer in Rust (answer_suggestion, with the lens that showed the row): Add links the
+// tag; both remember the answer and drop the key. The answered row slides out and the
+// next question rises in its place.
+
+const ROW_LEAVE_MS   = 180   // .suggestion-leaving (global.css) fades out in 0.18 s
+const MAPS_CHUNK     = 500   // items per get_suggestion_maps call (Rust takes up to 1000)
+// Questions answered in this session (`<item id>|<key>`). Rust drops an answered key
+// at once, but an item read just before that would bring the question back.
+const _answered = new Set()
+// Collection hints that left every item in this session (`col:<tag id>`): the tag now stands for
+// a concept (one name, one tag: a people's tag that Add or the picker made a concept's tag), so
+// the lenses ask about it and Rust removed its hints from every item (settle_concept_tag)
+const _goneHints = new Set()
+
+/** The questions an item's card may ask, best first: [{ key, score, label, lens, … }]. */
+function parseAutoTags(item) {
+  if (!item) return []
+  const conf = { ...parseConfidence(item.auto_tag_confidence) }
+  let changed = false
+  for (const key of Object.keys(conf)) {
+    if (_answered.has(`${item.id}|${key}`) || _goneHints.has(key)) { delete conf[key]; changed = true }
+  }
+  return visibleSuggestions(changed ? { ...item, auto_tag_confidence: conf } : item)
+}
 
 function makeSuggestions(item) {
-  const autoTags = parseAutoTags(item.auto_tag_confidence)
-  if (!autoTags.length) return null
+  const first = parseAutoTags(item)[0]
+  if (!first) return null
   const wrap = document.createElement('div')
   wrap.className = 'card-suggestions'
   // One question at a time — three stacked rows covered a third of the image on
   // every tagged card. Answering it brings up the next one (removeSuggestionRow).
-  wrap.appendChild(makeSuggestionRow(item, autoTags[0].tag))
+  wrap.appendChild(makeSuggestionRow(item, first))
   return wrap
 }
 
-function makeSuggestionRow(item, canonicalTag) {
-  const displayName = getTagLabel(canonicalTag)
+function makeSuggestionRow(item, suggestion) {
   const row = document.createElement('div')
   row.className = 'suggestion-item'
+  row.dataset.key = suggestion.key
+  row.dataset.lens = suggestion.lens ?? ''   // the lens that shows it, for the answer
 
   const sparkle = document.createElement('span')
   sparkle.className = 'icon icon-14 suggestion-sparkle'
@@ -1344,38 +1407,240 @@ function makeSuggestionRow(item, canonicalTag) {
   // Just the tag — the one-time tip (maybeShowSuggestTip) explains what the row is
   const q = document.createElement('span')
   q.className = 'suggestion-q'
-  q.innerHTML = `<strong>${escHtml(displayName)}</strong>`
+  q.appendChild(document.createElement('strong'))
 
   const yes = document.createElement('button')
   yes.className = 'suggestion-yes'
-  yes.title = t('suggest.yes_title', { name: displayName })
-  yes.textContent = t('suggest.add')
 
   const no = document.createElement('button')
   no.className = 'suggestion-no'
-  no.title = t('suggest.not_this')
   no.innerHTML = I('x', 14)
 
-  yes.addEventListener('click', e => { e.stopPropagation(); applySuggestion(item, canonicalTag, displayName, row) })
-  no.addEventListener('click',  e => { e.stopPropagation(); dismissSuggestion(item, canonicalTag, row) })
+  yes.addEventListener('click', e => { e.stopPropagation(); applySuggestion(item, row) })
+  no.addEventListener('click',  e => { e.stopPropagation(); dismissSuggestion(item, row) })
 
   row.append(sparkle, q, yes, no)
+  labelRow(row, suggestion.label)
   return row
+}
+
+// A row's words in the app's language: the tag's name, Add and the two tooltips.
+// Another language only swaps the words; the question stays and nothing moves.
+function labelRow(row, label) {
+  const name = row.querySelector('.suggestion-q strong')
+  const yes  = row.querySelector('.suggestion-yes')
+  const no   = row.querySelector('.suggestion-no')
+  if (!name || !yes || !no) return
+  if (name.textContent !== label) name.textContent = label
+  const addTitle = t('lens.card.add_title', { name: label })
+  if (yes.title !== addTitle) { yes.title = addTitle; yes.setAttribute('aria-label', addTitle) }
+  const notThis = t('lens.card.dismiss')
+  if (no.title !== notThis) { no.title = notThis; no.setAttribute('aria-label', notThis) }
+  // A new row, or Add in another language: the word first, then measured (fitRows)
+  const word = t('lens.card.add')
+  if (row.dataset.addWord !== word) {
+    row.dataset.addWord = word
+    setAddLook(row, false)
+    _fitQueue.add(row)
+  }
+}
+
+// ── Narrow cards: an icon-only Add (spec §7) ──
+// When a card leaves the tag's name under ~60 px (compact density, the longer Uzbek
+// words), Add shows as a round check button with the same tooltip, and the name gets
+// the room the word took. Measured once laid out; the word's width is remembered, so a
+// card that has grown wide enough gets the word back.
+const NARROW_LABEL_PX = 60
+const _fitQueue = new Set()   // rows waiting to be measured (flushFit, once they're on the page)
+let _fitFrame = 0             // the frame that measures them (scheduleFit)
+
+function setAddLook(row, narrow) {
+  const yes = row.querySelector('.suggestion-yes')
+  if (!yes) return
+  row.dataset.narrow = narrow ? '1' : '0'
+  yes.classList.toggle('suggestion-yes--icon', narrow)
+  if (narrow) yes.innerHTML = I('check', 12)
+  else yes.textContent = row.dataset.addWord || t('lens.card.add')
+}
+
+// Reads every row first, then changes the ones that need it (one layout, no thrashing)
+function fitRows(rows) {
+  const changes = []
+  for (const row of rows) {
+    if (!row?.isConnected || row.classList.contains('suggestion-leaving')) continue
+    const q   = row.querySelector('.suggestion-q')
+    const yes = row.querySelector('.suggestion-yes')
+    if (!q || !yes || !row.offsetWidth) continue   // not laid out: the grid is hidden
+    const narrow = row.dataset.narrow === '1'
+    // The room the name would have next to the word
+    const room = narrow ? q.clientWidth - ((Number(row.dataset.addW) || 0) - yes.offsetWidth) : q.clientWidth
+    if (!narrow && room < NARROW_LABEL_PX) changes.push([row, true, yes.offsetWidth])
+    else if (narrow && room >= NARROW_LABEL_PX) changes.push([row, false, 0])
+  }
+  for (const [row, narrow, wordW] of changes) {
+    if (narrow) row.dataset.addW = String(wordW)
+    setAddLook(row, narrow)
+  }
+}
+
+// Measures the waiting rows now (one layout of the grid). render() calls it before the
+// first paint; everything else goes through scheduleFit.
+function flushFit() {
+  if (!_fitQueue.size) return
+  const rows = [..._fitQueue]
+  _fitQueue.clear()
+  fitRows(rows)
+}
+
+// Measures the waiting rows once, in the next frame, before it's painted (so the wide Add
+// never flashes). Measuring lays out the whole grid, and that costs the same for one row
+// as for a thousand: rows that arrive together (a re-score of the library brings thousands)
+// are measured together, never one card at a time.
+function scheduleFit() {
+  if (_fitFrame) return
+  _fitFrame = requestAnimationFrame(() => {
+    _fitFrame = 0
+    flushFit()
+  })
+}
+
+function allRows() {
+  return allCards().map(c => c.querySelector('.card-suggestions .suggestion-item'))
+}
+
+// ── Keeping a card's question up to date ──
+
+/** The in-memory item a card was drawn from (refreshCardPills keeps it fresh). */
+function itemForCard(card) {
+  const id = card?.dataset.id
+  if (!id) return null
+  return renderedItems.find(r => r.id === id) ?? _lastView?.teaserItems?.find(r => r.id === id) ?? null
+}
+
+function latestItem(item) {
+  return renderedItems.find(r => r.id === item.id) ?? item
+}
+
+// Puts a card's current question in place: a fresh row that rises (suggestion-rise on
+// .card-suggestions), or none, and then the caption goes back to hover-only. The row is
+// measured in the next frame, with every other new row (scheduleFit).
+function showRow(card, item) {
+  card.querySelector('.card-suggestions')?.remove()
+  const wrap = makeSuggestions(item)
+  if (!wrap) { card.classList.remove('has-suggestion'); return }
+  card.querySelector('.card-caption')?.appendChild(wrap)
+  card.classList.add('has-suggestion')
+  scheduleFit()
+}
+
+// Runs `fn` once a row has faded out (ROW_LEAVE_MS). Rows that start leaving in the same
+// task are swapped together, in one timer: a lens update can change thousands of
+// questions at once, and a timer per card would let a frame (and a measuring of the whole
+// grid) in between every few of them.
+let _leaveBatch = null
+function afterRowLeaves(fn) {
+  if (!_leaveBatch) {
+    const batch = _leaveBatch = []
+    queueMicrotask(() => { if (_leaveBatch === batch) _leaveBatch = null })
+    setTimeout(() => {
+      for (const f of batch) {
+        try { f() } catch (err) { log.warn('row_swap_failed', { error: err }) }
+      }
+    }, ROW_LEAVE_MS)
+  }
+  _leaveBatch.push(fn)
+}
+
+// The pointer is on the card, or the keyboard focus is in it (a button clicked with the
+// mouse keeps the focus too, but that one doesn't count)
+function isCardBusy(card) {
+  if (card.matches(':hover')) return true
+  const el = document.activeElement
+  if (!el || el === document.body || !card.contains(el)) return false
+  try { return el.matches(':focus-visible') } catch { return true }   // a webview without :focus-visible
+}
+
+// Brings one card's question up to date (new scores, a lens on or off, the language).
+// The same question only gets its words again. Another question replaces the row (it
+// slides out, the new one rises), but never under the pointer or the keyboard focus:
+// that waits until both have left the card, so nothing changes under a click.
+function syncCardRow(card, item) {
+  if (!card?.isConnected || !item) return
+  const row = card.querySelector('.card-suggestions .suggestion-item')
+  // Being answered: removeSuggestionRow puts the next question up itself
+  if (row && (row.classList.contains('suggestion-saving') || row.classList.contains('suggestion-leaving'))) return
+  const next = parseAutoTags(item)[0] ?? null
+  if ((row?.dataset.key ?? null) === (next?.key ?? null)) {
+    if (row && next) { labelRow(row, next.label); row.dataset.lens = next.lens ?? '' }
+    return
+  }
+  if (isCardBusy(card)) { syncWhenIdle(card); return }
+  if (!row) { showRow(card, item); return }
+  row.classList.add('suggestion-leaving')
+  afterRowLeaves(() => {
+    if (card.isConnected) showRow(card, itemForCard(card) ?? item)
+  })
+}
+
+// Waits until the pointer and the keyboard focus have left the card, then syncs it once
+function syncWhenIdle(card) {
+  if (card._rowSyncWaiting) return
+  card._rowSyncWaiting = true
+  // A moment later, so :hover and the focus have moved on
+  const check = () => setTimeout(() => {
+    if (!card.isConnected || isCardBusy(card)) return
+    card.removeEventListener('pointerleave', check)
+    card.removeEventListener('focusout', check)
+    card._rowSyncWaiting = false
+    const item = itemForCard(card)
+    if (item) { syncCardRow(card, item); scheduleFit() }
+  }, 0)
+  card.addEventListener('pointerleave', check)
+  card.addEventListener('focusout', check)
+}
+
+// Every card on the grid (lens data changed, or the language)
+function syncAllCardRows() {
+  const byId = new Map()
+  for (const i of _lastView?.teaserItems ?? []) byId.set(i.id, i)
+  for (const i of renderedItems) byId.set(i.id, i)
+  for (const card of allCards()) {
+    const item = byId.get(card.dataset.id)
+    if (item) syncCardRow(card, item)
+  }
+  scheduleFit()   // the rows that only got new words (another language) are measured too
+  maybeShowSuggestTip()
 }
 
 // ─── One-time tip for tag suggestions ─────────────────────────────
 // The suggestion row is just "tag · Add · ×", so the first time one is on screen a small
 // tip explains it. Got it / Add / × mark it seen for good; scrolling or leaving only
 // hides it (it comes back next time).
+// One coach mark at a time, and only over the grid itself: while start-up's own steps run
+// (the sign-in screen, the role step, the welcome tour and the extension promo after it,
+// and the moment between them: role-step.js startupBusy), an item is open, a dialog is up
+// or "Links from your browser" is about to open (browser-queue.js linksPending: it would
+// cover the tip), the tip waits and looks again a moment later.
 const SUGGEST_TIP_KEY = 'qooti-tip-tag-suggest'
+const TIP_RETRY_MS = 1000
 let _suggestTip = null
+let _tipRetry   = null
+
+function tipMustWait() {
+  return startupBusy() || isDialogOpen() || linksPending() || !!document.querySelector('.detail-modal.open')
+}
 
 function maybeShowSuggestTip() {
   if (_suggestTip) return
   try { if (localStorage.getItem(SUGGEST_TIP_KEY)) return } catch { return }
+  if (tipMustWait()) {
+    _tipRetry ??= setTimeout(() => { _tipRetry = null; maybeShowSuggestTip() }, TIP_RETRY_MS)
+    return
+  }
   requestAnimationFrame(() => {
     const scrollEl = container?.querySelector('#grid-scroll')
     if (!scrollEl || container.hidden || _suggestTip) return
+    if (tipMustWait()) { maybeShowSuggestTip(); return }   // something opened meanwhile
     const vp = scrollEl.getBoundingClientRect()
     const row = [...scrollEl.querySelectorAll('.card:not(.free-teaser-card) .suggestion-item')].find(r => {
       const b = r.getBoundingClientRect()
@@ -1391,7 +1656,6 @@ function maybeShowSuggestTip() {
       <p class="coach-tip-body">${t('suggest.tip_body')}</p>
       <button class="coach-tip-ok">${t('suggest.tip_ok')}</button>`
     document.getElementById('overlays').appendChild(tip)
-    row.classList.add('is-coached')
 
     // Above the row (below it if there's no room), arrow pointing at it
     const b = row.getBoundingClientRect()
@@ -1407,7 +1671,6 @@ function maybeShowSuggestTip() {
 
     const hide = () => {
       tip.remove()
-      row.classList.remove('is-coached')
       scrollEl.removeEventListener('scroll', hide)
       window.removeEventListener('resize', hide)
       _suggestTip = null
@@ -1421,67 +1684,92 @@ function maybeShowSuggestTip() {
   })
 }
 
-async function applySuggestion(item, canonicalTag, displayName, row) {
+// Add: Rust links the Tag lens tag (made on first use) or the hinted collection tag,
+// remembers the answer and drops the key → the Tag. With it go the item's other questions
+// that ask the name it now has (§0b.2), here as in Rust. A collection hint whose tag is gone
+// meanwhile, or a question whose name the item already has, gives null: Rust has dropped the
+// key without an answer, and the row goes.
+async function applySuggestion(item, row) {
+  const key = row.dataset.key
+  if (!key || row.classList.contains('suggestion-saving') || row.classList.contains('suggestion-leaving')) return
   row.classList.add('suggestion-saving')
+  const isHint = key.startsWith('col:')
   try {
-    const existing = await api.listTags()
-    let tag = existing.find(t => t.name.toLowerCase() === displayName.toLowerCase())
-    const isNew = !tag
-    if (!tag) tag = await api.createTag(displayName, 'model')
-    await api.tagInspiration(item.id, tag.id)
-    log.info('suggestion_accepted', { id: item.id, tag: displayName, model: item.auto_tag_model ?? '—', new_tag: isNew })
-    store.emit(events.TAG_CREATED, { tag })
-    removeSuggestionRow(item, canonicalTag, row)
+    const tag = await api.answerSuggestion(item.id, key, 'added', row.dataset.lens || null)
+    if (tag) log.info('suggestion_accepted', { id: item.id, key })
+    else log.info('suggestion_gone', { id: item.id, key })
+    forgetSuggestion(item, key)
+    if (tag) {
+      for (const k of questionsNamedLike(tag, parseConfidence(latestItem(item).auto_tag_confidence))) forgetSuggestion(item, k)
+    }
+    if (tag) store.emit(events.TAG_CREATED, { tag })
+    removeSuggestionRow(item, row)
   } catch (err) {
-    log.error('suggestion_accept_failed', { id: item.id, tag: displayName, error: err })
-    row.classList.remove('suggestion-saving')
+    log.error('suggestion_accept_failed', { id: item.id, key, error: err })
+    if (!isHint) { row.classList.remove('suggestion-saving'); return }
+    // A hint that can't be added would fail the same way on every click: it goes, as a "no"
+    forgetSuggestion(item, key)
+    removeSuggestionRow(item, row)
+    api.answerSuggestion(item.id, key, 'dismissed', null)
+      .catch(e => log.warn('suggestion_dismiss_failed', { id: item.id, key, error: e }))
   }
 }
 
-function dismissSuggestion(item, canonicalTag, row) {
-  log.info('suggestion_dismissed', { id: item.id, tag: getTagLabel(canonicalTag) })
-  removeSuggestionRow(item, canonicalTag, row)
+// ×: the row goes at once; Rust remembers the answer, so the question never comes back
+function dismissSuggestion(item, row) {
+  const key = row.dataset.key
+  if (!key || row.classList.contains('suggestion-saving') || row.classList.contains('suggestion-leaving')) return
+  log.info('suggestion_dismissed', { id: item.id, key })
+  forgetSuggestion(item, key)
+  removeSuggestionRow(item, row)
+  api.answerSuggestion(item.id, key, 'dismissed', row.dataset.lens || null)
+    .catch(err => log.warn('suggestion_dismiss_failed', { id: item.id, key, error: err }))
 }
 
-function removeSuggestionRow(item, tagId, row) {
-  // Remove from in-memory confidence and persist to DB
-  try {
-    const conf = JSON.parse(item.auto_tag_confidence || '{}')
-    delete conf[tagId]
-    item.auto_tag_confidence = JSON.stringify(conf)
-    api.finalizeAutoTagResult(item.id, item.auto_tag_confidence, item.auto_tag_model ?? null, 'done')
-      .catch(e => console.error('[grid] update confidence failed:', e))
-  } catch { /* ignore */ }
+// A tag that stands for a concept is never asked about by a collection hint: when a tag comes
+// back from Add or the picker with a concept, its hints leave every card here too, at once (a
+// card would otherwise ask about the tag its item has just been given, or ask it twice)
+function forgetHintsOf(tag) {
+  if (!tag?.id || !tagConceptId(tag)) return
+  const key = `col:${tag.id}`
+  if (_goneHints.has(key)) return
+  _goneHints.add(key)
+  const cards = cardMap()
+  const asked = new Map()   // id → an in-memory copy that holds the hint
+  for (const index of itemIndexes()) {
+    for (const [id, copy] of index) {
+      if (!asked.has(id) && key in parseConfidence(copy.auto_tag_confidence)) asked.set(id, copy)
+    }
+  }
+  for (const [id, copy] of asked) {
+    const card = cards.get(id)
+    if (card) syncCardRow(card, itemForCard(card) ?? copy)
+  }
+}
 
+// An answered key leaves the in-memory item too (Rust has dropped it from the stored
+// suggestions), so the next row, a resize or a late re-read never ask it again
+function forgetSuggestion(item, key) {
+  _answered.add(`${item.id}|${key}`)
+  const copies = new Set([item, renderedItems.find(r => r.id === item.id), _lastView?.visibleItems?.find(r => r.id === item.id)])
+  for (const copy of copies) {
+    if (!copy) continue
+    const conf = { ...parseConfidence(copy.auto_tag_confidence) }
+    if (!(key in conf)) continue
+    delete conf[key]
+    copy.auto_tag_confidence = JSON.stringify(conf)
+  }
+}
+
+// The answered row slides out, then the next question (if any) rises in its place, or
+// the caption goes back to hover-only
+function removeSuggestionRow(item, row) {
   row.classList.add('suggestion-leaving')
   const card = row.closest('.card')
-  setTimeout(() => {
-    const wrap = row.parentElement
+  afterRowLeaves(() => {
     row.remove()
-    const next = parseAutoTags(item.auto_tag_confidence)[0]
-    if (wrap && next && !wrap.querySelector('.suggestion-item')) {
-      wrap.appendChild(makeSuggestionRow(item, next.tag))
-      return
-    }
-    if (wrap && !wrap.querySelector('.suggestion-item')) {
-      wrap.remove()
-      card?.classList.remove('has-suggestion')  // caption reverts to hover-only
-    }
-  }, 180)
-}
-
-// ─── Parse auto_tag_confidence JSON → sorted array ───────────
-function parseAutoTags(json) {
-  if (!json) return []
-  try {
-    const obj = typeof json === 'string' ? JSON.parse(json) : json
-    return Object.entries(obj)
-      .map(([tag, score]) => ({ tag, score }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)   // show top 3 suggestions
-  } catch {
-    return []
-  }
+    if (card?.isConnected) showRow(card, latestItem(item))
+  })
 }
 
 function itemSrc(item) {
@@ -1637,6 +1925,7 @@ function onGridResize() {
     const newCount = calcColCount()
     // Re-lay-out from cache (no DB round-trip, no re-shuffle) rather than reload.
     if (newCount !== currentColCount) relayout()
+    else fitRows(allRows())   // same columns, wider or narrower cards: Add word or icon again
   }, 200)
 }
 
@@ -1956,46 +2245,122 @@ function removeCard(id) {
   _lastViewRemove(id)  // so a later resize relayout doesn't resurrect the card
 }
 
-async function refreshCardPills(ids) {
-  // Only fetch items that are actually rendered right now.
-  const targets = ids.filter(id => queryCard(id))
-  if (!targets.length) return
+// Rust has scored these items (or a tag went onto one): read their suggestions again and
+// bring their cards' questions up to date (spec §0b.8). One refresh runs at a time and
+// later ids wait in a queue, so a re-score of the whole library (an autotag:scored per 500
+// items, all within a second) is read 500 cards per get_suggestion_maps call. Only cards
+// on the grid are read. A row is only rebuilt when its question changes, and never under
+// the pointer or the keyboard focus (syncCardRow).
+const _pillQueue = new Set()   // ids waiting to be read again, oldest first
+let _pillBusy = false
 
-  // Fetch all in parallel instead of one blocking round-trip per id.
-  const items = await Promise.all(
-    targets.map(id => api.getInspiration(id).catch(() => null))
-  )
+function refreshCardPills(ids) {
+  for (const id of Array.isArray(ids) ? ids : []) {
+    if (id != null) _pillQueue.add(String(id))
+  }
+  if (!_pillBusy && _pillQueue.size) runPillQueue().catch(err => log.warn('refresh_failed', { error: err }))
+}
 
-  items.forEach((item, i) => {
-    if (!item) return
-    const id = targets[i]
-    // Re-query: the grid may have re-rendered while awaiting.
-    const card = queryCard(id)
-    if (!card) return
-
-    // Sync in-memory item so removeSuggestionRow has fresh confidence
-    const idx = renderedItems.findIndex(r => r.id === id)
-    if (idx !== -1) renderedItems[idx] = item
-    _lastViewPatch(item)
-
-    card.querySelector('.card-suggestions')?.remove()
-
-    const suggestionsEl = makeSuggestions(item)
-    if (!suggestionsEl) {
-      card.classList.remove('has-suggestion')   // caption reverts to hover-only
-      return
+async function runPillQueue() {
+  _pillBusy = true
+  try {
+    while (_pillQueue.size) {
+      // The next ids whose card is on the grid (the others are dropped)
+      const onGrid = cardMap()
+      const chunk  = []
+      for (const id of _pillQueue) {
+        _pillQueue.delete(id)
+        if (onGrid.has(id)) chunk.push(id)
+        if (chunk.length === MAPS_CHUNK) break
+      }
+      if (!chunk.length) continue
+      let maps
+      try {
+        maps = await api.getSuggestionMaps(chunk)
+      } catch (err) {
+        log.warn('suggestion_maps_failed', { n: chunk.length, error: err })
+        continue
+      }
+      applySuggestionMaps(chunk, maps)
     }
-
-    // Suggestions live at the bottom of the unified caption (after title + pills).
-    card.querySelector('.card-caption')?.appendChild(suggestionsEl)
-    card.classList.add('has-suggestion')
-  })
+  } finally {
+    _pillBusy = false
+  }
   maybeShowSuggestTip()   // suggestions can arrive after the grid was drawn
+}
+
+// The read suggestions go into every in-memory copy of each item, changed in place so the
+// card's own handlers see them too (answers, the next question and resizes read them),
+// and each card asks its question again
+function applySuggestionMaps(ids, maps) {
+  if (!maps || typeof maps !== 'object') return
+  const cards  = cardMap()   // looked up again: the grid may have re-rendered while awaiting
+  const copies = itemIndexes()
+  for (const id of ids) {
+    const m = maps[id]
+    if (!m || typeof m !== 'object') continue   // not in the library any more
+    const fields = { auto_tag_confidence: m.conf ?? null }
+    if ('model' in m) fields.auto_tag_model = m.model ?? null
+    let item = null
+    for (const index of copies) {
+      const copy = index.get(id)
+      if (copy) { Object.assign(copy, fields); item ??= copy }
+    }
+    const card = cards.get(id)
+    if (card && item) syncCardRow(card, item)
+  }
+  scheduleFit()
+}
+
+// id → card on the grid (the real one, not a blurred free-plan teaser copy of it)
+function cardMap() {
+  const m = new Map()
+  for (const c of allCards()) {
+    if (!m.has(c.dataset.id) || m.get(c.dataset.id).classList.contains('free-teaser-card')) m.set(c.dataset.id, c)
+  }
+  return m
+}
+
+// id → item, for each in-memory list a card's item can come from: what's rendered, the
+// relayout cache and the free-plan teaser (each list once; itemForCard's order)
+function itemIndexes() {
+  const lists = new Set([renderedItems, _lastView?.visibleItems, _lastView?.teaserItems].filter(Array.isArray))
+  return [...lists].map(list => new Map(list.map(r => [r.id, r])))
 }
 
 function checkEmpty() {
   const scrollEl = container?.querySelector('#grid-scroll')
   if (scrollEl && allCards().length === 0) render([])
+}
+
+// ─── A new picture file for one item (crop Save, Restore original) ──
+// The item's new fields go into every in-memory copy, and each of its cards (teaser
+// copies too) takes the new file, shape and main colour in place. The new file has a new
+// name, so the webview can't show a cached old picture. The Upscaled copy went with the
+// old file, so its badge goes; the card's question is the new one (the lens scores of the
+// old framing were dropped). No animation: it's a resize, behind the player.
+function refreshCardFile(insp) {
+  if (!insp?.id) return
+  const fields = { ...insp }
+  if (fields.collection_names == null) delete fields.collection_names   // get_inspiration leaves it out
+  let item = null
+  for (const index of itemIndexes()) {
+    const copy = index.get(insp.id)
+    if (copy) { Object.assign(copy, fields); item ??= copy }
+  }
+  item ??= insp
+  for (const card of allCards()) {
+    if (card.dataset.id !== insp.id) continue
+    const media = card.querySelector('.card-media')
+    if (!media) continue
+    media.style.aspectRatio = String(item.aspect_ratio > 0 ? item.aspect_ratio : 1)
+    media.style.backgroundColor = placeholderColor(item.palette) ?? ''
+    const img = media.querySelector('img')
+    if (img) img.src = itemSrc(item)
+    media.querySelector('.card-enh-badge')?.remove()
+    syncCardRow(card, item)
+  }
+  scheduleFit()
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────

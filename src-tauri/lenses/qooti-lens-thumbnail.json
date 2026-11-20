@@ -1,0 +1,422 @@
+{
+  "format": 2,
+  "id": "thumbnail",
+  "version": 2,
+  "role": "specialist",
+  "min_app": "1.2.3",
+  "updated_at": "2026-11-20",
+  "model": "clip-b32-q8",
+  "template": "This is a photo of {p}",
+  "text_model": "Xenova/clip-vit-base-patch32@6b7c523703ae26e39be4b03774966f8571c7f523 onnx/text_model_quantized.onnx sha256:73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a",
+  "name": {
+    "en": "YouTube thumbnail designer",
+    "uz": "YouTube muqova dizayneri"
+  },
+  "summary": {
+    "en": "Gaming, tech, finance, cooking, horror",
+    "uz": "O‘yinlar, texnologiya, moliya, pazandachilik, qo‘rqinchli"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.2
+  },
+  "borrows": [
+    "portrait",
+    "dark_cinematic",
+    "collage",
+    "render_3d",
+    "illustration",
+    "food",
+    "nature",
+    "space"
+  ],
+  "concepts": [
+    {
+      "id": "manipulation",
+      "label": {
+        "en": "Manipulation",
+        "uz": "Manipulyatsiya"
+      },
+      "media": "picture",
+      "prompts": [
+        "a surreal photo manipulation",
+        "a fantasy photo composite",
+        "a dreamlike digital art edit"
+      ],
+      "about": {
+        "en": "Photo manipulation and surreal composites (the owner’s “Art & Manipulation”), on pictures of any shape. Untested: it never reached the bar on the test library."
+      },
+      "vec": "3SUKoImkwSR2mbudGSgMsEYotBATHeOkV6DfoiejBSAcFG0kayDFIO4hn6RNKACjFBs/HNwggx1KHo+g7CO9mWGdXCMTpWSmChvMoigfRyT0pHEgZiJiHs8U8x2yGHgcpSNIpm8ilBenIAAhaxUFpC6maBVVmawg6h5woACoMRmMIVYR75+OpbsbNSApppOmfaP3ISCmn6egHc6kepjZIP0iDZOGIT0UmKWEJB0l5Z7VHYilZJ/+H/awDh3HozgfaqBVGwUkEqhZpsmkl6B4GfIXcqCyIsue3yMxHskcoKTioXiZ6aN4Jp4kWKEgHGCiiJVGp2+a3ai7EcQm3oX7I20gFCcgnjCnWqb2OCwgEygAofWkxyHLmQ+jF59Jmf2ZKp6yHLaU0ZpZIl0iiiSXISQlAqazoXQkViT3JJifQSSvJXynkCBopAKkdaQ4GEUkj6Bvm04graB1oEAhfiPqKWupfCRXqFekqaHkjL6iEaVqqMWePiSAnQSoPBmgn56hMCN6JB2NyKHDCDeaHRUqJJWjvxn7n7kl9iTEGsUofqB2JhQm7KAPog2mByByIaagyx2SHqKnNyY2pW4Zsp5GFHclRRubERqlZJWDIN8kcSTgm3oUTSRIpBIjryHjo2Ic6KM4iGcZK6aCpycXtCFRJH0kgCTVpJWhOCMUFZWXeJ7AHHehQCdJJUmodB4WHoykx6W7Hk2k1ZxpIMWbAqMOJVidEaWrI4Io7RuXEcAfiZs/oZQkNyDdlTknuSNflA+er5wzGYSg0iIpiC+ocCCkEpanEhgYpBYNNKVfpeqkUyL+pC6iECFEnx8iw6A9oEKo9TjEpYcZ5iaZIEcorRvIGSCepiheGw8bPKg1ow6dFh0upq2zWyB8oP8c+iVQJwmliilbnDIYcKSBKeqlxBg5oQAbkB2ApNweOKIPnIEg6aXfFH+jf6BaHFUiMCSMiQwk+qLEmNEcsiV/n6EjryUXHYgmUqP6IPgiq53UoP+lWhy7KIQVhKIspGomUiCejPKYAxzfnZGdHiD8oZMhYJ5Qn1qjwCbSHLYUFai/oKqi3qkFmZIfJCIhoDwky6EfHAubaqIsHkaVCAzfIKWbGZucnBwlvKX/IMyfEpnQH6ohTJ5yHo4mWyILqNgg4CFOoMumW6jrGRWgopSuHRclgp4sH8khNJRbnyKgViEQmYCVJqA3HdOgjCYHHzMUKqG5IWSd2yGTpCGeUZrqpiSl5KUlE3Sk7iIPmvOjBKR0I2gWYSSmJFmprZnKHrYcBCJAHTkddAn/rTolUCNRJdCkWaCkJ2GQLqCXGBgbkh1LpGmhAaaQIOCbewLxmWIntZqHnjSjuipNnRekep9rnqOqpCKIoA=="
+    },
+    {
+      "id": "business",
+      "label": {
+        "en": "Business",
+        "uz": "Biznes"
+      },
+      "media": "picture",
+      "prompts": [
+        "a businessman in a suit",
+        "an entrepreneur at a desk",
+        "a marketing strategy on a whiteboard"
+      ],
+      "about": {
+        "en": "Business and marketing: people in suits, entrepreneurs, strategy boards (the owner’s “Business & Marketing”). Untested: it never reached the bar on the test library."
+      },
+      "vec": "0aC7nXYWA5qDmvmdxyTjr7Qg552VpL+grCF4nnCilA4eJIIcvyMzk3Yhuh2yJzqf1pafGUOl056emfaY+RkamN2cyCCEIx6IiBZsopwgC6QupEAaHCQFIEUhdx0/I6Ei7RpCn/EZ/KZ0IDyks6PPIXsgEqUpH9IkXRGOodmgVRIzJPeaOJlEIFGSASImoRGgMJi4IZWkc6OAG9kgrotTmWCkj5QeEZEeb51lG9EdW6PWnmmhahkZmVSxO6RVn+IWapJGI2UmDBi8nRmUiSKLphYgnZ5coRki9h/BphgZOCsAIFggLhIpJCwiUCNanBIhKpp4oH8bj6HAHH6XOCPvIzgfFiQDmzOoj50DObKjSyQZjfOe5R+gG2WdQ5jCgtclVaSOoTWflZ7PHdQScCIDHZEo2B2Co5OYJKCSIcOj3R67mgGkHKD8o+Sk+ptmJQ8fIJy9oFSL/6UWJRYd2iFQJ9McuB24mk6i+aP6Ii2kbZtRpluYeyWNGCoctyGRHDig9B0QmUqdW59dHI2gEqKgGoqeySRsGgoluxApDyMdbp80Hrwa+pljnteVVSKRl/Aapp9bmGmi7iBKJrima55JGwaVDJinIcEe750SlwMQ3CAcoRgeLpW2pBkkF6VCpqAiWpvoI5ehSaTdpDUoUSbkIKshWxzXnBsjb5kvmTuivxmEJTuiax4XIrui5SMRJBEkJKDFIMObqaIZIcmjs48pHaMcsJ0/oCMg6RmQFT0e8xwLHL+ZOCUVFFqcsyNkmeCkZZv7n5ufnJsAohShGiFFI4SkZaGEH4iZVp7/nMYhdwgHo8kVTZ9GpSOisJvpICeeAjmqHy2j/yXhIjan8SKnJJck+SDdFgOgVZnfn8ggYaKpGvK04CApJXMjpR+tJD2eMhitIoad/KGaEYaiYybhmNEfl5pXpUEjrBvDoBYlCaMBIVWk6yBIHTMiFSTyGbYkgKT8nuCGVx8fGxsfBCFAJYwj+KOXIGCFmCWAG2CjnYwClTijMaWVpJ0gSxj+HlacMaHvGPeeWyGmpX6fniOqITIa2iQWICuaY5BiChOiKxteH1cisyj1ot8Y7JpJnhuZpx9dFa0fQpKlkmsRKyQJIIEi46XEJDOkeaQumSyZvaMzG+Ig1iCqk5+mDpXiFEefQ5wJoLWlvCQHpAUc65wtoCcUrSVOHqid5qF5DYKWRKJII1CeSpisHkCg/R5/IiAT4SF6nKKkep9JlM0lTRsijgempxygo24XcZ8IJcck6RuBopGgZhWtIgOgkBv+lq4mcZ6hrMYhMyGZnY2jkhj2GJglwKKRl4WZOiUWpWkNuRgYGEac9xn8IDAiWp5Xmp8k/ieGmLaiph2TjUmZ65sZpA=="
+    },
+    {
+      "id": "cooking",
+      "label": {
+        "en": "Cooking",
+        "uz": "Pazandachilik"
+      },
+      "media": "picture",
+      "prompts": [
+        "a chef in a white hat",
+        "a pot on a kitchen stove",
+        "hands cooking at a stove"
+      ],
+      "about": {
+        "en": "Cooking: chefs, stoves and pots (a plated dish gets Food from the design lens). The first prompts were a near-twin of Food (r 0.79), so they were replaced. Untested: it never reached even 0.15 on the test library."
+      },
+      "vec": "e6DtouWdTaTKGXMhIihPsP+cERq6pTiXmSQrnGOb7aSFJCSZBhjNGfacg6DGJNSdwSCKowaarKAejIElEqMTpoik7xyaEkGkJwuBnLmWwh/GG1uisx07ooQkDyDXDwElGCQ3EB6hQKN8Iaul/6ZdnaillJjqoBASlhzMGCacVJ+Gn9SZ4iDNJJWhFCBQHDCh6RtWmoamYSDDIEccpxlwGhkfsKCLlu0fIwOEHxUm1ox0owKUaKIyHGax2iHqp9ecPaH8mkghiB8CJFGi+opwH3GluqQMGvygsR2anOciuyhVouyg0aEAG5QoACaMHNMcD6b+p9MgKqKeIm8jTZyNJJ+YACghnkSoip3lON2gaSGmopCi3h6OIRwQfZ6NqK8cxaUSoh4bhZx9HlWkP561oOkcGqH8IAQi6x12JGWlCCecoCChZpp4oa+RliBwo7EW5R1epGohkaS7oSqhQJg+J8EcMg95JhGhQ6NCplikoRuXp7ih2SWHkpqjlSFPogSpMyCWJKcRlZtdp2UlzZ5/o86hvqRIoIAciSREIrMZCZzeInKYMyMVIfUdniLMGpCmZKW4nJ+lViayJaCckaRGGZcnSJ6emD4hn6KGotMbnpipH/gg/SIBJnwYeKEWIC+f/BayoGWlWReco+8jAiT1JZac/KVhJ9AkCCjhGfae/6GrJkIltSI7JZ+kFiVaIQMasSJsla0gZZ/GnJ4VcJ5BID+eF6QAI3mN7Jn5oxIkQyKaG1qcQiaYG/oeVifgHgyc5gs6n8+fgg40Em2mKCNJIlWlqqQQpPyjmaUvHHSjKSKeoD4kKhxwop2fLKI/Hp4Y5Tg2oE0iJyTdIXak7ifFIS0mWSZ9meKMcqfFoecglCQ+Gte0tZowna4cUiLym62m2hgSGsQjM6F0Iv6cZyU0poEgf52aGSOiP5RvnR0mWCPcnrCYX43qDk6nhQZhpbglDqiCGGycMiPaIgEg7yAzHqInK6EtFGoVOyQbI1Gco57HGKicQaWfosmZdaOeHdyj3SiSo34dI6OzoQqcMxTLIuQb8iGTpHSkoB2WpkgAiyesocYanipBG10eoaGeob8fcyXYHomif5nlnaImMyUqGS4hypnzniWl0JmFmUOgmJ5ulz4lOKDGnxmTGR6Bpf6fnyGPHnSj7B0op+UjFB8FHC4dnJ9vH6CkPqQ2oPuhRKJ/JeYeoiItnAsaKKnXHxcdChT6puqnzKhoplOhJBY+JDqeNRTlJmakQJqOH/KUhiXJm+uikqTVKpuiBCGTIE8nNZ7nrEonriRfG5Mj/SDKl1Qmx5RvoUKXwaRCJAae95ffGHsUiaRPo6AiQRuPnqQgBCTnF34Svh1sm+Cewqkmpg=="
+    },
+    {
+      "id": "design_diy",
+      "label": {
+        "en": "Design & DIY",
+        "uz": "Dizayn va DIY"
+      },
+      "media": "picture",
+      "prompts": [
+        "a handmade DIY craft",
+        "a woodworking project",
+        "craft supplies on a table"
+      ],
+      "about": {
+        "en": "Handmade crafts, woodworking and craft supplies (the owner’s “Design & Crafts”). Untested: it never reached even 0.15 on the test library."
+      },
+      "vec": "S5rpE+MVjhVhmGqinCQRsEsYuR+Snp+lYJhFIwmcHxxmlcyVo6Afn3EgXhh0KDggYZ1Mmz+jtx4/nQkgpB/2G58czyFKlCCiARS1oxkiq6S4n9ihSJCAH0AkzKTZGLshRJ01HTihn6RbIs2f/aKpoGydAJNNIpQgr51RngIVmZ5VJdcef5atm3eMaiD1EhqlWZSIHrKiUpw0IIAkPR99kSaj4h9dmOmV9qUimlshFqQbkcCW0g00pCWxiCWYo8IW6paFHFMfJaDPHiufEB6PnEafoaJ4F8Wd9R+Rol6WwCq5mp8j7JqGoUYkkBoFox0e3RtXqfwjHqNKI34ivwlwFUUl9SFxm4Gn3aMLOWEiNiLZoV0ffyU7HqIcaSFek94kvKS4pAchQqX7m9egDR1zoEaguZZRIPOiHBitIRelPiFkH1alchqGpkumAaLeIJIaUR6zIYMfsiGTIcqiw5jXImohw5R/m1yfkqSkn0ul2J8PpTOYwSPsIbsZ/xkGnnCgkSX8INmeLpTemlahrhtCpS6m4yYMnwwcRSFZISoYWJkmgBUa2Z9YnYygBxsgmZ0gnaSTnKWjpZkuIe6b5KHjnR4VYqMxnTMgXaEyolGcyhSmoh4dAIyLkdYg1qCNpi8d9JxaI8Oil6WXm2Qk9AqNJcEg9SEkoMwmTRiknSWj5yTdmBuhsJRtHn4czCQAJLagAJG8ocuhyJiSHA6lb5XLoIcZqqFVlmYZoR2em9oS6aGyIMqIiCKBFOCR+h14HBQcuyP6o7OdtSBJFzyjKiJonkmpB6OHovAPJpuBElSghpw7nLYlpaKMkJamEaI2nuGeCTkrjM8idxrfJX2fnyWcHxUnByrToBMbryJqpD6cA52GGZu0GQbWIO8gZ52fI6+glh+7lTeUEZ2OJKSa9yMbqJmFNB5anvEdN6IRHLwiSRnZIo2j6p4CHdmehiRYnwmeoajCGSIijCEopvGdvSIBJg8ghpIzIEeTJpPWH3mnCSLQJE2R9aNJnSYgSKC5GPegdCFaHR6QUSIWHeigRiW6JrOhKyGJHioa7ZlcoO6VNiULIyEltimpneGdV47xE82FEyIVJmUjNaHsHb2SIB95IdYd/aG2JLKdFo9zmUIfGIwwnMUimiIRofWl3J4EILMNwCZ2obyZ3qGgIkwjniEdERmNoqESoBcVHBv4mjqb45/8J0UfEJsyICiYW6hqJoOaMiCGomWjmaQsoxIUDB0gHxgf7hzaGvSf36NrH5QgwiLzmr2ekqLyIRcgBh0gIqIi7ZySrG4lDpj6IjukDJ8tINwmXiSGGGEZmiICpO6ifJ+LJOYfypyoHRQkWxZJILkhliW0IfKeRhYwn2mjvqWZmw=="
+    },
+    {
+      "id": "education",
+      "label": {
+        "en": "Education",
+        "uz": "Ta’lim"
+      },
+      "media": "picture",
+      "prompts": [
+        "a teacher at a blackboard",
+        "a student studying with books",
+        "a classroom lesson"
+      ],
+      "about": {
+        "en": "Teachers, students and classrooms (the owner’s “Education & Learning”); course covers get Tutorial. Untested: it never reached the bar on the test library."
+      },
+      "vec": "Cx9oDO0c4p6wmR6lrCJFsDmPG4+eoDWXCJmeIbmebhxxn7cWUiLNoUMl+J42KTSMlqTlHVihLaBEmC4aISNMoPmfmYtQmaoTox+hEk8hS6mEnyykJyYTINAfICGNIRYkaBoVmCob1aSdJGmhdJ4+GU4UL5tznB8kpCXrEMudnBgEIKocQJP5FGEhixqJHAqgVqFtFlKjMqRxJFQiNgwfIGClQx3ToUUmbiOyEt0lkg2WnMScFyIIn26xERnEGJ6fHAwknQEiZKLRHTGdMRqopEuitB9tlfMdFiIipLggsSgWpJAgQR/Rk40l5AMjmXmRN6OaGboW9pwIIuac1R3rHkWexCaBoLWimaQKOR2foB/horOeRx1iIJqdL52IovIlRKQKIgMYzqHFHcifN6Jkl6UjeheykkShQ6EFI6+iQSBVm1+jWqGkpGGhQpu8E00gtJx7GEcc1wl3IzylWZEEJYscoiAmHnadYqfDnYGnUxEZo8ehRSRFIT6jOyHLlVmfhCDsnM4iYqAlmJgjFg5ZoimiQppEAj+cRSHdj50kiYRJI94b4B+sn5ihURr1niQfZqB+oOeizyGuINKgOp22ow8k5AfWmByZA5eZGt+YxI6JnGwlX5ispXsfCJ+dpAEayxb3IZ2gpJ/XoZooYSWPJFSbyxJOne4hAqAeIXeiwBwaID6h0CNRoEiisR+bIlEguBnamUWdo6AenNOdHpz0momZC6ALIigcs5+7ou8j9pxyIFGZxyHmGlMg2yQUnwilUhprnzcjsSIgka6l6yFAIAyk7KTFl00g8KWHogKeXZmKnHMmjBXloqGX1aMmHFKbCTlzFL0h4Rq7JLelBiNsHZki0SSzouabIKLpn/MVTp09IsS0xR+dIpwknR+iHfOhNSLHERWXy6aLIxKgTyBDoSkktiDaorokjBzCGsclqpsbHuceOp+tJLyUgpDyoUIkN6YsmIIez560pjoViSQQIX8daqFXBRmYFBZTHl6l5hIUINmfR6UVnOMRLB2rkLGhISBomOASxSELmVue9Rh6Jy8e8yahlREceQyJmLWj6SNCI1abFyJKoUUehZA+kdGZUSVIIkQj3KLqHQwlRyHJHqglJaUcIEyk+p10nwOdVSVZkLQi1xvXlaOaAZ9yIM+fdyW9ofeeEyJcpB4jDR9ToCmXE6HKDNKUGZ4Eo/yTBKIXIZGc0p8FHyMdYZ7IJN2OkiIdn7SkiaJ9ldohVyM/I/GlWyFco2mYaqEUGUAhAiM2HRqlZZAnJi+V1ySJHLUmTxkorAgjdSGGHTugEJzcI74im5rUJJuePR8vojaebxarIgKh56IqGOEkEZ9QoUkEAyjIHkmgzwj1IqSk2aC+Fg=="
+    },
+    {
+      "id": "entertainment",
+      "label": {
+        "en": "Entertainment",
+        "uz": "Ko‘ngilochar"
+      },
+      "media": "picture",
+      "prompts": [
+        "a MrBeast style challenge",
+        "contestants on a game show",
+        "people doing a crazy challenge"
+      ],
+      "about": {
+        "en": "Challenges and game shows (the owner’s “Entertainment & Challenges”). Untested: the first prompts drifted to photo grids and a billiards ad, so they were replaced; the new ones never reached the bar."
+      },
+      "vec": "cCVAIFeUQRtDm26XHiQRsDMgwiBdCGOfXqSaFayfaSTIowMaM6CLoWactpw0J32lL5v6DDEQDB8aHwAgNCWIDs8cXyFEoPCfXptfpJ4YTKWOpU0NIJ0YHnkg7iEmJScgFiVxHegVsaE0jV2gg6OkGqqaJ6FDkcgjbBwzn4akzR8OIw6gsqIPFY4hLSGSnxel1h4yIY+lTBwzHm4kmxkGIeIe3hblncYecx7YIT4iR6QXGMWjaQyZIXKxAibCn5WAlBqKn0QdnxGjJv+nBhUwnvikRqTknamPLh7AopUifCn2muiSTaFCnFGcShrYoGWgZqJ7pG+SXqS0HlUg/hqOI+UfjiaZoAOk5qP6OJieARgknCKc4RuEnF+XE5aun74hEKVEoeeZDQqUlUiRbpysoOEgUKBpmNScfIjJIOKlUSGUm3Wm3KAkpKShLCNcmlUXOqLtom0kEZxeoEukdKHZJhKjcyQMmuqe459sA2wcLRifojifQ6PzlU0YQpyqnB+kFyYLIhsJAaQjpMyeqCJeHR8bGR6KooyT3h2KnBEkvp/wHLcdgR/Omquf0CNiJCahmKYUJYKlH6BhlDAd8hQfHGacdZ+FF40cIhYYIAsglB5Opa6dlqLnoB8juaTfpiQjPpz3IAYYoqIJoFon/xZGJe4byZz0HFwYTiRJIJiXtKTKH12l9yGyDQOnFBLcHJ8ZshxjIBCZJCBQka6gHSBhkkyejKLNnQ8bnItXJBobihrkHSOYQSN5IX4jXSRPKCYfpRqQmlgVkKAyoLSlUSAJnaynS6Tgo6uhT6LPnc+czKMCndMhHR+KpTWZOKW9Hw+c+Di6HYUX4CCQGnefaiOeKjskPhwDH02cTKU4os2fbyLYIim1151XlNuKdB+HIdOkoBlhIHAizKEBJOqfFRxzpbMiZCHLle6gT6KRFMQofaPiHx0izZ40nAsYbxVEHV8gcKJGpOkhCpnrpckZqiBJkggkhhwVFPEhaBwZI32gWyT2JcqguKIqmsEgW6B1o2YVxaCJII2hDh/ClfehDaBxHgoZHCB4IWYZ8x1pnWYkISC6nSCiyCIBIOkR1qRMHHEZzJ4/HckkiqCsnFUdBCHxoAceaqJ/JKOkEKDloiEd4iI8FoUjk5dlngGcSCF/oP6d+aN6H4CbshRmoh0gHRyyn+MkbSHnmR2dVhRBGTyUvqAQJG0h2Bt3nHWicqf6IKWlTBP6pzWmyKAMn8qfVqR4G2ugCKMSHFoSwRl8G00hfpsdld2nwB1lI1ggKySOoaskCZjRrW4e3B5BEwCkuRy7H58giJfAoqqfAB/To6Wiqw3pJdQd2aFaHZEdaRx+mHcXeKLCmwqaZKMtlMOiiaXTnA=="
+    },
+    {
+      "id": "finance",
+      "label": {
+        "en": "Finance",
+        "uz": "Moliya"
+      },
+      "media": "picture",
+      "prompts": [
+        "stacks of dollar bills",
+        "a hundred dollar bill",
+        "a stock market chart crashing",
+        "a finance chart with an arrow"
+      ],
+      "about": {
+        "en": "Money and falling stock charts, on pictures of any shape: 3 of the 4 money pictures it found on the test library are not 16:9, so the gate would drop them. 4 suggestions there, all judged right; falling-chart thumbnails scored just under the bar. With one chart prompt more it also fired on a non-finance chart and an app screen."
+      },
+      "vec": "eR9OopGYwh3am8elWyRErxgh6CHkHjKnS6Mrm3OlqSFVnjMb9xrqJNagJJoYJ32exJWfHd6gOZ8CHLYjMCfjnSGcyR9kJnMjRiRXnR4ePx/8ph+kmhyQIPwcOCEZJN4gYyGPm8wj86JqHH6bIKTwDJKg5ZwgIHIiIaESpZ+YA6RAoc2i/6UGpEiaDiVcob2fohcAFpmihKLOJCYWSB/fIB0cXB3npOwbC6DoHuYkSxUtl42iK6JlISGxRgkdm5okhpZ0H5IaCJn4HyKkbJ4ToSOkRZ1fo7aY4SC9m+KcVCfXHYOi1qJOHGMfbBwtm78gjqUOprUWXZYsGREgpyGmJQMMmSTYm8ejgqMROfIjux9NjkoYIh1Tnhehox4Gn2giRqAxn8QICZ4cnOEccSVGBQsiiZhmmteMkJN3G1CcaSdlH2CkP6Tao7+kDZDeJSEUwBQ9IPeWiB0ukFGZdRj8IhWhox33HNiGRaOhItEcbR9IHfGj8hlqIQQYhpMAnOufDyXSHtyeLCEZHmOJhKB3oEMc7h8kGBEiDB4bkV8fRJ8/m9CVqB8qpMmfwCF7ly2kiJ6THJCoDAmaJNqf9gHsIGomjp+inbCgE6JCI/gZAp3IomSk4xk9pCMjsh5spjIkrpq2I/eiHqDCpEwh8yTGoGciHZk3nKYczCD9HuijlaBAHF2gTQ3sGhWlwiGVFJ0gZqSpowGdLKEfoP+i55hgHo6fn6LBoNIjGBxDHtwn2xmVmD+YGBttnBAj2iPbGbyZxCWCpFIYeB1FpEOjLCTAm/mdShjZniwT7KRUpF+eiSIbmjwkW55uopej2aGkoPWgETllJjOXXCULGxqf9x35JJUkuiNLowKcuJ7rnKuUH50WH8q0EqUUI5QkMSHJI0mmhiZdHYUfH6MBH7Sj7SBHmZaddBiAnhydBxSKm1MiQaLHHPmkTSG3FteZPh2JnRAcnqBPoO0dMaAZqDgh3iT3JrMh1SD0H5IcvBj3HZygwYp8ogaaraLznmGd/xrSHDGS9h4+JSYcWpY2GUum4Q7LJXaYiJXjHt2bnhwzHIqegB3mHZUajSTEpAKkZ6C3F+Mg9h/8IKoL/KVbIKgYOSVqJJQYoaTNI9OlMR5ioewgqaF3GHIcvyT6EdmkVxtRnC2fV6QNoq+kmJhFoWIcV5irm7sbQp41pSihD56SFVEcjKDXHBARXREKpKOdbKEPIkGgRKFhkwOcWZxpHngj9qRapJ+feKCDHW+fy6MDIOIgFyD9IUYZpKAmIEEgnSEmoJKhYqJMrG4gwiX6ILqbjqDxka4iAqTWn68OxSFvmreccRxHm4wgN5mWEyYhlBiDoRAfGCO4ICQeK6LdIAAUYaKrnQ=="
+    },
+    {
+      "id": "fitness",
+      "label": {
+        "en": "Fitness",
+        "uz": "Fitnes"
+      },
+      "media": "picture",
+      "prompts": [
+        "a muscular man at the gym",
+        "a woman doing a workout",
+        "lifting heavy weights"
+      ],
+      "about": {
+        "en": "Gyms, workouts and weights (the owner’s “Fitness & Health”). Untested: it never reached even 0.15 on the test library."
+      },
+      "vec": "OyLPIbaisRvcolugqiTCr1iQMCPEpF2gtp04DiqkVRsPHWUhrJcTH+mkzBSrJxOhtZzLjpYeRqNSEOsc0iWpGoQZwyQBI3CgjpwppkUfmR2ppYqkP5Nam64i/SA2ngAinJ03o0glMhy2ICCnlaLWosMYMR90nuEhwiUWGlenDJs3JMqiA50jIAEfKREZmeWnSZ2bJWOefBiZIPomZRjHJA6gkCAeoVQouw+2HaEeNZwpoSekX6IfIiuxbiVgobYcipCFoJsa/qGXHuqhWCTwobUhPxzfHWocKCXhnHQgQypumwIf6KFAoLAYohHBmgYep5bHpEId96MdJfOby5wEImObACeIIn2k06MSOSek/hxxnRoY/hpXINKbwqGgpJEaVqX4n2kc0h2RoyWbQSDgpO4hBBnJmPaY45P9HLSh4x9ipcqgcp+kpKoVYCHbomAenZkEk3cMN5x+mDWjY6RWH12b0h6iFBWgkRRSnAChE59GogqcvRUzoCSk4o8FIR6gUxwEJkaksKHwHtOgDSIIowOkyBAIoFilXSUpIZ4gMgwXFTIjsyZBncMWayeznIENQqUroPykACDBGTeimZzNHhGl8KOjoeUcBaKdoDCfWiHak1iiHBC2pV0hSyDbooMWRh3KITWdPJ4gp/MkBh0tJSkgaqHlI08ZryJTnv2g16CJI3ShzyHpJS4V8iTrGwuWPZigILYd+yBun8GcRRSqHsKjjZ7yI1Cf1qCtICIk0qH+FCkhUiDnoG0fVSHmI6qgDAhOl/caNaFBDHGiMyFuIb+cGqMpoB6i3R13j8MdwqVYpKIZtppTHPcen6MKnNQVEDnnoNQe6iVPFAakPSg/Jh8bACMSG+Mi+6OKo6OjP5VAIF20HyB9njYdKybwIyuk/KJUJ8ecTKRzHD2kDJzapSIclZyHHeAdXo3Qnc0o5huSGLii8BjImgWodB0gILUbRht5nkCge6S4HC0i+g71pNAlS6FzndUczR22FCelMCBuIX2gEaKmnp+Z6xqumR2hmyBsIxSNpyHsm0SkS599Jt0ipCgKIXkiiRgXoaQbBCUtHraWhilEGiwguJhBHwiWhaPEIfubcyHzlWYd8psBpDchiYnlJaKk9B0ipWUOiyILnZaaNSCHnF6dLxVzHVegy6TcEOufKx4rnjAkxyKlnrweDiSjn10ZfpoAIzWczgfjGyInpCJ9AcWgORk1niuo9ZHOodulHSFEoiEcDCQ0JE2e3qCVJxWbKpxcJVMc0yLDo0yla6PDHvaglSZLIqoiPCAFq9Ggf5DPFyOkX6X7Hf8i5J4MnyqezCGtJxGk6ZB0ljqi76SmmCAeUJ7wor4fWSM0nFIgrRipnnKkO6gjpQ=="
+    },
+    {
+      "id": "gaming",
+      "label": {
+        "en": "Gaming",
+        "uz": "O‘yinlar"
+      },
+      "media": "picture",
+      "prompts": [
+        "a video game character",
+        "a Minecraft scene",
+        "a video game screenshot",
+        "a gaming thumbnail"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos; this entry covers game characters, game art and gaming thumbnails, on pictures of any shape (the v1 prompts). 1 of 1 right on the test library."
+      },
+      "vec": "ZSLMkpUctqFrlVmicCZ7rxkk9iQYn8OcfRrGH5MZDiCKH+AYeZ0apDclFaDfJnyiL6OVnHCdHyBfoO0TxSC5DgscQRgDGVCi3pXRm4waAKF7pdEViBu1IO0f1CKxJJUhbCXtnbAd9h9FIn+lvp90nTKd06QqDEciSCFpEpadIJnSHY8OHJiGnTsgTR/5o3ikaR3nH1ylK54mnYwixZWim4ga06AMmpEjHSABGwkjrqIOH++g4J9kmi6xNyATnP4iUiVJFL0h4Ke6kBydpZNQpOqljKFToWodIBq2m7KcQiUMolwfnqJ3H9MU9x1vHOib0ppQpeihXaTnJPUg24HBJLMdTSWvncOnMaIcOVGgmyHwok+dyaFhopcUACAwmoyQVaduINkg76KOoPmbeh0rIIKaVCRJoDwg+hjOISigFx9OoHmix5jgpUehTSArJRokNyCXlAIcLqRloO+jgpzRJPOmhRgPpaqfFZ37niqjNaRMpB6aaZRcE1ujL45Dn2SgRCF5JKmUfYtFoTGkB6B8HXAeHRVYpPUhoZoGmBcbF5w6IQIjqR63oP2k7iPvk2yhvqALnu4cQBmRoAaeLJNNlwsgO583GgSbaCEqoDYhviAIodaeQpv3Fbee9yAFpT0b+Z4fIPSgaRhbnckj1iQ0KHkirph9nD8adCU5IK6c0ZzTGNmi9BwKJPelHx+JJE6YKKC0nh4gOaG1niWg4hEyIAWhAaO4neQkcyC8FQwebqOBH9AgUCSUl+UgxydwJvAcGw3xmxwcB5q2n1yjQCVnnXikIaTcn/yhQqQJk0Oed5KCmleiHCNrpZYNyp8ZGmGjGzmOmq8gRyRdIVchZiICJt0hLidFGemjeKYdn0Ofjx0yFVS0e5aEJBAfKiJEHKKguiPTHmAeFZ84J76lgR7ooiqZ1qDxncqZJpKEoNUkKSFgI8wU8pjoIkuf5iWSn9UhkaXdnSIlKiG3pF8YziKXn8UgZaSIHZygBB1HHi6dKyATIx+Vq6RGDbYhmJV0nXCgyyAsow8dAZG/mM6eBKImmsUNmJqZGNCZHhboooWRlqV0FX4dcp4elNue1pjJoBuk4g+gICYc0ZkLG8obUSPnHbYc4KX7GRigAxnjnqIeFZgsoU4fvx5foL4UNhwfnommqadPIgyTZqOgorgPaSWPEpMfwCJmoBqZupS/IFYfq6TUI4WekCAIIDKYxaJ1IMqaMRxDpSqkzKGaomIcch8/HsyfupfImoAThBaolhoaVSSUGaelVp6jIXceLCHBGq4gLSDfrdMgRyVxngGmBKBbJRiRr6C8mqkeaRzOoroVrBw4IjMfZ6WynBokeSDEm6SduCXCFx0WIZYyF9SguKMIng=="
+    },
+    {
+      "id": "horror",
+      "label": {
+        "en": "Horror",
+        "uz": "Qo‘rqinchli"
+      },
+      "media": "picture",
+      "aspect": [
+        1.6,
+        1.95
+      ],
+      "prompts": [
+        "a scary ghost in the dark",
+        "a creepy horror monster",
+        "a haunted house at night"
+      ],
+      "about": {
+        "en": "Ghosts, monsters and haunted houses, on 16:9 pictures only: with two sets of prompts and no gate it fired on a dark, detective-style text post. Untested: it never reached the bar on 16:9 pictures of the test library."
+      },
+      "vec": "rR+KoUGkHyC7IqcepSezr+6g+B0/pEKjtSG7HF+ZwKQcmYAhniS1DOofo5l7Ey6k8x6cIMIYJYpmmVub4hySGrmgNh/9BR6mNyG1HKeVxCMSpv6cDh1YFzsknSFUFwghQSf7jvgiBKC+nDwe9qJXn+mhxqeQImCbihqkpAGoEJ3mJN6Zxp5CpcQiIyefo7WgbR7gIImiT5vwJBGeGiPqnhuc0Zp2DgMhwiS3oEYqbp1Spe6mrJyKJySxyRumpGShzZlspsQjKqHvoEumQh6MoQgMFaV8Fv4ZNCCbl9Ml/SKTHmgYWaCAJYcYx6KKHhYZ16XWq2OYW6R4JwWbvxylId2i1CjuI5SlJqT9OB2jpSX0namp957UnQqgd6Q1pugd+Z9zHISkXKB5BMqlZhk7pI8QNalMmImYA5TRJsyk4KRsIHqjS6JXoFCfUSGfIQietZpSor4gmqTGG1abGhgaJVah0B5VqLqdn5iWIGIX0xjYqLSiVQ9Wnz2ogZ8mHXqhLyYEJKklIyBMGR4jQKYxFR2lQBCNoiogYqGHI2agSRxIJMohAyEoJRumDSSTIXCk3aQCJYudiiSaHPIfGJiaIBSha54fHhOUI6GFnw0kRpQEpOwgARbeJV4b5qBIprUcViDSItWmeaSpph8kpxSKoOMi6B1gJ1ejciJoJuoabZvhnkqZISI2KD4dKCKKIl4d76VnJDSLEKUkm5OfO5mrIoggPJ02ElAhM51SJ40i0xwgkkUkehrVHcwS5iTDFNicWpgpowycDBxwI0unqJ6EInmhAaQmnnugzB9QoPcdFqW1mxiigJXWn+IdJafgHx6e+ziaICMa3ScnHF2fxShuITwb9Sd6maqecqVOomQi6I0hIT20jqRNox8S0yOUHSKlpB6IHr2eehjqI7Go5hVjn9ImgBjooCSfaqfsFU4mtaPCnMKVyKbfI1MjByTonEgjdxzfHCIX8yOEotMhpCTVoM2VdKAUHRmjPh/2l1KiBRoZH84mTqgFmNsgCh2bmVEmDCQ2oWqch5yLm8+iGKHnJy+l4SJTotgbPJ2qoI2SeB5eoU+cqxhYmBUfjJwyIL+cpqJHnpueUaPvFQMjUiSUHQcm9JwkIOOkwyeEolUkjx4clZQcbZ8AmuwlqwmKHwekNKjapK0grSg5I9AhoyLmHvgmnyUelB8eeZiBnxMYrppiJFwXViZznGMeuKT7IcSlIhcnqTmkBqGtpDIlfZ64H8ac2KD8lxOhlpppJtEPbaOoln+mHyDAlMOfqSCCHa8mqKGnrAEiDR12JImkLqTpGGQm86SYoj4i9aSrHAwXmCC6kvwfRBqRmwUldqQrkVIeDyFOKbcSzwzko/Shm6NlIw=="
+    },
+    {
+      "id": "music",
+      "label": {
+        "en": "Music",
+        "uz": "Musiqa"
+      },
+      "media": "picture",
+      "prompts": [
+        "a music producer in a studio",
+        "a guitarist playing guitar",
+        "headphones and a mixing desk"
+      ],
+      "about": {
+        "en": "Music making: producers, instruments and studios (the owner’s “Music & Editing”; editing itself has no look of its own). Untested: it never reached the bar on the test library."
+      },
+      "vec": "/Z2jnsSaE5w/oXekJiIfrgugdB/9oOWj25nYGd+k7aF/mk8W/yFPm9wn1JzXJGEZEKQzoo6ikx/+DXMjfyI4osqJop+lpWylryF0nsyl95qXlgYb1yE+l3EfFycRJZQiliacHjgkKhQ9IHakRqIDpPGeJyI0miIYACMqnN+k4hSFI1gUG6R0IiyVHCQpGdimbqRkJMCmEZy0KOskCaWQIqygqBu4mMkhNCODIBknQpxSoc6hRRQZDeKwgp+bpfSZayT4n/6dLqhRI42nOhl8pLgkd6JdGRql2iN1pZSltibaHEMgPCTEG8onVpwXo1kg5Jkan7KedBOKIpMQ1Qp/HlAgoZ8tI9akXaQTOfYZ55xuHdUZ1Z72HSekyqakGw4kw6FhHLkieKgVpROkTyh1HWgoTR8voAojgpnUnoGdPiIUnj6eApl1pCse2R4UGBElZpXWoEkhtqH6JnSkjRh2J0QnDCDflkmhbaqDHgqoVqIzoXeeKCCtpBCgxCS/pdWPqCHOKEwezhlypICbrJ2anBkYh5xnFlmk0CQZG+qe0Z/5GaghCBHnoh8iTyRQIWyce6CXou6liSZEJCOo9qN4HGUizJ0cnyOjDaFoGqIlGiXvp5Oh0iEfKOghWaYxl3km3Z1WHkSnoCSdpa4mEo6NKFseQRNfJZScHBQNF9mikiJlJ/kf5yMZIC0iISLsoIOcoaSVIMIfBBzjpD2dBBFaIpOiCZucF/mkayAkn30hzqBuIZaciyEtJA+j+SWfJVckJpmMmlskKhI9IWml8x12mj2kz56hHsIYGJzOlJqg26Dzo3OaUaBUnJigxJfQIx0fETlLn7gkGSYDJ6mosBwvGyckbSW6JXAkNamUp5okQZKNoRmzYSLThw8gXiRIGA4YQCQjIdOYjJ3FH6Wk/iWYqLQiwZ5xHzYjO5d7nYObFKN5JBCajRjbnrKgCCUjE4gnRqIwnEWUCZ1wIeIeTx63pAQkpKH5oqSeQqDFIqWothdLpRuhTJzPnEYYDKg0Hbyk0KF7nl2aN59NqG8lwZ9XJXYdfyhZnPWduxcdoZIJkyLQIkiViyhjoY6ZnxuqoVSdOJdcIb8edB1Zl0wZZh3dmK8h0BgaJLgUdKDxmQUcjqBbIv0kdSGyoEMehaH+ogOma6JiDQ2I2Jk/piEbbBVEoDKjDaOLoYeh0qLgmp0fX6KFJ1WWSRqhI8AX9Ki+oGigNSXVo6Oon6BdFlQY2pJYoJSUi59UIGogmKU5nk2XMR+EphKlR5vVIAmDWCTkHikj6iOtreskvRQkJEGmhJvZJJIk0aRgmjgkWJ/JJEebJR9aG8YhGKJLi1Mi+xCFkaAO6iSZnh6kUCEGpekoLaWSpA=="
+    },
+    {
+      "id": "pov",
+      "label": {
+        "en": "POV",
+        "uz": "POV"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand: a POV thumbnail is about first-person framing and its “POV” text, which CLIP can’t read; two sets of prompts picked hands and a speedometer instead (no POV picture among them)."
+      }
+    },
+    {
+      "id": "podcast",
+      "label": {
+        "en": "Podcast",
+        "uz": "Podkast"
+      },
+      "media": "picture",
+      "aspect": [
+        1.6,
+        1.95
+      ],
+      "prompts": [
+        "a podcast thumbnail",
+        "podcast hosts with microphones",
+        "a podcast studio"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos; this entry covers podcast thumbnails (hosts and microphones), on 16:9 pictures only: without the gate it fired on a film poster (the v1 prompts). 1 suggestion on the test library, partly right."
+      },
+      "vec": "LqB4lYMm2Z7zGbGhmCBTrhEgciLQo3qmkJ75BL2cY6C7na8fCArlmc8jFSCdI1ylTpxCH/IQ/xscHoYZaB7yocSQUhlHo8UW9x9epsMfN6LvokIaJiX8HAyc1BdMGAkeCSaroLof3giiHoulVaE0pCWgjB3IIpeksqeXkiWgrZ6yHucceZv8HAEb/BsFGnuiriBBInylsSJOH+okPp7CIJ6huCGHHiWifh0TJOsmgaTjHK6etp7uny6xlSABHGkZ4x4WF6CfgKM8HAsaWiLqGdWd9JmFoN8SjSF5AVCkzSkemOqeqaABokwmyxIjmzucqaGymeuh4p+SIWMkXh9TJlsaXpwBIQGoJJ8IOVGeCR5zkD+m9pzLCkSkmB/RJM2gHqEOIL0d8KVLmi8Llx3fnnQelSPTn7wWcyGvFaKddCSelzygjpCbpAuhE5ajJFYj/hwInBIc556+oF0aCB8cI5AcYRlqkmuZzqIsIUOivBmooRwd06COpEeZbY6apjSI+iLYJI8mkqPRCV+jgZwzn5ugjiTXHCsdKCVIImQhNBnLIIEch6BJkWibPReZHaiXvp+gHSKfgiBbnfml3xtwHbwb6xhwmCSa6CDAIpUiepVIovGelxerFfcXyJ9wn86bWBZIIPChtZYWFWQn+iHYJMEg+Ze+IwIiHiFbklQJXJ2EF5uhBKNJIU+hUxyvGJCg1SEzIZOepRynmM8Pv6FdHAGhsBLfoFsWbRlSGj0kTJwJmECcAh4OI8WiGSTcG7IiFiPwoOKVqxXXncOdlSWgoJedOaXCpQwe5Z3HoJMUjpr6itASLKIFnO2lYKIyFUShBjnkHHEfqyPjHgGonCAyKhAbgZdin2cX4aJmpM2jFpGqFem0+RybGVGlXSQ9nZWlrBivHfaEuyB6lAUcYyUooj6Yp5azHbwf5wXhpCggbB3lIGCaRJ3AKAedziE6I6wkcqaioKkkKSTKpB0HgJ5qmL4eYqJuBWyAeKARHa8RsRvFHCintqg6HnIZwah4I4aTTx7uJC0kEBhADOOU9ZvGl7cZKCK9GL8bix1xoPmcH6YwIKQe2R3qlmIbhRxEJBkakJ4TI3AeRJoaHfgd7p5Xn8kbhqKpJt2hZqAlpPYcRh1FIWMmgwIdoFagABvLIGSlpqbenbYhRRwzoMMXBB97Gz8cMySzHxqbM6aPJuUbv6dBHU0W7CQVnX4gjaUqJj2myKCTo2Sl+A0HoXYcrRLBn1iiyxurGO2if6O2F8oeS5kEnE+mJhp+om4iVxwQokwllCHsrZEgKJOrHkuh1aHxIQgkV5wnGB+TWh5IquQVpyHdIN2dzqCKnJgknIVoGa4hWyGGIjuc/qLFEAYkE6FgpQ=="
+    },
+    {
+      "id": "politics",
+      "label": {
+        "en": "Politics",
+        "uz": "Siyosat"
+      },
+      "media": "picture",
+      "prompts": [
+        "a politician giving a speech",
+        "world leaders at a summit",
+        "an election campaign rally"
+      ],
+      "about": {
+        "en": "Politicians, summits and rallies (the owner’s “Politics & Economy”; money topics go to Finance). Untested: it never reached the bar on the test library."
+      },
+      "vec": "HSP7HRGdaZVmFt+kiyOurz8gSiKPFo2khaAIITiYE6Ldofggoh3PGZwdrBp+JFoS2JUYkkaaC5wDl10gciX6nQYiHhfVoyoekRhMoQucZBivpgmhNx0JH2QeqiZtE/wiFiEhn3Qdx6OiID6jyaBzlTWVqqJYIRsiBSUqnaShWhlQJHCgKR/PopEeyp0Aoo6kNxYtH8WcfZgMIcUhRiaEIRObrB0zHHGgMxc4JMSgMRiZnbCeYhULFQGx6BzkobGZIR6VGFCVjyM9HmKkKyFSoK2j2qSaoEOXOiIvpY8f6yLuonEjiaPWnUsf6iHWn1cjupo7nESkrqPpFV8dXh2tIzYdHyELm+Wmk6AUOQKXPSMWoaueayAqnJ+YXBtWoR0hOqIkodwishBsIFGY6yGXHd8pA529l0wjJxa+Ij6lIyCsoKKk3p7ypU6bf5wyIVMeFRzgo+IdT6JvHiajDh4PJpGmM5gDoWsdm5rrIcADaZANpDCchhsypdybvhzTn/6eGyR+nXKfR6XUH5YbPJkQnQCbCR5gob4c4R0Jny4e3KFpJSEiHSFeo5Sh+CIlIG+hdZ8HooifnBxNJhCl2yDeG5QfvqJjlwuO7RlvHW4dIBxCnaWdfSJvn5ofgprYok6fvhDCHqWcgKH8ozEhix3HH0mVcSF0HWUfoiBlHSWd4KMbIFCi0SfLHrqgtiEgHnYhwqJrkuASbiBzIQgUmBcuINWh/RjuHvYZQqDfnEUitqJOJCySYSAFIBAdeSGqpU2hRR89nHqfWBytoR+kOiFhGkah9Zp/IH4ep50epIGYP566pJ8YaiGpoOSiPKCqI+mcFDkOITMf0yIZFzmocZRAKVQf7qN9mXoTUqKMpACWTpR2Ire0OJBSIGsb8B4dHfWlkiPTGhGfeBn1I8mjfiWSGcgYexW6pLsfTZhwoCMn7ZhGJUekXp1YItADpqLMpYEljZ2RnvibEx9up4IggCAzKMsiw54Zn/EYCp+enaOjTyS9pPYRhabBGvuZqBxUFnqgN5uiJNicqiHkkWGcyppGGichciR8mzkdy5kan7ESlSUxncUbRihtlP+WUiBNocGijSHBHWci66XGmY4jDiIUnJkeA6WLJV8a15lCoW0WEiY3oD8lOpstnO+UVB04nQqlVaROowKg9iUGoesd8SDSn/ofQpmCH+ScOpkUoK8gXKRhGm+eRiDDHhYkLaGaEwildpLKpC6jWZk9Ia4jk561nQOlkhuJnMWSKxcfHW4YbCSSpOWlrqGeH50fPZXknvQi45gnrDgkJCAUnNYbcyJxIecg+KBdjHsY2yNYpqsceYy0IWsfJJVpoQUXOJcLoF8evZsan1IdFaMPIGsaPqRKoA=="
+    },
+    {
+      "id": "pop_science",
+      "label": {
+        "en": "Pop science",
+        "uz": "Ilmiy-ommabop"
+      },
+      "media": "picture",
+      "prompts": [
+        "a science experiment",
+        "a scientist in a laboratory",
+        "a human brain and neurons"
+      ],
+      "about": {
+        "en": "Popular science: experiments, labs, the brain (the owner’s “Scientific & Popular”; space pictures also get Space from the design lens). Untested: it never reached the bar on the test library."
+      },
+      "vec": "OiEoGhGV3qDxo7KaRCDnr2kkjyKConqhNKBBFlehdhnpIQEkDCJ7GrmOYpA6JHsXVaPGkdkjdJVwnq6T+SUDotKVpCBOIC2d4aDHoPIZ0aHnob+khJnzHnQfHCEQIDIiLxwNlIWZ/aBeJKSlDqJVGzqmR6RUGYQcISdDo/OlRyE9IcEchhVYGqMgxCQ1nCulCCIJI2WjRqZfm5wiJZVdoLkaIiCnoFAcSRUAHV8qb6B0IzgeDpwgITSx0B16F/wZICAhptIWIJfBHi+ksxZ6HLGgbZGpoEEiMiA3GDMUliJuH2oZpaWYJJwo9yCrlB4lM6FjqBUd/KHHIawbhRa4HWGZVRz3HM+kmqQVObigJSInoAipJiHLoBCkN6H0pj6Z7aRWF1iivRa2lkaQDiMKEu0dEJ4kIXIamySJI4Ch4yHFGDOgRaAcpHSgqxkgnzQLEJwqnQgkvqCACIAc3BRmKESpAiElodylxKR4nXig0yOtoWSlC5utCzuld49bohelwSVxGyEmLRRvnjmeziFim0UaqJSnpUKiAiIvohEkv6EvJoomEpjYIW0QNh4Jpe6iO6V1E+enlJT4IUKhEKG+oKwhkaOenKekpIUzH78dXiLYGpgk0RpZIK2cTJyPpTEgHp7oI1OjIaPmogkk2yTPHVKeeJizI18eTCSXJIKiViFAI5Shsh+dHImkIxvmIkwhu6NHHr0euBogoUekQwpmJWidtJ0nnKgeVaHCGh0ieyFNJIAf0SNrmE8ihSQTmjajFSJ7nPibNiHvnlmkPiDMH7mhrAE6IvucR6SlosyiuBnrpIkgBpk5oH6h1ZlvHJiiFjkaip0d+SMxG6ejnCXImNYltyYplCgVOaW9nigZ8x+2GFG0s6AUIjogBiMdmn2i7BWemagdz6BAHKaeByHeG4MY2p3yokwcR6AEIRQf9hvnJb6YhxheIdIh8R9NoLQl3Zx7hQeaHZ7WoQweASDRoC4kqqNYIFICm58GHq2hWZ+ApPsehKSxo40ZNaB1lVIVJCTUoNCeTZuyncyex5tsJush5iUCpPQkfJzWHNISkCcvntkdfCRPHgsjTRe/HU8THyQ0JAugfpwFmNmTbiBLIxcgBqPCHbaZSBlPogIZC5RXjhQhyheEIjkVJ5g6oaCkIaSiocKYdSHIpMokSBoWGV4ct6JlnPOggpr5nIEfr59rIjgdgSCWDmsbE6gMJ/6gRp6boyeijaUKoZmK/p/Sm5WkHB5mHw2aj4X8JMKfVh2eHwilu54PJDQcKqKtmBomqQzLq0whfyD2HJWgFZsVJN8hQ6LFHHAAayCao2ajkCD3IrqbuJw9kKslSx+5HRgg3CWkHeWecZ2nor+i36Nkow=="
+    },
+    {
+      "id": "self_growth",
+      "label": {
+        "en": "Self-growth",
+        "uz": "Shaxsiy rivoj"
+      },
+      "media": "picture",
+      "prompts": [
+        "a person reading a self-help book",
+        "a desk with a daily planner",
+        "a man meditating at sunrise"
+      ],
+      "about": {
+        "en": "Self-improvement and productivity: reading, planners, meditation (the owner’s “Self-Improvement & Productivity”). Untested: it never reached the bar on the test library."
+      },
+      "vec": "ehDeoFWYl6EZnrancyRAsPWgTSI3pHiZvJfamk2ldxxfpWQkJBfAFssbU5xGJccZTKNRmUGgUJ7fmAuaiyE2JIIe8RoiHvSi8SAcoTEYzKQWpK6i/RUNHAYloh0Nl/sj6iFrFYoiTaLCJcCkdaaHpV6gu57RoRolPiNqmzahMB5kITqcAqRzIyYfkiUDHNSl1p+iJNKdrJGzIekg8xHXHtYbFo/bHqkjhpAVGQcmaCO9pWigJJkzmUaxXaN9mNyc8qAfImUm26coIDykEh5spEkVRKF7HjmgKSTZo/wbOSi0IFqbRptfpNgiEyF2o32ZkB5HphQVAqXdk98ZyoFAjkOgjicIo5yarKQGOVUZkCRqpXWj5CDaH/ihYJzuo/Ahv6JVFFudhaatH+KihBjalDklcpr6k8egWp4BIYWiySOJG4Sk7RADpQAkC4ktG+aEq5wbo6YfwJbBHoOjuovdJVQnJiQWn7+kgaJynmil8p1GpjufIiSTHU2iIRdUm1GhFyWiId8ab5hIoD8gY53ioCCgsiADosshV5EaIdcZ6aBPJY6exh8IoSSffyF0JA4da6QfHUAg3RraJTymS4tuo1+cTh77mnia7aDTIJScMwD6oEAgKp9gpZIi4KMcpbsblxgZJ0OiOJkQpZMepR6tJC0WgqOPjtqci5tPI9ehfaOOAJUW+CPdFrEZBCJEHncdLp3UmF+dbRgxGJyi2AhpoqigtxjsjGcjPaTfoTQgH6D7IdUZpiZ0JG8c2wwJpBec3B4Nn/QiRR24Heimdp1KmOqZVKLPh6gPn6DOC24GvRwDomshepSkpMSi8aI1nRWcBjlpo9OjFiPtI7KijBxAEGcVqCZsoOYjMaQyouCeyx6rIZS0bZ8aIkIngSC9IdSiZCJ/mfAdvKQCCwChHSVpncIhgxhyoioi2BSJlSmcrJtpJJifKJicHrikoxL5pFEkQZ9+GZ4f7Rf1o4AMByHSmC0kPKKyGgQiLYJ0JBWnjpyFHgac96Hkom0eCIjII0mfAhgXGhsaTpjUGdQcOyRZJomfSyjtlV+UpJ6SphSl4BzaGcgcvSgqGGsagxvkBF2giCQrJFkk2x5BH3cofiS6HjkbgKRkJRanLptsGs4X7yD2GkkkSw1lGiuZyyL4nZCcj6N+lMiKfpl3nzccryD/pVWgUaGJoJyiIxN1oIsVOqMNJbwlDY3mJE4h8ZHWJAkinSVEpGyjt6I4pgwiPB0+oLGjQRt4lNKcS5+VnPgj0Jhfn4GiQKANI7aiLCWakAQo1gwcrT4kMyF0H76jKyDdItokZqTLnJKf4iUilmGgH5jeIJKZmaDXlekb1p6VnBOUqynPnoakRiD6jIGhSaiUoQ=="
+    },
+    {
+      "id": "sports",
+      "label": {
+        "en": "Sports",
+        "uz": "Sport"
+      },
+      "media": "picture",
+      "prompts": [
+        "a football player kicking a ball",
+        "a basketball player dunking",
+        "a boxer in the ring"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos; this entry covers sports pictures: players, ball games, boxing. Untested: it never reached even 0.15 on the test library."
+      },
+      "vec": "liFGG0ygLaHGHQMYiCYBr42kKyEXpcCd16I7GbKiehkPKNolgJsVJLIdjaHNJNIhOZ9qpoKkOSOboVCb8p/gG/6g2h+sIRKmaiRKo9SZNyFmolyhUB73HkMi9CZnIAAigZ/+mOolVaNxHYWiu6axom2hdZomoBwfuCgSp76nLBNFJBOhdyFVIbYaKCFYoOeosKA+JGulB58uIdgmZSDwoJukfyGdn3snTB1bmvki9pMso+Sd26FnlhaxMyMuplEY8JFtpT2dNKSoGUSlYigVpEWbMqVzmlWdziQspCqityjZo/ocv6DyFp0g2R7gI8KchqXnGGsZcKNqJh6itKCVoQwmlCjBI+umqJkHOe2irxJKoUSlkRpYntiiE6Y/pakj56TkGZQhACQ+orkhqwFMGY6b/Zs9Fr8Q5yJ2JZql/hddpJaiGh1tHIOoFCC0nb+gPyQxlcEVXaTgo8eh66O3IE+k2CAApq6hhp5RFCKiKJ6PpyufYiUoJZKlIyP1nMGV9iQHJT8f6xy7m9+hxKAGokekipb/nBuhAiO+IfOY1J2MHVMk4CRRnquckCblHK6lI6JAHEyiZiFSHfmPdiM/lr4fPKLHoXohHiEyFpAhS5s8nVykoyDKpMEaI6SopbQgoyX1JQqoJxOwpqoX1iNuJEMiFCTuGT4jX595JgMjyp4nIIAcvyJJKMijawxKHeqIdKIypFygqqPFnZ6kNx3vlRqWDKQyIKcb4qC/IdcnmhkbGuckMiSTmyckrSViJw8Ywp7Ln54bw6LgpSqhjSB8J3ie+h6PoNoaj56dpCqir6D9pgKoWyOvpvacd541H0SkBjkin+ce+STYI6qlJyXKIVYncyD7pMshU6UbnN6kDhk0ohq0iR21HWQg1yF6GqilLaEUJPsmDacFJYikziQXmNiUipIPIR0g+aARIuolXiN5ImWjW5y9nEiiY6AmoCUlW5NopWEaEZoyHmwf15ZdJLslOJgVpfkiNBMNJAafdoKGH9IgW412pKGfT6HvlrunBBiLmnOk5aV2ozKiCaUDHX4VqCaZoNmkViaFnkMidyWMINcMFib/oPOiPBwVH6cc8JE0IT8noCCXGF4UQ5ELogMjFSF/l9uhsCXgkludsiFNmZSeLR9RoqMUPaApmBens6Ftn6mib558qdEjDSO1nbee0Bb8pE8cF5qMp+Glix4mGgMlZiQfnMGcfJLPHFKeiiBwpQmko6RfnDkaaCFbH9ykUR/hIWcfUx12FaehXpkcmRGn6KCGIt+m2J5JA2MkQCEKrAQmQp8PlgKh4xpuIQwnH6FpFR4jFqD4J8SdDpubIfOhfKd9maGdKxn3HTiebRdPldOZsyTanMAbn6gZpA=="
+    },
+    {
+      "id": "documentary",
+      "label": {
+        "en": "Documentary",
+        "uz": "Hujjatli film"
+      },
+      "media": "picture",
+      "prompts": [
+        "a historical war scene",
+        "an old historical painting",
+        "ancient history"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos; this entry covers history and war thumbnails (the owner’s “Story & Documentary”, with v1’s History prompts). A crime-scene prompt diluted it (a history painting fell from 0.49 to 0.16), so crime stories are left to add by hand. 1 suggestion on the test library: a history painting, judged right."
+      },
+      "vec": "4SECHm+dhRz7oCOjQCVTsD+dZ5wzl7WjpyHUIZeI3htymLkfOCIiHloodJn3JPmd/xTVoIahRpIfIrefZpwnoV0dESORpdoabh+spWUkwCCmoKIgMhqJH8YhmCLnISki6CSsnR4k5RwPI6ejuCBZm4qj/qA+I7YctxoKoHWhuwz/GI6jRiItoNwf2xz1pXyjUqCEIieoQ6QBHZqbeCGbmAUg+xrnmSSehRoFHi6Wh6DOnGQcrxnlIS2xRiWOHJgdghzkHrwhWKSwEjelZqJxmZKgi58son2axyIkIQCiZSTonQoiRJ93Ic4dtJ8rIVwcqaLPp0ch/qOcJPibs5z4IxElaCCdnmWlb6UUOe+XtRyJn6cdsRuOIUGgvZ1fpHQkY6WlH4ghFaMUnWGW4yBmnCwf6hmmEWUgdJlnJnGkjB0SJN6g0J2SolmknhTuInUitpm/mUsVjZ5TGY4cjhkqJrCk/iTekbuemKJAIQOUJhx6oqSZ6xN1IEyiNpz7o2aiSCOTIgadmKGvHBoc56AuodqgrwSSIC8fHSBAJBQjoZctI88k8pITnsqidhnOIPOhnKJcojupIpM7pbeWY5zTkAogi6AQHfOYCZNFIembmBgrERygIyF/oYciuCHHmW2gd6JLHskbXJKso6QaHSVTIqgeTaDpmAMjPyKgH1qhARyfG3WZ/SNkGkGmHSA8H++beRYiIdWiaRq+HnScJpfAHFmeJqaUHcsaoaJNH9ckSaFZIk8hKiaAovkhzyUHEp+aUqHGnICiYhwHoUmljJzao4CXUJvmHEgYiaWopD+gVqG1mm+dwCKmnDqg/pzXm/KhFDlUnzIhdyBcIoAeOh+OJvAi/iRKkV2j06bso8ah5CSeHYy0zKB6I10jTCQiIH+d0CUbIFEC8ZxPKGOgBhm0pA2gbRRCoZoZW56uoUcm46EpHQ8ayyA5J52a7p73GtghzqTWnBYkOR/epp4gOJmRIcolG58emOMdsBaWIMah2CGvGdQdE6WaoJYkeplOnOsfQZnaomGZbhhHngARX5KhJAygHyPiH4MdTBL3oK8cgKGSHQkb0yLyHUyakJ1Uk4UeDh4iHFcWIqFjJFcaMxXMHR8jWZ3qHOAcKpfBniEXvyYemZEUJxgPpIEnGyJjm8igcp1DpcuhOB6SmgkdXxyanZwUKyBGlRec1o+/Gs4cYJzoIsodl5ewGDGgiKFZHvKczhM/mZSj2BPamDwZ4ZqaJBELrx/OHu4MUqBjIoshyRaRnIqkvCASHMqhByIlIQodWhoBrbYg2CL2H9KjzaSIIq4kApTUoHwkpRhSo/adqpmNHEGgdJ8vGwEldZYKn6+cBidCGUmdrBaomQKnv508Ag=="
+    },
+    {
+      "id": "tech",
+      "label": {
+        "en": "Technology",
+        "uz": "Texnologiya"
+      },
+      "media": "picture",
+      "prompts": [
+        "a new smartphone",
+        "computer hardware",
+        "a mechanical keyboard",
+        "a tech review thumbnail"
+      ],
+      "about": {
+        "en": "Phones, PC hardware and keyboards (tech reviews and unboxings), on pictures of any shape (the v1 prompts; v1 had the 16:9 gate). 1 of 1 right on the test library."
+      },
+      "vec": "8BwhHCyZgqDboE4Y3yP8ri8lySIKoEWhHhi7kRSWfpLMITWWFpsrpBkmwZ6PJumiIaXCBq+YgpLvlDicwxyaoXCjIyO7Hpyi948woeMcV5/XoEmhISF3oFEhdCJvJUYadiUnoT4fbSE+JCySwZxHmM+Z3BhrntoivCNUoAekbJHsHBac6Z7bnymQdxUdommkvZd0nT6jV6MeIVEhrSFAnIwdbp52Icygw5HbEvsmvBXeGPYc650AIRyx5x96oMYhUx7kolEg46IQILMesxoZpCWjkqDNoz2doR1ToRcYQSWTHFOcRKTQHf4m5xuSoKgg2pYtpCyZfZ9RIJogYiLGIJYi0yM8IKql5KMgOZUVHyOOnuOgdJ6MmeOfMR5DlyAjTqUWmaUd6abVoHKbnh/dnIicGxqsoLYP0xpBHdmk1SOGnR+lMJqCocCg15AWJEEYNCTpndiZ16Pkm6wZQZwpI3OhPiSgmbQah6I/lcmjf6CHnjWfvQ/Jom0ZOho6olicniLyGfYgpZ6qkG6g8ZyMo4YeyyCvnlweix4DIoyS96AWIEsbpR9On+WagB/boF6V7YWAonakpyCAFWOm1qCCGJYfjKNXGz2aByUemtUVGCKEoAYYgRq3nwygJ5lVpGofYKUzD5ydm5WaoFIoxR6sJQ4YL50lkwaeXxp4CkOV+RkGHOienBttIqWldyPqIHselpzNE9obDCAXFlaknJ1OGjCiMKCKGtwjk5Y4l/sk4x3dIsKNLyM2HxycTyQ6JP2aGR1qnc8gkhdXHNSgDCCmlPqihKUYntSgvaDvnKKexgkznVsO1qOEoyabRKTsnBEWHzlInWwgoiHXIpKdbyWlJEcfqifqnTUeIqgZpZeh6SLCHHe0QhriHuuUlSIeIdGjgSVqHSmX8aEiI0afACASptsgzJ4Cm5GkWh+kpQMXRpjHlIwYrp2IGqadQiU2HOuZTaIcoiogAyKupTWLHyS9FDQlDpiCIE0YPaGWJPmjGpw5FFmbTqUIoDQepZ8EF5WV4howoO0fcxCYmwygxBG+HK8d8aKXmyYeUaA2oCSeVRYmIaEXhSWJIYUgrpz5nEmcIyB5JLcch5yxHtKKMB3jmRwiM6MKIxGk9aCwo20fj6JSoC4kZKGKoDWkGCAtnp2gRqdaoQOdKhNgoWUaGiFinUOPh51+nhSlvhoPII2bYKOhJO6YXiJdHq2cF6O9kTsWSR51ntujm5seomWRX5q2HBKcSRrSFGKIL510E0iK+huOHUuhAJz+JGWYnBw5lzskpZ+drbIesx/HISCipqFnIOEkLZ16o+0CXiFnoB2hpZUcJUIWcqUwH3Yi8R4SgXictSgTIXGT+hzHifqMI6WNlg=="
+    },
+    {
+      "id": "travel_vlog",
+      "label": {
+        "en": "Travel & Vlog",
+        "uz": "Sayohat va vlog"
+      },
+      "media": "picture",
+      "prompts": [
+        "a traveler with a backpack",
+        "a famous travel landmark",
+        "a vlogger holding a camera"
+      ],
+      "about": {
+        "en": "Travel and vlog thumbnails: backpackers, landmarks, a vlogger with a camera, on pictures of any shape. 1 suggestion on the test library (a suitcase picture, not 16:9), judged right."
+      },
+      "vec": "2hyJoBiiax0yIAidPiQXsFIcbiDgoAigQyVMInwOVpwwoPseYRg4HWInFRqaKAKm1hh/jLyeTB9loe+ZXhoSlTSd8JuTIrahFiTonh6i2SFQnTWeOg2mleohvxwqHiMlbRwnmU0nkqMEIVyhop7dnPYc4qGqHpyfIiSEpDukqaDzosaglpw9I5GbCCLKpAKndJx5Fq+kn6HzI5gd4iXpl64cSKJknJscoh1vn78lQKCDofGjsR8vnmqxcCTrnkqU4R4XGDAmh6XXH+2hiSA8oAYdHqHfHDgJzSHBoiwfyijpnmEfiaT0IkIkESQPHfCZuKaapGycwKRDJOIgUaAmIOectR2ukmWjhKMMOaCanCIFmXmjqSAXk5udlQEtovEki6LdG3Qe454jnbuhu6JmnhYfOaMjIA4UEaTZJvulDyFjoToeBZxnokKgjBx3KP0hyxnEH/IWB5qCoDmkRhx0I2gYIh86nhoczw+AlGCipRg2oreZnB4Gm0UXMh1LnAajOCX1EZAh76GsnFydi4mAnvWclZwHo9kh+SVymXIhJBE/Hzyg7B8/oiWiSCNBDXkfF6YLnV+knSJAIMudjomkmFUkyxwlobiZ2BrsHs8ibR94HRWa9B3xndwjPqB0pjskOZxxJvKnAJRPohAVCCJ/Ir4d35OkGgycYR68kCsa7RwbHnOhsSbHIE6ewiQeHoUgiJ8wH6scrh0kn/ahUZH1HDChVJ//lBkgd5ksoBGQ5InioQkclh33IMAgqyc8HcucV6TGo5clJyFbndWiPht4kLodQaCnHk6a+Jh2pK6aJaFUokUgsBycoXwGkaBsh1SlCzlwIdOQgR1em0KnOihRJ1QlxCbWnK8i16bbozqgHxQNIaq0xiDGHzEdziCyHO+j5RcEi1cYiKTXJR+h0yamohKi/KQFkGIh9J3uoOCaFpskIEskPp9UJtCctCXdmsYf+CIqBVIWTJlLGF6RxJqYo/ohLCLaosiazxSNIeGW/5umG+mf5aLXn+AhhRl4HzacqB6UIsgZX4tWowGgCKPGETqZRCSaol6WS5WxneOlMR7QIGadgiZSjhIhRBc6Hi0VjZX7ISQd9JMWJdkkmiCdnRAgQZxeIS6mSRQ6i8IkXJ1MGeckXg+bEDIc5iBDok6jlKVpgsGc0iAtk/+UIxsoo8IjaSLSoImS6xwwouCYWaEwKI0hM6RMn6ShWqOAINOhNp1KpD2mpqBSodud1pfeJG6g3JQ6ngAaSqG1nL8hNCTGoWGlJpo+IGmhnCQtIMwgyJslrV8d3iKGHfMTL5yBJBQhh59EoG0WcyA2osuQ5SFWHoScIKZGIAQgCaJLHjQaiCYPDQ2gY53hoMudh6Svlw=="
+    },
+    {
+      "id": "tutorial",
+      "label": {
+        "en": "Tutorial",
+        "uz": "Video dars"
+      },
+      "media": "picture",
+      "aspect": [
+        1.6,
+        1.95
+      ],
+      "prompts": [
+        "an online course thumbnail",
+        "a software tutorial thumbnail",
+        "a how-to guide thumbnail"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos; this entry covers course and how-to thumbnails (the owner’s “Tutorial & Review”; gadget reviews get Technology), on 16:9 pictures only (the v1 prompts). 3 of 3 right on the test library."
+      },
+      "vec": "3I7bIOkhFJ0EnTWR0CQyr+knOZminZueXqBfHNaeTiT+GIGVpRvinxghXQR6JlymLKVKIASevyHGoOMewSP4oi4c8SDzIA6cBJn5mtcbmKSLpjGfRJlvJYgl5pdrHfCWVRx5nxWUbB3aIfWgSZxUEMyc2qHGGtohtBxtmkmg+aUYnSId56MFlBKf+yPFFaCgUh2yonqmIJg6pPcbzSCUHy6V3KC5FYAi+x6Ji04m0yAWJf2jIKSHGTWx+yWCnIsg2hw/oW4gNKgHH0+UnBx3nc+bY5wOozgg4ZgCGlYdoSeJnYuXmKMeHjseiCDyG8agD6RindecwqDSIEIlUp7SIDcgTxqKFiWnnaIBObCdsyB5pKKk9pMQkeMSoxusGgacAqTWIduKbKCNoawVshk6mEoeMyCuohKZrBcAJzigaSAnnYWmHp0boBai8JOSJbgmxCClG1Ge4aHoglqksqJcJN2bIRRxmwWfVJ77pc2m6p8ypGUiVJNxHm6XtZX6o7mXTR8JHQYhkxvLDSWek5w3FCqXgJpfnoYiLprQI3slbpugIZuft6Fsnx6U1CAloNAYAqR6nYCWy5xLmHGdIqGIINElAxwaFo0a8B8PnKShqiVGpCyhSBslouEVKJ2JoiSghaCAIhgfK6JaC8ckNyX+JFIhXJyUG10iySVBIRWhWKShEDSkrJRJJCWjt5B+IzGdiJwBmzWj/prenqikkqFjIXmax6RjJPYkYJwvpAoiupiylZogCyYTI4eczyE+IUifQh9+nRUInBg4HdajsCY/IYqnB6DDnUuiCaQ4oZMQnZeeo8ofMCHBpVKidaNHHNGi/zgtHbIh8xXGH/oO2BuIJHSbzSgFnwmiNqlApMujzJFDHNa0mRwOnUcdvyTdIoClMCGElUeSlh+zJXqfGiH+odsjRBg0pH0fDRcYpdwjFp3lJFcWiRO5JXyiVBwtoNod1aDDmv8kFSMYqsyaZZu5oucct5zwJAMiapramGKk7CSyJqyk0KixINAYdZKeomKkpSRHmDoeqRlJIXuXnyAumzkc9iG1GjeZrpbEGmukoag2IsUd8iHqIUieSaT8FDOcOA4xJXkb2J+Ll4cjcx02oT0mz6V7HHWmEAzEkFokz5gFGE4hPJZBpBSlxx5LIqmcaaZoDw6gMKVHoM0PKhyZnfIc/hwcnWqhliXBIJKau6UbIe0SUySqEBuXBKV1HdeWr6GzpWGjqR/fmEUf5J0oI+ikLqPjndKibp+GlTcfuyBDE1WlE5mwJAeexiLmnF4kxaPMrjkjqhuRHdegGxOAJe0ZQaLZoLCd1SL3qkOiQxziIgofiKOqk48kIR2zIMAc1iTgH3OWOyAily+GC5zjng=="
+    },
+    {
+      "id": "youtube_niche",
+      "label": {
+        "en": "YouTube niche",
+        "uz": "YouTube nishasi"
+      },
+      "media": "picture",
+      "aspect": [
+        1.6,
+        1.95
+      ],
+      "prompts": [
+        "a YouTube play button award",
+        "a red YouTube logo",
+        "a YouTube subscriber count"
+      ],
+      "about": {
+        "en": "Videos about YouTube itself: play button awards, the YouTube logo, subscriber counts. 16:9 pictures only: without the gate it fired on a graphic of social media buttons. Untested: it never reached the bar on 16:9 pictures of the test library."
+      },
+      "vec": "MyJUnjclZp9UoOqk0hVSrg0n1KLMiUqlbaDVIB0k+B3YFQ6iKQAzoO0lDxdSI5SmMiTaoLmirJW3pV+gIpmUjSahz49opLkNsCEKnKohkaIQqPEgvSHEIZAifCWqJjAf6CVPpK4Y9geNIkSmhKEOHJOjCBiwnPYgOSWsp5SC6qXvkIiZhaYtmb8eiSTkn/KllyWxlfGkLqHbINYmiI+XpMacTB1eGDGkABnPn1EkYCSlKOmiQ6BKgbSwzBVTH7kYXCT/HN8gKKU/lEkldxu/prWj0xxJoGohZySrHMEgVSPQnpKcDSCPo1kllx8oFpMPcaSanlGm85iIJtsjBiRWI+mbhyBilC+pGaQNOTugYxesoWSkY6Jyg4SgRxXvIGagLZyKGwqeKpAjoAaaExtcIbcgyiMho4YZ0hmfI+ogWSBepLGmM6GmolOhLh7VKSQf5h9bIEwZo6TwGE8jWqMbFOeQSJI7HFWiW6Ggo4WgU52NpdeYMp3bnZiagp7ToP0b1iNiF9UjOaUznrqkh6X3lJKddyBzoy0hcR89IvKeQx7rHq2g/RiXllcdFRsVIpue/phcm9gc7aAlI8wP26ZuIIsZTJMBKLCfqSXGo1khhBoao2Wk75p/nYodEKRHpaogN6DJKSyk1BuWm7QkfCREJW+O5R1qmzUkvCe+Er+jrKGwJiamW5jLnE+lRyDkH2aiFqKzppUZ7RsUobmWMpiRIjCWJaXDI6kk/5nQmwIlySPIoSAl7yexIE2dwZXoI+EcmppnojQkNZlTIFORRSRLIpCn6aIvpb2fNpZeH0MfXxitp0OjlyZcpWOiJKh0HQafDDktowOQriUxJVWgwSMZKJMmnyTQme2kFKa1oYccbJUWJPyzwSQOI90ahRwhnqemUaGhIBeWi5wcI+6cViQ8pOefKCQInIQdWCGCpiglRB7CndqilicOG0YhJSbkFeIgopmlnGQn8yQfqZsTpJBsIucj2ZwLoY+e96HPHs4kxxmJn+ymcKkJIUSiqJufoFGlIhVEmmQl1iMIIiiZBKVxo1QkMBsekVWeJSTkozyfLahrHUogQiSAosajSxRnm2CivSHLm5KcdyOqH0IhY5lfIQOlXqWcG6GjmRgqlssmmJ6Ao38i2R2OnsSmYCOYGBek6qi4JoyXlpZplnAY6CN0onsd1Sj3G56YvBk0Kc+koKaloG0fPiX4pQwgXahkIzieGiT3owiRn6F3pvoiSpA1JNwVe54YIvMUKKD7oQIm2ppdn9qgS5hGnkqdxx0voeMbep5ArYEcsiSrE5yWhRmnJM0i66N8pDGfviI5IzmYeCJNHrAXVaN8JG8jDSAXJRoiVyD2k9KbpQ0voPuX3qWfFA=="
+    }
+  ]
+}

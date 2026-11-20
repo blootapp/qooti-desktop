@@ -1,13 +1,18 @@
 import store from './store.js'
 import * as events from './events.js'
 import { api, listenEvent, popMobileInbox, mobileInboxCount, mobileConnectedAt } from './tauri-api.js'
-import { t as tr, setLang } from './i18n.js'
+import { t as tr, setLang, currentLang } from './i18n.js'
 import { sfx } from './sfx.js'
-import { getLocalVocabVersion, getLatestVocabVersion, checkForVocabUpdate, forceSyncTagVocab } from './tag-sync.js'
+import {
+  LENS_ORDER, getLenses, getLens, isLoaded as lensesLoaded, lensName, lensSummary, tagLabel, tagDeleteAsksFirst,
+  suggestionsOn, getLensStatus, refreshLensStatus, setLensEnabled, checkForLensUpdates, toDate,
+  applyCollectionHints,
+} from './lenses.js'
 import { openHub } from './licensing.js'
 import { enhanceSelect } from './select-menu.js'
 import * as motion from './motion.js'
 import { setPageBar } from './page-bar.js'
+import { installUpdate } from './update-screen.js'
 
 let container = null
 let settings = {}
@@ -29,12 +34,17 @@ export function init(el, initialSettings) {
   container = el
   settings = initialSettings ?? {}
   applyVisualSettings(settings)
-  store.on(events.NAV_CHANGE, ({ view }) => { if (view === 'settings') render() })
+  store.on(events.NAV_CHANGE, ({ view }) => {
+    if (view === 'settings') render()
+    syncLensWatch()   // leaving Settings stops the tagger's progress events
+  })
   // Keep cache in sync when settings are changed from outside (e.g. extension popup via ext-pref-changed)
   store.on(events.SETTINGS_CHANGED, ({ key, value }) => {
     settings[key] = value
     if (key === 'plan') updatePlanBadgeLive(value)
   })
+  // Library › Tag lens follows the lens data and the tagger's progress (subscribed once)
+  bindLensStore()
 }
 
 export function showTab(tab) {
@@ -107,6 +117,318 @@ export function getSetting(key, fallback = null) {
   return settings[key] ?? fallback
 }
 
+// ─── Library › Tag lens (spec §8.2) ──────────────────────────────────────
+// render() rebuilds the whole page on every visit, so the Tag lens state lives here at
+// module level and is subscribed once (bindLensStore, from init); the rows are kept up to
+// date in place (paintLens). Rows: Tag suggestions (the master switch, with one status line
+// and a 2 px progress line while the library is being read), the lenses in their fixed
+// order (a switch and one summary line), and Updates ("Check now", whose label never
+// changes; what happened shows in its line). Every changing text sits in a one-line slot.
+
+const LENS_COUNT_MS   = 4000   // after a lens is turned on, its line says how many items it has suggestions for
+const CHECK_MIN_MS    = 600    // "Checking…" stays at least this long, so it never just flickers
+const CHECK_RESULT_MS = 6000   // how long "Up to date" / "Updated just now" / "Couldn't connect" stay
+
+const lensUi = {
+  bound:      false,
+  check:      'idle',      // 'idle' | 'checking' | 'up_to_date' | 'updated' | 'offline'
+  checkTimer: null,
+  counts:     new Map(),   // lens id → { n, timer }: the count line after the lens was turned on
+  busy:       new Set(),   // lens ids whose switch is being saved
+  masterBusy: false,       // the Tag suggestions switch is being saved
+  watching:   false,       // what the backend was last told (lens_status_watch)
+}
+
+function bindLensStore() {
+  if (lensUi.bound) return
+  lensUi.bound = true
+  store.on(events.LENS_LOADED, () => paintLens())   // lenses, names (language), on/off
+  // The tagger's progress, ≤ 2 a second. Painted from the event itself: the last one of a run
+  // (scored = total) comes only once, and the line must end on it.
+  store.on(events.LENS_STATUS, s => paintLens(s))
+  store.on(events.SETTINGS_CHANGED, ({ key }) => { if (key === 'tag_recommendations_enabled') paintLens() })
+}
+
+// The backend sends the tagger's progress (lens:status) only while it is watched: from when
+// Settings › Library is on screen until it isn't (another tab, another page). Whatever puts
+// the Library tab on screen also reads a fresh state (render(), the tab switch), because
+// nothing arrived while it wasn't watched.
+function syncLensWatch() {
+  const want = !!container && !container.hidden && activeTab === 'library' && !!container.querySelector('#s-lens-section')
+  if (want === lensUi.watching) return
+  lensUi.watching = want
+  api.lensStatusWatch(want).catch(err => console.warn('[settings] lens status watch failed:', err))
+}
+
+function lensSectionHtml() {
+  return `
+        <section class="settings-section s-lens-section" id="s-lens-section">
+          <h2 class="settings-section-title">${tr('lens.settings.title')}</h2>
+          <div class="settings-row s-lens-master" id="s-lens-master">
+            <div class="settings-row-label">
+              <span class="settings-row-name">${tr('lens.settings.master')}</span>
+              <span class="settings-row-sub s-lens-line" id="s-lens-master-line"></span>
+            </div>
+            <div class="settings-row-control s-lens-action">
+              <label class="s-switch">
+                <input type="checkbox" id="s-tag-reco" aria-label="${escHtml(tr('lens.settings.master'))}" ${suggestionsOn() ? 'checked' : ''} />
+                <span class="s-switch-track"></span>
+              </label>
+            </div>
+            <span class="s-lens-progress" aria-hidden="true"><span></span></span>
+          </div>
+          ${lensRowsHtml()}
+          <div class="settings-row s-lens-updates" id="s-lens-updates">
+            <div class="settings-row-label">
+              <span class="settings-row-name">${tr('lens.settings.updates')}</span>
+              <span class="settings-row-sub s-lens-line" id="s-lens-updates-line" aria-live="polite"></span>
+            </div>
+            <div class="settings-row-control s-lens-action">
+              <button class="settings-save-btn" id="s-lens-check">${tr('lens.settings.check')}</button>
+            </div>
+          </div>
+        </section>`
+}
+
+// One row per lens (texts and switch states come from paintLens); flat placeholder rows on
+// the same lines until the lens data has arrived
+function lensRowsHtml() {
+  if (!lensesLoaded()) {
+    return LENS_ORDER.map((_, i) => `
+          <div class="settings-row s-lens-row s-lens-row--skeleton" aria-hidden="true">
+            <div class="settings-row-label">
+              <span class="settings-row-name"><span class="s-lens-skel" style="width:${[44, 58, 38][i % 3]}%"></span></span>
+              <span class="settings-row-sub s-lens-line"><span class="s-lens-skel" style="width:${[34, 28, 40][i % 3]}%"></span></span>
+            </div>
+            <div class="settings-row-control s-lens-action"><span class="s-lens-skel s-lens-skel--switch"></span></div>
+          </div>`).join('')
+  }
+  return getLenses().map(l => `
+          <div class="settings-row s-lens-row" data-lens="${escHtml(l.id)}">
+            <div class="settings-row-label">
+              <span class="settings-row-name s-lens-name"></span>
+              <span class="settings-row-sub s-lens-line s-lens-sub"></span>
+            </div>
+            <div class="settings-row-control s-lens-action">
+              <label class="s-switch">
+                <input type="checkbox" class="s-lens-switch" data-lens="${escHtml(l.id)}" />
+                <span class="s-switch-track"></span>
+              </label>
+            </div>
+          </div>`).join('')
+}
+
+/** Brings the Tag lens rows up to date in place, when Settings has been rendered.
+ *  `statusNow`: a LENS_STATUS payload, painted as is (otherwise the last one lenses.js kept). */
+function paintLens(statusNow) {
+  const sec = container?.querySelector('#s-lens-section')
+  if (!sec) return
+  const on = suggestionsOn()
+  const status = statusNow && typeof statusNow === 'object' ? statusNow : getLensStatus()
+
+  // Tag suggestions: the switch, its line (off · working · idle) and the progress line
+  const master = sec.querySelector('#s-tag-reco')
+  if (master && !lensUi.masterBusy) master.checked = on
+  const working = on && isLensWorking(status)
+  setLensLine(sec.querySelector('#s-lens-master-line'),
+    !on     ? tr('lens.settings.master.off')
+    : working ? tr('lens.settings.master.working', { done: fmtCount(status.scored), total: fmtCount(status.total) })
+    :           tr('lens.settings.master.idle'))
+  const masterRow = sec.querySelector('#s-lens-master')
+  masterRow?.classList.toggle('is-working', working)
+  const fill = masterRow?.querySelector('.s-lens-progress > span')
+  if (fill) fill.style.transform = `scaleX(${working ? Math.max(0, Math.min(1, status.scored / status.total)) : 0})`
+
+  // The lens rows: rebuilt only when the set of lenses changes (first load, a lens added)
+  const want = lensesLoaded() ? getLenses().map(l => l.id).join(',') : null
+  const have = sec.querySelector('.s-lens-row--skeleton') ? null
+    : [...sec.querySelectorAll('.s-lens-row[data-lens]')].map(r => r.dataset.lens).join(',')
+  if (want !== have) rebuildLensRows(sec)
+  for (const row of sec.querySelectorAll('.s-lens-row[data-lens]')) {
+    const lens = getLens(row.dataset.lens)
+    if (!lens) continue
+    const name = lensName(lens)
+    const nameEl = row.querySelector('.s-lens-name')
+    if (nameEl && nameEl.textContent !== name) nameEl.textContent = name
+    const input = row.querySelector('.s-lens-switch')
+    if (input) {
+      if (!lensUi.busy.has(lens.id)) input.checked = lens.enabled === true || lens.enabled === 1
+      input.disabled = !on   // no effect while Tag suggestions is off
+      input.setAttribute('aria-label', name)
+    }
+    const count = lensUi.counts.get(lens.id)
+    setLensLine(row.querySelector('.s-lens-sub'), count ? lensCountLine(count.n) : lensSummary(lens))
+  }
+
+  // Updates
+  setLensLine(sec.querySelector('#s-lens-updates-line'), lensUpdatesLine())
+  const btn = sec.querySelector('#s-lens-check')
+  if (btn) {
+    btn.disabled = lensUi.check === 'checking'
+    if (btn.disabled) btn.setAttribute('aria-busy', 'true')
+    else btn.removeAttribute('aria-busy')
+  }
+}
+
+function rebuildLensRows(sec) {
+  const master = sec.querySelector('#s-lens-master')
+  if (!master) return
+  const focused = document.activeElement?.closest?.('.s-lens-row')?.dataset.lens ?? null
+  sec.querySelectorAll('.s-lens-row').forEach(r => r.remove())
+  master.insertAdjacentHTML('afterend', lensRowsHtml())
+  if (focused) [...sec.querySelectorAll('.s-lens-switch')].find(i => i.dataset.lens === focused)?.focus({ preventScroll: true })
+}
+
+// Listeners for one rendered page (render() builds a new section each visit)
+function bindLensSection() {
+  const sec = container?.querySelector('#s-lens-section')
+  if (!sec) return
+  sec.addEventListener('change', e => {
+    const input = e.target
+    if (input?.id === 's-tag-reco') onLensMasterChange(input)
+    else if (input?.classList?.contains('s-lens-switch')) onLensSwitchChange(input)
+  })
+  sec.querySelector('#s-lens-check')?.addEventListener('click', onLensCheckNow)
+}
+
+async function onLensMasterChange(input) {
+  const on = input.checked
+  lensUi.masterBusy = true
+  try {
+    await setSetting('tag_recommendations_enabled', on ? 'true' : 'false')
+    if (on) {
+      refreshLensStatus()      // the tagger starts reading: its progress shows from here on
+      applyCollectionHints()   // and the collection hints are written, now that they can be
+    }
+  } catch (err) {
+    console.error('[settings] tag suggestions switch failed:', err)
+    input.checked = !on
+    store.emit(events.SYSTEM_TOAST, { type: 'error', message: tr('lens.settings.failed') })
+  } finally {
+    lensUi.masterBusy = false
+    paintLens()
+  }
+}
+
+async function onLensSwitchChange(input) {
+  const id = input.dataset.lens
+  const on = input.checked
+  if (!id) return
+  if (lensUi.busy.has(id)) { input.checked = !on; return }   // one change at a time per lens
+  lensUi.busy.add(id)
+  clearLensCount(id)
+  try {
+    await setLensEnabled(id, on)   // a display filter: nothing is re-scored
+    if (on) {
+      const s = await refreshLensStatus()
+      const n = Number(s?.per_lens?.[id])
+      if (Number.isFinite(n)) showLensCount(id, n)
+    }
+  } catch (err) {
+    console.error('[settings] lens switch failed:', err)
+    input.checked = !on
+    store.emit(events.SYSTEM_TOAST, { type: 'error', message: tr('lens.settings.failed') })
+  } finally {
+    lensUi.busy.delete(id)
+    paintLens()
+  }
+}
+
+// "Check now": the label stays; "Checking…" and the result show in the row's line
+async function onLensCheckNow() {
+  if (lensUi.check === 'checking') return
+  clearTimeout(lensUi.checkTimer)
+  setLensCheck('checking')
+  const started = Date.now()
+  let result
+  try { result = await checkForLensUpdates({ force: true }) } catch { result = 'offline' }   // it never rejects
+  const wait = CHECK_MIN_MS - (Date.now() - started)
+  if (wait > 0) await new Promise(r => setTimeout(r, wait))
+  setLensCheck(result === 'updated' ? 'updated' : result === 'offline' ? 'offline' : 'up_to_date')
+  lensUi.checkTimer = setTimeout(() => setLensCheck('idle'), CHECK_RESULT_MS)
+}
+
+function setLensCheck(state) {
+  lensUi.check = state
+  paintLens()
+}
+
+function showLensCount(id, n) {
+  clearLensCount(id)
+  const timer = setTimeout(() => { lensUi.counts.delete(id); paintLens() }, LENS_COUNT_MS)
+  lensUi.counts.set(id, { n, timer })
+  paintLens()
+}
+
+function clearLensCount(id) {
+  const c = lensUi.counts.get(id)
+  if (c) clearTimeout(c.timer)
+  lensUi.counts.delete(id)
+}
+
+// The tagger is reading the library: items that can have suggestions aren't all scored yet
+function isLensWorking(s) {
+  const total = Number(s?.total), scored = Number(s?.scored)
+  return Number.isFinite(total) && Number.isFinite(scored) && total > 0 && scored < total
+}
+
+// "Delete the tag “moodboard”?" with how many items have it (list_tags' usage_count)
+async function confirmTagDelete(tag, name) {
+  const { showConfirm } = await import('./dialog.js')
+  const n = Math.max(0, Math.round(Number(tag?.usage_count) || 0))
+  return showConfirm({
+    title: tr('lens.settings.tag_delete_title', { name }),
+    message: n === 0 ? tr('lens.settings.tag_delete_msg_none')
+      : n === 1 ? tr('lens.settings.tag_delete_msg_one')
+      : tr('lens.settings.tag_delete_msg', { n: fmtCount(n) }),
+    danger: true,
+    confirmLabel: tr('action.delete'),
+    cancelLabel: tr('action.cancel'),
+  })
+}
+
+function lensCountLine(n) {
+  if (!n) return tr('lens.settings.count_none')
+  if (n === 1) return tr('lens.settings.count_one')
+  return tr('lens.settings.count', { n: fmtCount(n) })
+}
+
+function lensUpdatesLine() {
+  switch (lensUi.check) {
+    case 'checking':   return tr('lens.settings.updates.checking')
+    case 'up_to_date': return tr('lens.settings.updates.uptodate')
+    case 'updated':    return tr('lens.settings.updates.updated')
+    case 'offline':    return tr('lens.settings.updates.offline')
+  }
+  // When the lenses on this computer last changed (installed or updated)
+  const last = getLenses().map(l => toDate(l.updated_at)).filter(Boolean).sort((a, b) => b - a)[0]
+  return last ? tr('lens.settings.updates.auto', { date: fmtLensDate(last) }) : tr('lens.settings.updates.auto_nodate')
+}
+
+function setLensLine(el, text) {
+  if (!el || el.textContent === text) return
+  el.textContent = text
+  el.title = text   // the whole line on hover, when it ends in an ellipsis
+}
+
+// "1,204" / "1 204". By hand: the WebView's ICU data may not include Uzbek
+function fmtCount(n) {
+  const digits = String(Math.max(0, Math.round(Number(n) || 0)))
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, currentLang() === 'uz' ? '\u00A0' : ',')
+}
+
+const UZ_MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr']
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// "18 Nov" / "18-noyabr"; another year: "18 Nov 2025" / "2025-yil 18-noyabr". By hand, as
+// above (the WebView printed Uzbek months as "M11")
+function fmtLensDate(d) {
+  const day = d.getDate(), month = d.getMonth(), year = d.getFullYear()
+  const thisYear = year === new Date().getFullYear()
+  if (currentLang() === 'uz') return `${thisYear ? '' : `${year}-yil `}${day}-${UZ_MONTHS[month]}`
+  return `${day} ${EN_MONTHS[month]}${thisYear ? '' : ` ${year}`}`
+}
+
 async function render() {
   if (!container) return
   // Top bar (guide I1): no search and no Import — just "Settings" in the centre
@@ -121,9 +443,8 @@ async function render() {
   ])
   const addedOn = ms => new Date(ms).toLocaleDateString(settings.language === 'uz' ? 'uz-UZ' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
-  const localVocabVersion  = getLocalVocabVersion()
-  const latestVocabVersion = getLatestVocabVersion()
-  const vocabHasUpdate     = latestVocabVersion > localVocabVersion && latestVocabVersion > 0
+  // Library › Tag lens: a fresh progress and per-lens counts (arrives as LENS_STATUS)
+  refreshLensStatus()
 
   const VALID_TABS = ['general', 'appearance', 'library', 'downloads', 'system', 'mobile']
   if (!VALID_TABS.includes(activeTab)) activeTab = 'general'
@@ -320,16 +641,22 @@ async function render() {
           </div>
         </section>
 
+        ${lensSectionHtml()}
+
         <section class="settings-section">
           <h2 class="settings-section-title">${tr('settings.section.tags')}</h2>
           <div id="s-tag-list" class="s-tag-chips">
             ${tags.length === 0
               ? `<p class="settings-row-sub" style="padding:8px 0">${tr('settings.no_tags')}</p>`
-              : tags.map(tag => `
+              : tags.map(tag => {
+                // A lens tag shows its concept's label in the app's language; others as typed
+                const name = tagLabel(tag)
+                return `
                 <div class="s-tag-chip" data-tag-id="${tag.id}">
-                  <span>${escHtml(tag.name)}</span>
-                  <button class="s-tag-delete-btn s-tag-chip-x" data-tag-id="${tag.id}" aria-label="Delete ${escHtml(tag.name)}">×</button>
-                </div>`).join('')}
+                  <span>${escHtml(name)}</span>
+                  <button class="s-tag-delete-btn s-tag-chip-x" data-tag-id="${tag.id}" aria-label="${escHtml(tr('lens.settings.tag_delete', { name }))}">×</button>
+                </div>`
+              }).join('')}
           </div>
         </section>
       </div>
@@ -418,38 +745,6 @@ async function render() {
             </div>
             <div class="settings-row-control">
               <button class="settings-save-btn" id="s-reindex-btn">${tr('settings.reindex.btn')}</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h2 class="settings-section-title">${tr('settings.section.taglens')}</h2>
-          <div class="settings-row">
-            <div class="settings-row-label">
-              <span class="settings-row-name">${tr('settings.taglens.reco')}</span>
-              <span class="settings-row-sub">${tr('settings.taglens.reco.sub')}</span>
-            </div>
-            <div class="settings-row-control">
-              <label class="s-switch">
-                <input type="checkbox" id="s-tag-reco" ${(settings.tag_recommendations_enabled ?? 'false') !== 'false' ? 'checked' : ''} />
-                <span class="s-switch-track"></span>
-              </label>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div class="settings-row-label">
-              <span class="settings-row-name">${tr('settings.taglens.vocab')}</span>
-              <span class="settings-row-sub">${tr('settings.taglens.vocab.sub')}</span>
-            </div>
-            <div class="settings-row-control">
-              <span class="settings-row-value" id="s-taglens-version">
-                ${localVocabVersion > 0
-                  ? `v${localVocabVersion}${vocabHasUpdate ? ` <span class="s-update-badge">v${latestVocabVersion} available</span>` : ''}`
-                  : '—'}
-              </span>
-              <button class="settings-save-btn${vocabHasUpdate ? ' s-update-available' : ''}" id="s-taglens-check">
-                ${vocabHasUpdate ? tr('settings.taglens.update') : tr('settings.taglens.check')}
-              </button>
             </div>
           </div>
         </section>
@@ -599,6 +894,8 @@ async function render() {
       newPanel.classList.add('active')
       motion.fadeIn(newPanel)
       if (newTab === 'mobile') loadMobileQr()
+      syncLensWatch()   // Library (Tag lens) on screen or not
+      if (newTab === 'library') refreshLensStatus()
     })
   })
 
@@ -650,67 +947,23 @@ async function render() {
     document.body.classList.toggle('hide-collection-label', !e.target.checked)
   })
 
-  // ── System tab bindings ───────────────────────────────────────
-  container.querySelector('#s-tag-reco')?.addEventListener('change', e => {
-    setSetting('tag_recommendations_enabled', e.target.checked ? 'true' : 'false')
-  })
-
-  const tagLensBtn     = container.querySelector('#s-taglens-check')
-  const tagLensVersion = container.querySelector('#s-taglens-version')
-  if (tagLensBtn) {
-    tagLensBtn.addEventListener('click', async () => {
-      tagLensBtn.disabled = true
-      tagLensBtn.textContent = tr('settings.taglens.checking')
-      try {
-        const { local, latest, hasUpdate } = await checkForVocabUpdate()
-        if (!hasUpdate) {
-          tagLensBtn.textContent = tr('settings.taglens.uptodate')
-          tagLensBtn.classList.add('saved')
-          setTimeout(() => {
-            tagLensBtn.textContent = tr('settings.taglens.check')
-            tagLensBtn.classList.remove('saved')
-            tagLensBtn.disabled = false
-          }, 2500)
-          return
-        }
-        tagLensBtn.textContent = tr('settings.taglens.updating')
-        const result = await forceSyncTagVocab()
-        tagLensBtn.textContent = tr('settings.taglens.updated', { v: result.version })
-        tagLensBtn.classList.add('saved')
-        tagLensBtn.classList.remove('s-update-available')
-        if (tagLensVersion) tagLensVersion.textContent = `v${result.version}`
-        setTimeout(() => {
-          tagLensBtn.textContent = tr('settings.taglens.check')
-          tagLensBtn.classList.remove('saved')
-          tagLensBtn.disabled = false
-        }, 3000)
-      } catch (err) {
-        console.error('[settings] tag-lens check failed:', err)
-        tagLensBtn.textContent = tr('settings.taglens.failed')
-        setTimeout(() => {
-          tagLensBtn.textContent = tr('settings.taglens.check')
-          tagLensBtn.disabled = false
-        }, 3000)
-      }
-    })
-  }
+  // ── Library tab bindings (Tag lens) ───────────────────────────
+  paintLens()
+  bindLensSection()
+  syncLensWatch()
 
   // ── Check for app updates ──────────────────────────────────────
   const checkUpdateBtn = container.querySelector('#s-check-update')
   const updateStatus   = container.querySelector('#s-update-status')
   if (checkUpdateBtn) {
     checkUpdateBtn.addEventListener('click', async () => {
-      // Second phase: an update was found → this button now installs it.
+      // Second phase: an update was found → this button now installs it, behind the
+      // updating screen that shows the download's progress (update-screen.js).
       if (checkUpdateBtn.dataset.mode === 'install') {
-        checkUpdateBtn.disabled  = true
-        checkUpdateBtn.innerHTML = `<span class="spinner-ring" aria-hidden="true"></span><span>${tr('update.installing')}</span>`
-        try {
-          await api.applyUpdate()   // downloads, installs, then restarts the app
-        } catch (err) {
-          console.error('[settings] update install failed:', err)
-          checkUpdateBtn.disabled  = false
-          checkUpdateBtn.textContent = tr('update.failed')
-        }
+        checkUpdateBtn.disabled = true
+        if (await installUpdate(checkUpdateBtn.dataset.version)) return   // qooti closes or restarts by itself
+        checkUpdateBtn.disabled  = false
+        checkUpdateBtn.textContent = tr('update.failed')
         return
       }
 
@@ -722,6 +975,7 @@ async function render() {
         if (info?.version) {
           if (updateStatus) updateStatus.textContent = tr('settings.update.available', { version: info.version })
           checkUpdateBtn.dataset.mode = 'install'
+          checkUpdateBtn.dataset.version = info.version
           checkUpdateBtn.classList.add('s-update-available')
           checkUpdateBtn.disabled  = false
           checkUpdateBtn.textContent = tr('settings.update.install', { version: info.version })
@@ -776,10 +1030,22 @@ async function render() {
   }
 
   // ── Library tab bindings (tags) ──────────────────────────────
+  // A people's tag (typed or imported) can't be made again now that tags can't be typed
+  // (§0.6), so deleting one asks first, with its name and how many items have it (§0b.4).
+  // So does one that stands for a concept (one name, one tag): it holds the person's own
+  // items too. Only a lens tag goes with one click: the item panel's list can add it back.
   container.querySelectorAll('.s-tag-delete-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
+      if (btn.disabled) return
       const tagId = btn.dataset.tagId
+      const tag = tags.find(x => String(x.id) === tagId) ?? null
       btn.disabled = true
+      if (tagDeleteAsksFirst(tag)) {
+        const name = tag ? tagLabel(tag) : (btn.closest('.s-tag-chip')?.querySelector('span')?.textContent ?? '')
+        let ok = false
+        try { ok = await confirmTagDelete(tag, name) } catch (err) { console.error('[settings] tag delete question failed:', err) }
+        if (!ok) { btn.disabled = false; return }
+      }
       btn.textContent = '…'
       try {
         await api.deleteTag(tagId)

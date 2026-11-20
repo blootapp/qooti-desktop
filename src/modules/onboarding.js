@@ -51,7 +51,7 @@ function render(waiting = false) {
         ${missing ? '' : `<button class="btn btn-primary ob-btn" id="ob-hub">${t('onboarding.hub.continue')}</button>`}
       `}
     </div>
-    <div class="ob-langs">${langBtn('en', 'English')}${langBtn('uz', "O'zbekcha")}</div>
+    <div class="ob-langs">${langBtn('en', 'English')}${langBtn('uz', 'O‘zbekcha')}</div>
   `
 
   // First-launch language pick: most of our users want Uzbek before they've ever

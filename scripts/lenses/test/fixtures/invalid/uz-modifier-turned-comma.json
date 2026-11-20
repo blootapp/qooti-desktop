@@ -1,0 +1,103 @@
+{
+  "id": "design",
+  "version": 1,
+  "role": "base",
+  "name": {
+    "en": "Graphic designer / Social media post designer",
+    "uz": "Grafik dizayner / SMM post dizayneri"
+  },
+  "summary": {
+    "en": "Posters, layouts, logos",
+    "uz": "Afishalar, maketlar, logotiplar"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.2
+  },
+  "concepts": [
+    {
+      "id": "d_poster",
+      "label": {
+        "en": "Poster",
+        "uz": "Afisha"
+      },
+      "media": "any",
+      "prompts": [
+        "a printed poster",
+        "a graphic poster design"
+      ]
+    },
+    {
+      "id": "d_logo",
+      "label": {
+        "en": "Logo",
+        "uz": "Logotip"
+      },
+      "media": "any",
+      "prompts": [
+        "a logo mark",
+        "a brand logo"
+      ]
+    },
+    {
+      "id": "d_photo",
+      "label": {
+        "en": "Photo",
+        "uz": "Foto"
+      },
+      "media": "any",
+      "prompts": [
+        "a candid photo",
+        "a portrait photograph"
+      ]
+    },
+    {
+      "id": "d_story",
+      "label": {
+        "en": "Story",
+        "uz": "Storis"
+      },
+      "media": "any",
+      "aspect": [
+        0.5,
+        0.6
+      ],
+      "prompts": [
+        "a vertical story post",
+        "a phone story layout"
+      ]
+    },
+    {
+      "id": "d_dark",
+      "label": {
+        "en": "Dark mood",
+        "uz": "Qorongʻi"
+      },
+      "media": "any",
+      "prompts": [
+        "a dark moody scene",
+        "a low key image"
+      ]
+    },
+    {
+      "id": "d_type",
+      "label": {
+        "en": "Typography",
+        "uz": "Tipografika"
+      },
+      "media": "picture",
+      "prompts": [
+        "a font specimen",
+        "expressive lettering"
+      ]
+    },
+    {
+      "id": "d_brand",
+      "label": {
+        "en": "Branding",
+        "uz": "Brending"
+      },
+      "suggest": false
+    }
+  ]
+}

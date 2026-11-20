@@ -1,0 +1,102 @@
+{
+  "id": "motion",
+  "version": 1,
+  "role": "specialist",
+  "name": {
+    "en": "Video editor / Motion designer",
+    "uz": "Videomontajchi / Motion dizayner"
+  },
+  "summary": {
+    "en": "Film looks, titles, screen recordings",
+    "uz": "Kino uslubi, titrlar, ekran yozuvlari"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.2
+  },
+  "borrows": [
+    "d_dark",
+    "d_type"
+  ],
+  "concepts": [
+    {
+      "id": "m_green",
+      "label": {
+        "en": "Green screen",
+        "uz": "Yashil ekran"
+      },
+      "media": "any",
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "prompts": [
+        "green screen take 0",
+        "green screen take 1",
+        "green screen take 2",
+        "green screen take 3",
+        "green screen take 4",
+        "green screen take 5",
+        "green screen take 6",
+        "green screen take 7",
+        "green screen take 8"
+      ]
+    },
+    {
+      "id": "m_screen",
+      "label": {
+        "en": "Screen capture",
+        "uz": "Ekran yozuvi"
+      },
+      "media": "video",
+      "group": {
+        "en": "Education",
+        "uz": "Ta’lim"
+      },
+      "prompts": [
+        "a screen recording",
+        "a software screen capture"
+      ]
+    },
+    {
+      "id": "m_render",
+      "label": {
+        "en": "3D render",
+        "uz": "3D render"
+      },
+      "media": "any",
+      "prompts": [
+        "a 3D render",
+        "a glossy rendered object"
+      ]
+    },
+    {
+      "id": "d_type",
+      "label": {
+        "en": "Typography",
+        "uz": "Tipografika"
+      },
+      "media": "video",
+      "group": {
+        "en": "Techniques",
+        "uz": "Usullar"
+      },
+      "prompts": [
+        "animated title text",
+        "a kinetic typography video"
+      ]
+    },
+    {
+      "id": "m_meme",
+      "label": {
+        "en": "Meme",
+        "uz": "Mem"
+      },
+      "group": {
+        "en": "Social",
+        "uz": "Ijtimoiy"
+      },
+      "suggest": false
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 import store from './store.js'
 import * as events from './events.js'
 import { api } from './tauri-api.js'
-import { forceSyncTagVocab, getLocalVocabVersion } from './tag-sync.js'
+import { refreshLensStatus, toDate, tagConceptId } from './lenses.js'
+import { t, currentLang } from './i18n.js'
 import { showConfirm } from './dialog.js'
 import { startWalkthrough } from './walkthrough.js'
 import { startStarterPreview } from './starter.js'
@@ -13,91 +14,86 @@ const I = (name, size = 16) =>
   `<span class="icon icon-${size}" style="mask-image:url('/icons/${name}.svg');-webkit-mask-image:url('/icons/${name}.svg')" aria-hidden="true"></span>`
 
 // ─── MD instruction file content ────────────────────────────────────────────
-const MD_CONTENT = `# qooti Tag Prompt Builder
+// A brief for Claude or ChatGPT to draft Tag lens concepts in the lens file format
+// (spec §2.1, §10). Lens files live in lenses/src and are built by scripts/lenses.
+const MD_CONTENT = `# qooti Tag lens: concept builder
 
-You help users build the auto-tag dictionary for **qooti** — a design inspiration app for video editors and motion designers.
+You help write concepts (tags) for a **qooti Tag lens**. qooti is a design inspiration library for video editors, motion designers, graphic designers and YouTube thumbnail designers. A Tag lens is one list of concepts for one kind of work: \`motion\`, \`design\` (the base lens) or \`thumbnail\`. qooti suggests a concept on an item when CLIP finds the picture (or at least 45 % of the frames of a video up to 60 seconds long, one frame per second) closest to it.
 
-## How CLIP works (critical to understand)
+## How CLIP scores (read this first)
 
-qooti uses **CLIP** (OpenAI's vision-language model) for zero-shot image classification. CLIP scores each image against every text prompt in the dictionary simultaneously. The tag with the **highest score wins** — which means if two categories share similar prompts, they will fight each other and produce wrong tag suggestions.
+- qooti puts each prompt into the sentence "This is a photo of …", embeds it once when the lens is built, and averages a concept's prompts into one vector.
+- A picture is compared with every concept of the lens at once and the closest concept wins. Two concepts that look alike take votes from each other, and both end up weak.
+- CLIP sees one centre square at 224 px. It can't read words: concepts defined by their text (sale, giveaway, quote) never fire. Small details such as arrows vanish.
+- Formats (a 9:16 story, a 16:9 thumbnail) don't show in the square: give those an \`aspect\` range.
+- Motion (transitions, speed ramps, kinetic type, a talking head) isn't in a still frame: use \`"media": "video"\` at most, or make it an add-by-hand entry (\`"suggest": false\`).
 
-**The #1 cause of wrong tags:** prompts that describe things common to many categories, instead of what makes THIS category visually unique.
+## Good prompts
 
-## What makes a good CLIP prompt
+- 2–6 words of plain English, describing only what you literally see: "a green screen backdrop", "neon signs at night".
+- 2–4 prompts per concept, all in the same style, each a different look of the same idea.
+- No abstract words ("modern", "aesthetic", "professional", "cinematic feel").
+- Every prompt is unique across all three lenses, also between the entries of one shared tag.
 
-A good prompt describes **only what visually distinguishes this category from every other category** — not what it shares with others.
+## Concept rules
 
-### Example: "minimal" category
+- \`id\`: lowercase letters, digits and \`_\`, starting with a letter, at most 40 characters, at most once per lens. The same \`id\` in another lens is the same tag (see Shared tags).
+- \`label\`: what people see on cards, in English (\`en\`) and Uzbek (\`uz\`). At most 14 characters where possible (24 at most). Uzbek uses ‘ (U+2018) in o‘ and g‘ and ’ (U+2019) for the tutuq, never ' or \`. No \`_\` in labels or groups: an underscore reads as an id, so use a space (the checker and the app refuse the file).
+- \`media\`: "any", "picture" or "video". \`design\` reads pictures only: its entries are "picture".
+- \`aspect\` (only for formats): [min, max] of width ÷ height, e.g. [0.5, 0.62] for 9:16.
+- \`group\` (optional): the heading the tag sits under, \`{ "en": …, "uz": … }\`, at most 24 characters, no \`_\`, e.g. Techniques / Usullar.
+- \`"suggest": false\` makes an add-by-hand entry: only \`id\`, \`label\` and an optional \`group\`, no prompts, media or aspect. People find it in the tag picker and in search; it is never suggested.
+- At most 80 scored entries and 120 entries in all per lens.
 
-❌ **Bad** — too generic, matches many categories:
-- \`"a clean, simple design"\` — posters, UI, logos all look "clean"
-- \`"white background with text"\` — too common across categories
+## Shared tags
 
-✅ **Good** — describes the visual signature of minimal only:
-- \`"extreme negative space: a single isolated element centered on a vast empty white or off-white background with nothing else visible"\`
-- \`"razor-thin sans-serif text on a solid-color field, no images, no textures, no decorations, maximum breathing room"\`
-
-### Rules for every prompt you write
-
-1. **Describe only what you literally see** — colors, shapes, layout density, texture, lighting, typography, composition
-2. **Make it exclusive** — before finalizing, ask yourself: *"Would this prompt also score high on images from a completely different category?"* If yes, it is too generic — make it more specific
-3. **No abstract words** — CLIP cannot reliably read "modern", "aesthetic", "vibrant", "professional", "cinematic feel". Describe physical reality only
-4. **Length**: 15–30 words per prompt. One or two concrete sentences
-5. **English only** — CLIP was trained on English text
-6. **Write 3–4 prompts per category** — each must cover a visually DIFFERENT variation. If your prompts describe the same look, they are redundant
+- One tag may have an entry in several lenses: the same \`id\`, byte-identical labels in both languages, and other media. \`design\` and \`thumbnail\` describe pictures, \`motion\` describes videos, each with its own prompts.
+- Across the lenses, at most one scored entry of a tag covers pictures and at most one covers videos.
+- \`motion\` and \`thumbnail\` can also show a \`design\` tag by listing it in \`borrows\`: on the media design's entry covers.
 
 ## Output format
 
-After analyzing the reference images, output in **exactly** this format so the user can paste it directly into qooti:
+Answer with concept objects the user can paste into the \`concepts\` list of \`lenses/src/<lens>.json\`:
 
-\`\`\`
-Category ID: [lowercase_with_underscores]
-English label: [Short display name, max 3 words]
-Uzbek label: [Loanword or recognizable Uzbek label]
-Prompt 1: [hyper-specific visual description of one variation]
-Prompt 2: [different visual variation of the same category]
-Prompt 3: [another distinct variation — required]
-Prompt 4: [optional — only if it adds a meaningfully different look]
+\`\`\`json
+{ "id": "green_screen",
+  "label":   { "en": "Green screen", "uz": "Yashil ekran" },
+  "prompts": ["a green screen backdrop", "a person in front of a green screen"],
+  "media":   "any" }
 \`\`\`
 
-## Your task — follow these steps exactly
+An add-by-hand tag:
 
-**Step 1:** Ask the user: *"What visual category do you want to add to qooti? Give it a short name and briefly describe what it looks like."*
+\`\`\`json
+{ "id": "transitions",
+  "label":   { "en": "Transitions", "uz": "O‘tishlar" },
+  "group":   { "en": "Techniques", "uz": "Usullar" },
+  "suggest": false }
+\`\`\`
 
-**Step 2:** Ask the user: *"Now share 2–10 reference images that clearly show this visual style. I need at least 2 images. More variety = better prompts that cover the full range of this category."*
+## Your task
 
-**Step 3:** Study all shared images. For each image, identify:
-- Dominant colors and color palette character
-- Composition structure (centered, grid, asymmetric, full-bleed, etc.)
-- Density — is it sparse and minimal, or dense and layered?
-- Lighting type (flat, backlit, glowing, high-contrast, dark, high-key)
-- Typography presence and character (size, weight, placement, style)
-- Texture and surface qualities (glossy, grainy, rough, smooth, etc.)
-- **Most importantly:** What would make someone instantly pick THIS category over the closest neighboring category?
+1. Ask which lens the concept is for (motion, design or thumbnail) and what it should catch.
+2. Ask for 2–10 reference images that show it, the more varied the better.
+3. Work out what the images share, and what sets them apart from the closest other concept.
+4. Write 2–4 prompts of 2–6 words, check them against the rules above, and output the JSON.
+5. Ask whether any prompt could also match another concept, and refine it.
 
-**Step 4:** Write 3–4 CLIP prompts. For each prompt, run this mental check: *"If I showed CLIP an image from a completely different category, would this prompt still score high on it?"* If yes — it is too vague. Make it more specific until the answer is no.
-
-**Step 5:** Output in the exact format shown above.
-
-**Step 6:** Ask: *"Do these prompts feel right? Would any of them accidentally match a different category?"* Refine until they are distinctive.
-
----
-
-Begin with Step 1.
+Begin with step 1.
 `
 
 // ─── State ──────────────────────────────────────────────────────────────────
-let overlay   = null
-let tagList   = null
-let formEl    = null
-let editingId = null
-let loadedEntries = []
+let overlay  = null
+let listEl   = null   // left pane: every concept, lens by lens
+let sideEl   = null   // right pane: the lenses, then the tagging status
+let _viewSeq = 0      // a newer load wins over a slower older one
 
 // ─── Open / Close ───────────────────────────────────────────────────────────
 function openDevPage() {
+  buildShell()   // on every open, so it's in the app's current language
   overlay.removeAttribute('hidden')
   swapSwatchIcon(true)
-  loadTags()
+  loadLensView()
 }
 
 function closeDevPage() {
@@ -126,196 +122,155 @@ function swapSwatchIcon(devMode) {
   }
 }
 
-// ─── Tag list ────────────────────────────────────────────────────────────────
-async function loadTags() {
+// ─── Tag lens view (read-only, spec §7) ──────────────────────────────────────
+// What's installed, straight from the backend: each lens (version, origin, on or off),
+// every concept with its English and Uzbek labels, and the counts. Nothing is edited
+// here: lens files live in lenses/src and are built with scripts/lenses/build.mjs.
+// "Re-tag all" scores the whole library again from the stored vectors (retag_all).
+async function loadLensView() {
+  const seq = ++_viewSeq
   try {
-    const entries = await api.listTagVocab()
-    loadedEntries = entries
-    renderTagList(entries)
-    overlay.querySelector('#dev-tag-count').textContent = `${entries.length} tag${entries.length !== 1 ? 's' : ''}`
+    const [lenses, concepts, tags, status] = await Promise.all([
+      api.listLenses(),
+      api.listConcepts(),
+      api.listTags().catch(() => []),
+      api.lensStatus().catch(() => null),
+    ])
+    if (seq !== _viewSeq || !listEl) return
+    renderLensView(asList(lenses), asList(concepts), asList(tags), status && typeof status === 'object' ? status : null)
   } catch (err) {
-    console.error('[developer] loadTags failed:', err)
+    if (seq !== _viewSeq || !listEl) return
+    console.error('[developer] lens view failed:', err)
+    overlay.querySelector('#dev-tag-count').textContent = ''
+    listEl.innerHTML = emptyHtml(t('lens.dev.load_failed'))
+    sideEl.innerHTML = ''
   }
 }
 
-function renderTagList(entries) {
-  tagList.innerHTML = ''
-  if (!entries.length) {
-    tagList.innerHTML = `
-      <div class="dev-empty">
-        <div class="dev-empty-icon"></div>
-        <div class="dev-empty-title">No tags yet</div>
-        <div class="dev-empty-desc">Add your first tag using the form on the right, or download the MD file and send it to Claude or ChatGPT to generate prompts.</div>
+function renderLensView(lenses, concepts, tags, status) {
+  // How many items carry each concept's tag
+  const tagged = new Map()
+  for (const tag of tags) {
+    const id = tagConceptId(tag)
+    if (id) tagged.set(id, (tagged.get(id) ?? 0) + (Number(tag.usage_count) || 0))
+  }
+  const isActive = c => c.active !== false && c.active !== 0
+  const live     = concepts.filter(c => isActive(c) && asList(c.entries).length)
+  const liveById = new Map(live.map(c => [c.id, c]))
+  overlay.querySelector('#dev-tag-count').textContent = t('lens.dev.count', { lenses: lenses.length, concepts: live.length })
+
+  // Left: the concepts, lens by lens in the fixed order (a tag several lenses share shows
+  // under each, with that lens's entry), then the retired ones (no lens has them any more;
+  // they stay so their tags keep a name)
+  if (!lenses.length && !concepts.length) {
+    listEl.innerHTML = emptyHtml(t('lens.dev.none'))
+  } else {
+    const groups = lenses.map(l => ({
+      title: `${l.id} · v${l.version} · ${isOn(l) ? t('lens.dev.on') : t('lens.dev.off')}`,
+      rows:  asList(l.concepts).map(id => liveById.get(id)).filter(Boolean)
+        .map(c => ({ c, entry: asList(c.entries).find(e => e?.lens_id === l.id) }))
+        .filter(r => r.entry),
+    }))
+    const retired = concepts.filter(c => !liveById.has(c.id)).map(c => ({ c, entry: null }))
+    if (retired.length) groups.push({ title: t('lens.dev.retired'), rows: retired, dim: true })
+    listEl.innerHTML = `
+      <div class="dev-tag-cols-header">
+        <span>${esc(t('lens.dev.col_id'))}</span><span>${esc(t('lens.dev.col_en'))}</span><span>${esc(t('lens.dev.col_uz'))}</span>
+        <span>${esc(t('lens.dev.col_media'))}</span><span style="text-align:right">${esc(t('lens.dev.col_tagged'))}</span>
+      </div>
+      ${groups.map(g => `
+        <div class="dev-form-section-label" style="margin:14px 10px 4px">${esc(g.title)} · ${esc(String(g.rows.length))}</div>
+        ${g.rows.map(({ c, entry }) => conceptRow(c, entry, tagged.get(c.id) ?? 0, g.dim)).join('')}`).join('')}`
+  }
+
+  // Right: each lens, then the tagging status
+  const perLens = status?.per_lens && typeof status.per_lens === 'object' ? status.per_lens : {}
+  sideEl.innerHTML = `
+    ${lenses.map(l => {
+      const name    = asObj(l.name)
+      const borrows = asList(l.borrows)
+      return `
+      <div class="dev-form-section">
+        <div class="dev-form-section-label">${esc(l.id)}</div>
+        <table class="debug-table">
+          <tr><td>${esc(t('lens.dev.f_name'))}</td><td>${esc(name.en ?? '')}<br>${esc(name.uz ?? '')}</td></tr>
+          <tr><td>${esc(t('lens.dev.f_state'))}</td><td>${badge(isOn(l))}</td></tr>
+          <tr><td>${esc(t('lens.dev.f_version'))}</td><td>v${esc(String(l.version ?? '—'))} · ${esc(l.role ?? '—')} · ${esc(l.origin ?? '—')}</td></tr>
+          <tr><td>${esc(t('lens.dev.f_updated'))}</td><td>${esc(fmtDate(l.updated_at))}</td></tr>
+          <tr><td>${esc(t('lens.dev.f_concepts'))}</td><td>${asList(l.concepts).length}</td></tr>
+          ${borrows.length ? `<tr><td>${esc(t('lens.dev.f_borrows'))}</td><td>${esc(borrows.join(', '))}</td></tr>` : ''}
+          <tr><td>${esc(t('lens.dev.f_open'))}</td><td>${Number(perLens[l.id]) || 0}</td></tr>
+        </table>
       </div>`
-    return
-  }
-  const header = document.createElement('div')
-  header.className = 'dev-tag-cols-header'
-  header.innerHTML = '<span>ID</span><span>English</span><span>Uzbek</span><span>Prompts</span><span></span>'
-  tagList.appendChild(header)
-  for (const entry of entries) tagList.appendChild(makeTagRow(entry))
+    }).join('')}
+    <div class="dev-form-section">
+      <div class="dev-form-section-label">${esc(t('lens.dev.status'))}</div>
+      ${status ? `
+      <table class="debug-table">
+        <tr><td>${esc(t('lens.dev.f_switch'))}</td><td>${badge(status.enabled === true || status.enabled === 'true')}</td></tr>
+        <tr><td>${esc(t('lens.dev.f_items'))}</td><td>${Number(status.total) || 0}</td></tr>
+        <tr><td>${esc(t('lens.dev.f_scored'))}</td><td>${Number(status.scored) || 0}</td></tr>
+        <tr><td>${esc(t('lens.dev.f_waiting'))}</td><td>${Number(status.waiting_videos) || 0}</td></tr>
+        <tr><td>${esc(t('lens.dev.f_check'))}</td><td>${esc(status.last_check ? fmtDate(status.last_check) : t('lens.dev.never'))}</td></tr>
+      </table>` : '<span class="debug-dim">—</span>'}
+    </div>`
 }
 
-function makeTagRow(entry) {
-  const labels  = safeJson(entry.labels_json,  {})
-  const prompts = safeJson(entry.prompts_json, [])
-  const row = document.createElement('div')
-  row.className = 'dev-tag-row'
-  row.innerHTML = `
-    <span class="dev-tag-id">${entry.id}</span>
-    <span class="dev-tag-label">${labels.en ?? ''}</span>
-    <span class="dev-tag-uz">${labels.uz ?? ''}</span>
-    <span class="dev-tag-prompts" title="${prompts.join('\n')}">${prompts.length} prompt${prompts.length !== 1 ? 's' : ''}</span>
-    <div class="dev-tag-actions">
-      <button class="dev-tag-btn dev-edit" title="Edit">${I('pencil-simple', 14)}</button>
-      <button class="dev-tag-btn dev-delete" title="Delete">${I('trash', 14)}</button>
-    </div>
-  `
-  row.querySelector('.dev-edit').addEventListener('click',   () => startEdit(entry))
-  row.querySelector('.dev-delete').addEventListener('click', () => deleteTag(entry.id))
-  return row
+// One lens's entry of a tag (`entry`: its list_concepts entry; null for a retired tag)
+function conceptRow(c, entry, taggedCount, dim) {
+  const labels  = asObj(c.labels)
+  // The other lenses that have this tag (§0c: an entry each) or show it (`borrows`)
+  const also = [...new Set([...asList(c.entries).map(e => e?.lens_id), ...asList(c.borrowed_by)])]
+    .filter(id => id && id !== entry?.lens_id)
+  const tip  = also.length ? ` title="${esc(t('lens.dev.shown_by', { lenses: also.join(', ') }))}"` : ''
+  const media = !entry ? '—' : entry.suggest === false ? t('lens.dev.hand') : (entry.media ?? 'any')
+  return `
+    <div class="dev-tag-row"${dim ? ' style="opacity:0.55"' : ''}${tip}>
+      <span class="dev-tag-id">${esc(c.id)}</span>
+      <span class="dev-tag-label">${esc(labels.en ?? '')}</span>
+      <span class="dev-tag-uz">${esc(labels.uz ?? '')}</span>
+      <span class="dev-tag-prompts" style="text-align:left">${esc(media)}</span>
+      <span class="dev-tag-prompts">${Number(taggedCount) || 0}</span>
+    </div>`
 }
 
-// ─── Form ────────────────────────────────────────────────────────────────────
-function startEdit(entry = null) {
-  editingId = entry?.id ?? null
-  const labels  = entry ? safeJson(entry.labels_json,  {}) : {}
-  const prompts = entry ? safeJson(entry.prompts_json, []) : []
-
-  formEl.querySelector('#dev-f-id').value = entry?.id ?? ''
-  formEl.querySelector('#dev-f-en').value = labels.en ?? ''
-  formEl.querySelector('#dev-f-uz').value = labels.uz ?? ''
-  formEl.querySelector('#dev-f-p1').value = prompts[0] ?? ''
-  formEl.querySelector('#dev-f-p2').value = prompts[1] ?? ''
-  formEl.querySelector('#dev-f-p3').value = prompts[2] ?? ''
-
-  formEl.querySelector('.dev-form-title').textContent = entry ? `Editing: ${entry.id}` : 'Add new tag'
-  formEl.querySelector('#dev-f-id').disabled = !!entry
-  formEl.querySelector('#dev-f-id').focus()
-  overlay.querySelector('.dev-form-pane').scrollTop = 0
+function badge(on) {
+  return `<span class="debug-badge debug-badge--${on ? 'done' : 'pending'}">${esc(on ? t('lens.dev.on') : t('lens.dev.off'))}</span>`
 }
 
-function resetForm() {
-  editingId = null
-  ;['#dev-f-id','#dev-f-en','#dev-f-uz','#dev-f-p1','#dev-f-p2','#dev-f-p3'].forEach(sel => {
-    formEl.querySelector(sel).value = ''
-  })
-  formEl.querySelector('.dev-form-title').textContent = 'Add new tag'
-  formEl.querySelector('#dev-f-id').disabled = false
-}
-
-async function saveTag() {
-  const id = formEl.querySelector('#dev-f-id').value.trim().toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '')
-  const en = formEl.querySelector('#dev-f-en').value.trim()
-  const uz = formEl.querySelector('#dev-f-uz').value.trim()
-  const p1 = formEl.querySelector('#dev-f-p1').value.trim()
-  const p2 = formEl.querySelector('#dev-f-p2').value.trim()
-  const p3 = formEl.querySelector('#dev-f-p3').value.trim()
-
-  if (!id || !en || !p1) {
-    showFormError('ID, English label, and at least one prompt are required.')
-    return
-  }
-
-  if (!editingId && loadedEntries.some(e => e.id === id)) {
-    const ok = await showConfirm({
-      title: `Overwrite "${id}"?`,
-      message: 'A tag with this ID already exists. This will replace its values.',
-      confirmLabel: 'Overwrite',
-      icon: 'warning',
-    })
-    if (!ok) return
-  }
-
-  const prompts = [p1, p2, p3].filter(Boolean)
-  const saveBtn = formEl.querySelector('#dev-save-btn')
-  saveBtn.disabled = true
-  try {
-    await api.upsertTagVocab(id, JSON.stringify({ en, uz: uz || en }), JSON.stringify(prompts), false, 0)
-    store.emit(events.TAG_VOCAB_CHANGED)
-    resetForm()
-    await loadTags()
-  } catch (err) {
-    console.error('[developer] saveTag failed:', err)
-    showFormError('Save failed — check the console for details.')
-  } finally {
-    saveBtn.disabled = false
-  }
-}
-
-async function deleteTag(id) {
-  const ok = await showConfirm({
-    title: `Delete "${id}"?`,
-    message: 'This tag will be permanently removed and cannot be undone.',
-    danger: true,
-    confirmLabel: 'Delete',
-    icon: 'trash',
-  })
-  if (!ok) return
-  try {
-    await api.deleteTagVocab(id)
-    store.emit(events.TAG_VOCAB_CHANGED)
-    await loadTags()
-    if (editingId === id) resetForm()
-  } catch (err) {
-    console.error('[developer] deleteTag failed:', err)
-  }
-}
-
-function showFormError(msg) {
-  let el = formEl.querySelector('.dev-form-error')
-  if (!el) {
-    el = document.createElement('p')
-    el.className = 'dev-form-error'
-    formEl.querySelector('.dev-form-actions').before(el)
-  }
-  el.textContent = msg
-  setTimeout(() => el.remove(), 4000)
-}
-
-// ─── Vocab sync ──────────────────────────────────────────────────────────────
-async function syncNow() {
-  const btn = overlay.querySelector('#dev-sync-btn')
-  btn.disabled = true
-  const prev = btn.innerHTML
-  btn.innerHTML = `${I('arrow-clockwise', 14)} Syncing…`
-  try {
-    const result = await forceSyncTagVocab()
-    if (result.status === 'no_url') {
-      btn.innerHTML = `${I('warning', 14)} No URL set`
-    } else if (result.status === 'up_to_date') {
-      btn.innerHTML = `${I('check', 14)} Up to date`
-    } else {
-      btn.innerHTML = `${I('check', 14)} ${result.count} tags synced`
-      await loadTags()
-    }
-  } catch (err) {
-    console.error('[developer] sync failed:', err)
-    btn.innerHTML = `${I('warning', 14)} Sync failed`
-  }
-  setTimeout(() => { btn.innerHTML = prev; btn.disabled = false }, 2500)
+function emptyHtml(title) {
+  return `
+    <div class="dev-empty">
+      <div class="dev-empty-icon"></div>
+      <div class="dev-empty-title">${esc(title)}</div>
+    </div>`
 }
 
 // ─── Re-tag all ──────────────────────────────────────────────────────────────
+// Clears every item's score signature; Rust scores everything again from the stored
+// vectors (instant for pictures) and the cards update as each batch lands.
 async function retagAll() {
   const btn = overlay.querySelector('#dev-retag-btn')
+  if (!btn) return
   const ok = await showConfirm({
-    title: 'Re-tag entire library?',
-    message: 'This will clear all stored tag scores and re-run auto-tagging on every image.',
-    confirmLabel: 'Continue',
+    title:        t('lens.dev.retag_q'),
+    message:      t('lens.dev.retag_body'),
+    confirmLabel: t('lens.dev.retag_go'),
+    cancelLabel:  t('action.cancel'),
   })
   if (!ok) return
   btn.disabled = true
+  const prev = btn.innerHTML
   try {
-    const count = await api.resetAllAutoTags()
-    store.emit(events.GRID_RELOAD)   // wakes the auto-tag loop if it went idle
-    const prev = btn.innerHTML
-    btn.innerHTML = `${I('check', 14)} ${count} queued`
-    setTimeout(() => { btn.innerHTML = prev; btn.disabled = false }, 2500)
+    const n = await api.retagAll()
+    btn.innerHTML = `${I('check', 14)} ${esc(typeof n === 'number' ? t('lens.dev.retag_n', { n }) : t('lens.dev.retag_started'))}`
+    refreshLensStatus()
+    setTimeout(loadLensView, 1500)   // the counts after the first batches
   } catch (err) {
     console.error('[developer] retagAll failed:', err)
-    btn.disabled = false
+    btn.innerHTML = `${I('warning', 14)} ${esc(t('lens.dev.retag_failed'))}`
   }
+  setTimeout(() => { if (btn.isConnected) { btn.innerHTML = prev; btn.disabled = false } }, 2500)
 }
 
 // ─── MD file ─────────────────────────────────────────────────────────────────
@@ -367,19 +322,44 @@ async function copyMd() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function safeJson(str, fallback) {
-  try { return JSON.parse(str) } catch { return fallback }
+// Everything shown here comes from the backend or lens files: escaped, always
+function esc(v) {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-export function initDeveloper() {
-  overlay = document.getElementById('dev-overlay')
+function asList(v) { return Array.isArray(v) ? v : [] }
 
+// {en, uz} texts may arrive as an object or as JSON text
+function asObj(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v
+  if (typeof v === 'string') {
+    try { const o = JSON.parse(v); return o && typeof o === 'object' && !Array.isArray(o) ? o : {} } catch { return {} }
+  }
+  return {}
+}
+
+function isOn(lens) { return lens?.enabled === true || lens?.enabled === 1 }
+
+// Unix seconds or milliseconds (lenses.js toDate) → "18 Nov 2026, 18:48" /
+// "2026-yil 18-noyabr, 18:48". By hand: the WebView prints Uzbek months as "M11".
+const UZ_MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr']
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function fmtDate(v) {
+  const d = toDate(v)
+  if (!d) return '—'
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return currentLang() === 'uz'
+    ? `${d.getFullYear()}-yil ${d.getDate()}-${UZ_MONTHS[d.getMonth()]}, ${time}`
+    : `${d.getDate()} ${EN_MONTHS[d.getMonth()]} ${d.getFullYear()}, ${time}`
+}
+
+// The page's frame: header (tools, counts, Re-tag all) and the two panes
+function buildShell() {
   overlay.innerHTML = `
     <div class="dev-header">
       <div class="dev-header-brand">
         <span class="dev-header-icon"></span>
-        <span class="dev-header-title">Tag Dictionary</span>
+        <span class="dev-header-title">${esc(t('lens.dev.title'))}</span>
         <span class="dev-header-badge">developer</span>
       </div>
       <div class="dev-header-sep"></div>
@@ -388,11 +368,10 @@ export function initDeveloper() {
       <span class="dev-toolbar-hint">Send to Claude or ChatGPT to generate prompts</span>
       <div class="dev-header-spacer"></div>
       <span class="dev-tag-count" id="dev-tag-count"></span>
-      <button class="dev-btn" id="dev-sync-btn" title="Force download the latest shared vocabulary from GitHub">${I('arrow-clockwise', 14)} Sync</button>
-      <button class="dev-btn dev-btn-warn" id="dev-retag-btn" title="Clear all stored tag scores and re-run auto-tagging on every image">${I('arrow-counter-clockwise', 14)} Re-tag all</button>
-      <button class="dev-btn dev-btn-primary" id="dev-add-btn">${I('plus', 14)} Add tag</button>
+      <button class="dev-btn" id="dev-refresh-btn">${I('arrow-clockwise', 14)} ${esc(t('lens.dev.refresh'))}</button>
+      <button class="dev-btn dev-btn-warn" id="dev-retag-btn" title="${esc(t('lens.dev.retag_tip'))}">${I('arrow-counter-clockwise', 14)} ${esc(t('lens.dev.retag'))}</button>
       <div class="dev-header-sep"></div>
-      <button class="dev-close-btn" id="dev-close-btn" aria-label="Close">${I('x', 16)}</button>
+      <button class="dev-close-btn" id="dev-close-btn" aria-label="${esc(t('action.close'))}">${I('x', 16)}</button>
     </div>
 
     <div class="dev-body">
@@ -401,77 +380,28 @@ export function initDeveloper() {
       </div>
 
       <div class="dev-form-pane">
-        <div class="dev-form" id="dev-form">
-          <div class="dev-form-title">Add new tag</div>
-
-          <div class="dev-form-section">
-            <div class="dev-form-section-label">Identifiers</div>
-            <div class="dev-form-row-3">
-              <div class="dev-form-group">
-                <label class="dev-form-label" for="dev-f-id">ID <span class="dev-required">*</span></label>
-                <input class="dev-form-input dev-mono" id="dev-f-id" placeholder="e.g. color_grading" autocomplete="off" spellcheck="false" />
-              </div>
-              <div class="dev-form-group">
-                <label class="dev-form-label" for="dev-f-en">English <span class="dev-required">*</span></label>
-                <input class="dev-form-input" id="dev-f-en" placeholder="Color grading" autocomplete="off" />
-              </div>
-              <div class="dev-form-group">
-                <label class="dev-form-label" for="dev-f-uz">Uzbek</label>
-                <input class="dev-form-input" id="dev-f-uz" placeholder="Color grading" autocomplete="off" />
-              </div>
-            </div>
-          </div>
-
-          <div class="dev-form-section">
-            <div class="dev-form-section-label">CLIP Prompts</div>
-            <p class="dev-form-section-hint">Describe exactly what you see — colors, shapes, layout, lighting. Each prompt must be specific enough that no other category matches it.</p>
-            <div class="dev-form-prompts">
-              <div class="dev-form-group">
-                <label class="dev-form-label" for="dev-f-p1">Prompt 1 <span class="dev-required">*</span></label>
-                <textarea class="dev-form-input dev-prompt-input" id="dev-f-p1" rows="3" placeholder="Describe what the image looks like visually…" autocomplete="off" spellcheck="false"></textarea>
-              </div>
-              <div class="dev-form-group">
-                <label class="dev-form-label" for="dev-f-p2">Prompt 2</label>
-                <textarea class="dev-form-input dev-prompt-input" id="dev-f-p2" rows="3" placeholder="Alternative visual description…" autocomplete="off" spellcheck="false"></textarea>
-              </div>
-              <div class="dev-form-group">
-                <label class="dev-form-label" for="dev-f-p3">Prompt 3</label>
-                <textarea class="dev-form-input dev-prompt-input" id="dev-f-p3" rows="3" placeholder="Optional third description…" autocomplete="off" spellcheck="false"></textarea>
-              </div>
-            </div>
-          </div>
-
-          <div class="dev-form-actions">
-            <button class="dev-btn dev-btn-primary" id="dev-save-btn">${I('floppy-disk', 14)} Save tag</button>
-            <button class="dev-btn" id="dev-cancel-btn">Cancel</button>
-          </div>
-        </div>
+        <div class="dev-form" id="dev-side"></div>
       </div>
     </div>
   `
 
-  tagList = overlay.querySelector('#dev-tag-list')
-  formEl  = overlay.querySelector('#dev-form')
+  listEl = overlay.querySelector('#dev-tag-list')
+  sideEl = overlay.querySelector('#dev-side')
 
-  overlay.querySelector('#dev-close-btn').addEventListener('click', closeDevPage)
-  overlay.querySelector('#dev-dl-md').addEventListener('click',     downloadMd)
-  overlay.querySelector('#dev-copy-md').addEventListener('click',   copyMd)
-  overlay.querySelector('#dev-sync-btn').addEventListener('click',  syncNow)
-  overlay.querySelector('#dev-retag-btn').addEventListener('click', retagAll)
-  overlay.querySelector('#dev-add-btn').addEventListener('click',   () => startEdit(null))
-  overlay.querySelector('#dev-save-btn').addEventListener('click',  saveTag)
-  overlay.querySelector('#dev-cancel-btn').addEventListener('click', resetForm)
+  overlay.querySelector('#dev-close-btn').addEventListener('click',   closeDevPage)
+  overlay.querySelector('#dev-dl-md').addEventListener('click',       downloadMd)
+  overlay.querySelector('#dev-copy-md').addEventListener('click',     copyMd)
+  overlay.querySelector('#dev-refresh-btn').addEventListener('click', loadLensView)
+  overlay.querySelector('#dev-retag-btn').addEventListener('click',   retagAll)
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+export function initDeveloper() {
+  overlay = document.getElementById('dev-overlay')
 
   // Escape closes
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !overlay.hidden) closeDevPage()
-  })
-
-  // Ctrl+Enter inside any prompt textarea → save
-  ;['#dev-f-p1','#dev-f-p2','#dev-f-p3'].forEach(sel => {
-    formEl.querySelector(sel).addEventListener('keydown', e => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveTag() }
-    })
   })
 
   // Secret blt_ commands are dispatched by main.js's top-bar-search handler,

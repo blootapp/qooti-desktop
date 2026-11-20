@@ -1,0 +1,38 @@
+{
+  "id": "thumbnail",
+  "version": 1,
+  "role": "specialist",
+  "name": {
+    "en": "YouTube thumbnail designer",
+    "uz": "YouTube muqova dizayneri"
+  },
+  "summary": {
+    "en": "Faces, big text, bold contrast",
+    "uz": "Yuzlar, katta matn, kuchli kontrast"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.2
+  },
+  "borrows": [
+    "d_photo"
+  ],
+  "concepts": [
+    {
+      "id": "t_face",
+      "label": {
+        "en": "Face",
+        "uz": "Yuz"
+      },
+      "suggest": false
+    },
+    {
+      "id": "d_brand",
+      "label": {
+        "en": "Branding",
+        "uz": "Brending"
+      },
+      "suggest": false
+    }
+  ]
+}

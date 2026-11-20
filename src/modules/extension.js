@@ -4,6 +4,7 @@ import { api } from './tauri-api.js'
 import { makeLogger, createOp } from './logger.js'
 import { t } from './i18n.js'
 import { showConfirm, isDialogOpen } from './dialog.js'
+import { startupBusy } from './role-step.js'
 
 const log = makeLogger('ExtBridge')
 
@@ -25,7 +26,10 @@ export function init() {
 // about it again for a while.
 async function askToConnect({ origin, browser } = {}) {
   if (!origin) return
-  while (isDialogOpen()) await new Promise(r => setTimeout(r, 800))   // after whatever is open
+  // After whatever is open, and after start-up's own steps (the sign-in screen, the role step,
+  // the tour and its extension promo: role-step.js startupBusy), like the other questions that
+  // open by themselves. The extension keeps waiting meanwhile (its request stays pending).
+  while (isDialogOpen() || startupBusy()) await new Promise(r => setTimeout(r, 800))
   const name = browser || t('extpair.browser_fallback')
   const allow = await showConfirm({
     title:        t('extpair.title'),

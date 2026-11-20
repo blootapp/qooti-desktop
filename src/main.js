@@ -24,10 +24,12 @@ import { initDownloader, checkUrl, handleSwatchClick, startDownloadFromInput, is
 import { init as initCardDetail } from './modules/card-detail.js'
 import { init as initOcr, startIndexing as startOcr } from './modules/ocr.js'
 import { initAutoTag } from './modules/auto-tag.js'
+import { initLenses } from './modules/lenses.js'
+import { needsRoleStep, showRoleStep, holdFirstRunSteps, startupBusy } from './modules/role-step.js'
+import { isDialogOpen } from './modules/dialog.js'
 // Object detection temporarily disabled (was polluting search) — re-enable later:
 // import { initObjectTags } from './modules/object-tags.js'
 import { initDeveloper, runDevCommand } from './modules/developer.js'
-import { syncTagVocab } from './modules/tag-sync.js'
 import { init as initImporter } from './modules/importer.js'
 import { init as initDownloadTracker } from './modules/download-tracker.js'
 import { init as initDownloadIndicator } from './modules/download-indicator.js'
@@ -56,7 +58,7 @@ const PRIMARY_NAV = [
 
 // Settings sits at the very bottom, under the storage meter.
 const SECONDARY_NAV = [
-  { view: 'settings',    icon: 'sliders',          labelKey: 'nav.settings'   },
+  { view: 'settings',    icon: 'gear',             labelKey: 'nav.settings'   },
 ]
 
 // ─── State ──────────────────────────────────────────────────────
@@ -92,6 +94,7 @@ function setupTopBar(settings) {
   // Import button
   document.querySelector('.top-bar-brand').addEventListener('click', e => {
     e.preventDefault()
+    store.emit(events.GRID_HOME, {})   // the logo is Home too: it closes an open collection
     navigate('grid')
     navDrawer.classList.remove('nav-open')
   })
@@ -273,7 +276,7 @@ function buildProfileDropdown(displayName, initial, avatarBg) {
   el.appendChild(Object.assign(document.createElement('div'), { className: 'pd-divider' }))
 
   const menuItems = [
-    { i18nKey: 'nav.settings',            icon: 'sliders',                 view: 'settings',   tab: 'general' },
+    { i18nKey: 'nav.settings',            icon: 'gear',                    view: 'settings',   tab: 'general' },
     { i18nKey: 'nav.activity',            icon: 'clock-counter-clockwise', view: 'activity',   tab: null },
     { i18nKey: 'nav.milestones',          icon: 'trophy',                  view: 'milestones', tab: null },
     { i18nKey: 'feedback.menu',           icon: 'feedback',                action: 'feedback' },
@@ -490,6 +493,9 @@ function makeNavItem(view, iconName, labelKey) {
   btn.appendChild(label)
 
   btn.addEventListener('click', () => {
+    // Home inside an open collection: the grid page is already showing, so navigate() alone
+    // does nothing — grid.js closes the collection on this
+    if (view === 'grid') store.emit(events.GRID_HOME, {})
     navigate(view)
     document.getElementById('nav-drawer').classList.remove('nav-open')
   })
@@ -640,6 +646,41 @@ function bindStoreListeners() {
   })
 }
 
+// ─── After the library first opens: role step, then the tour ─────
+// Runs once per launch, right after the grid opens: at start-up when bloot apps is
+// signed in, otherwise once sign-in completes. `firstRunDone` ends boot's hold on the
+// dialogs that open by themselves (role-step.js startupBusy): once the tour is on screen,
+// or right after the role step when there's no tour.
+async function afterGridOpens(settings, walkthroughDone, firstRunDone = () => {}) {
+  try {
+    // ── ROLE STEP HOOK (Tag lens, spec §8.1; role-step.js) ──
+    // When settings.user_role is unset, show the one-time "What describes you best?"
+    // step here and await it, so the walkthrough tour below starts after it. That covers
+    // new users, the sign-in path, and existing users once on their first launch of this
+    // version; it runs in the browser mock too (?role=… there skips it). needsRoleStep()
+    // reads the live settings cache (initSettings hydrated it from these settings).
+    if (needsRoleStep()) await showRoleStep()
+  } catch (err) {
+    log.error('role_step_failed', { error: err })
+  }
+  if (walkthroughDone) { firstRunDone(); return }
+  setTimeout(() => {
+    try { startWalkthrough() } catch (err) { log.error('walkthrough_failed', { error: err }) }
+    firstRunDone()   // the tour is on screen: startupBusy() sees it from here
+  }, 700)
+}
+
+// A .qooti file qooti was started with (double-click, cold start): the backend kept its path.
+// The importer opens once start-up's own steps are done and no dialog is up, not on top of
+// the role step or the tour.
+async function openLaunchFile() {
+  let path = null
+  try { path = await api.takeLaunchFile() } catch { return }
+  if (!path) return
+  while (startupBusy() || isDialogOpen()) await new Promise(r => setTimeout(r, 500))
+  store.emit(events.QOOTI_FILE_OPEN, { path })
+}
+
 // ─── Boot ────────────────────────────────────────────────────────
 async function boot() {
   const t0 = performance.now()
@@ -672,12 +713,6 @@ async function boot() {
     // Only inside Tauri: it needs real vault files (browser mock has none).
     if ('__TAURI_INTERNALS__' in window) { await initOcr(); startOcr() }
 
-    // Sync shared tag vocabulary from GitHub (fire-and-forget, silent)
-    syncTagVocab()
-
-    // Start auto-tag pipeline — model downloads once and caches permanently
-    initAutoTag()
-
     // Object detection temporarily disabled (search pollution) — re-enable later:
     // initObjectTags()
 
@@ -698,21 +733,37 @@ async function boot() {
     // grid renders with an empty plan and shows the free teaser/200-cap to a Pro
     // user until a later validation happens to reload it.
     initSettings(document.getElementById('view-settings'), settings)
+    // Tag lens + suggestions (spec §7): after initSettings, because both read its cache
+    // (the suggestions switch, the last lens check). They used to start before it, read
+    // the switch as off and never started at launch. Scoring itself runs in Rust; this
+    // bridges its events and loads the lenses, which the grid's first render waits for
+    // (briefly, alongside the licence) so cards don't grow their question a moment later.
+    initAutoTag()
+    const lensesReady = initLenses()
+    // The retired online tag vocabulary (tag-sync.js) and its CLIP worker kept these
+    try {
+      for (const key of ['__qooti_vocab_version', '__qooti_vocab_latest', '__auto_tag_cache_ver']) localStorage.removeItem(key)
+    } catch { /* storage unavailable */ }
     initExtension()
     // The account comes from bloot apps' signed ticket (offline, ~1 ms). Awaited so
     // the grid's first render already knows the plan, and the sign-in decision below
     // is made on it.
     await initLicensing()
+    await lensesReady
     initCardDetail()
     initGrid(document.getElementById('view-grid'), settings)
     initCollections(document.getElementById('view-collections'), settings)
     initBoards(document.getElementById('view-boards'), settings)
     initTags()
     initSearch(document.getElementById('view-search'), settings)
-    initNotifications(document.getElementById('view-notifications'))
+    // The bell: notifications from bloot. Its pop-ups wait for the first-run steps (held below)
+    initNotifications()
     initMilestones(document.getElementById('view-milestones'))
     initActivityView(document.getElementById('view-activity'))
     initDuplicates(document.getElementById('view-duplicates'))
+    // Dialogs that open by themselves wait for the first-run steps: held from here until the
+    // tour is on screen, or until the role step is done when there's no tour (afterGridOpens)
+    const firstRunDone = holdFirstRunSteps()
     // Links the browser extension kept while qooti was closed: asks what to download
     initBrowserQueue()
 
@@ -729,26 +780,22 @@ async function boot() {
 
     if (effectiveState !== 'complete') {
       initOnboarding(document.getElementById('onboarding-root'), { ...settings, onboarding_state: effectiveState })
-      // When onboarding finishes it emits NAVIGATE → grid; start tour then (once only)
-      if (!walkthroughDone) {
-        let _tourStarted = false
-        store.on(events.NAVIGATE, ({ view }) => {
-          if (view === 'grid' && !_tourStarted) {
-            _tourStarted = true
-            setTimeout(startWalkthrough, 700)
-          }
-        })
-      }
+      // When onboarding finishes it emits NAVIGATE → grid; the role step and the tour
+      // follow then (once only)
+      let _gridOpened = false
+      store.on(events.NAVIGATE, ({ view }) => {
+        if (view === 'grid' && !_gridOpened) {
+          _gridOpened = true
+          afterGridOpens(settings, walkthroughDone, firstRunDone)
+        }
+      })
     } else {
       navigate('grid')
-      if (!walkthroughDone) setTimeout(startWalkthrough, 700)
+      afterGridOpens(settings, walkthroughDone, firstRunDone)
 
       // If the app was launched by double-clicking a .qooti file (cold start),
-      // the backend stashed the path — pull it now and open the importer.
-      try {
-        const lf = await api.takeLaunchFile()
-        if (lf) store.emit(events.QOOTI_FILE_OPEN, { path: lf })
-      } catch {}
+      // the backend stashed the path: the importer opens with it once start-up is done
+      openLaunchFile()
     }
 
     const elapsed = performance.now() - t0

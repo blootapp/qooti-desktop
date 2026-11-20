@@ -2,7 +2,11 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use tauri::{AppHandle, Manager};
 
-const SCHEMA_VERSION: i64 = 35;
+// v36: Tag lens (lenses, concepts, concept_entries, tag_answers, tags.concept_id,
+// inspirations.auto_tag_sig, inspirations.lens_suggestions, clip_frames) — all created by
+// lenses::ensure_schema, which `migrate` runs at every start (so concept_entries and
+// lens_suggestions, added later, needed no bump).
+const SCHEMA_VERSION: i64 = 36;
 
 pub fn init(app: &AppHandle) -> Result<Connection> {
     let data_dir = app.path().app_data_dir()?;
@@ -48,6 +52,22 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // Tag lens tables and columns: at every start, not only on a version bump (each step checks
+    // before it changes anything), and before any item query. A failure is logged by ensure_schema
+    // and doesn't stop the app, but not all of it is optional: the item queries select
+    // inspirations.lens_suggestions, so without that column the grid stays empty for the session
+    // (ensure_schema tries a busy database once more and logs it as an error; the next start adds
+    // it). Tag suggestions depend on the rest.
+    if let Err(e) = crate::lenses::ensure_schema(conn) {
+        log::error!(target: "DB", "Tag lens schema incomplete: {e}");
+    }
+
+    // Crop columns (original_path, original_hash, crop_rect): also at every start, without a
+    // version bump (crop.rs). The item queries select original_path, so this runs before any.
+    if let Err(e) = crate::crop::ensure_schema(conn) {
+        log::error!(target: "DB", "crop columns incomplete: {e}");
+    }
+
     Ok(())
 }
 
@@ -76,6 +96,12 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA_SQL)?;
     Ok(())
 }
+
+/// Every tag's tag_usage_counts from its links, unused tags included: they get 0, never a count
+/// left over from before (the old rebuild kept those). Run by the upgrade and by Reindex.
+pub(crate) const RECOUNT_ALL_TAGS: &str =
+    "INSERT OR REPLACE INTO tag_usage_counts (tag_id, count)
+     SELECT t.id, (SELECT COUNT(*) FROM inspiration_tags it WHERE it.tag_id = t.id) FROM tags t;";
 
 // Additive column migrations — safe to re-run; SQLite errors on duplicate column are ignored.
 fn run_additive_migrations(conn: &Connection) -> Result<()> {
@@ -155,12 +181,7 @@ fn run_additive_migrations(conn: &Connection) -> Result<()> {
 
     // Backfill tag_usage_counts from actual inspiration_tags associations.
     // Ensures any existing data has accurate counts regardless of how tags were assigned.
-    let _ = conn.execute_batch(
-        "INSERT OR REPLACE INTO tag_usage_counts (tag_id, count)
-         SELECT tag_id, COUNT(*) FROM inspiration_tags GROUP BY tag_id;
-         INSERT OR IGNORE INTO tag_usage_counts (tag_id, count)
-         SELECT id, 0 FROM tags;"
-    );
+    let _ = conn.execute_batch(RECOUNT_ALL_TAGS);
 
     // v34: object detection is temporarily disabled (its labels were polluting search).
     // Wipe the detected labels so the FTS rebuild below indexes them empty. The columns +
@@ -435,6 +456,67 @@ mod tests {
         assert_eq!(text, "curious travel");
         assert_eq!(hits("curious"), 1);
         assert_eq!(hits("travel"), 1);
+    }
+
+    /// A v35 library gets the Tag lens schema on upgrade, and a lens table that goes missing
+    /// later comes back at the next start (ensure_schema runs every time, not only on a bump).
+    #[test]
+    fn tag_lens_schema_on_upgrade_and_at_every_start() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let has = |sql: &str| -> bool { conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap() > 0 };
+        let tables_ok = |has: &dyn Fn(&str) -> bool| {
+            for t in ["lenses", "concepts", "concept_entries", "tag_answers", "clip_frames", "clip_embeddings"] {
+                assert!(has(&format!("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '{t}'")), "{t}");
+            }
+            assert!(has("SELECT COUNT(*) FROM pragma_table_info('tags') WHERE name = 'concept_id'"));
+            assert!(has("SELECT COUNT(*) FROM pragma_table_info('inspirations') WHERE name = 'auto_tag_sig'"));
+            assert!(has("SELECT COUNT(*) FROM pragma_table_info('inspirations') WHERE name = 'lens_suggestions'"));
+        };
+        tables_ok(&has);
+        let version: String = conn.query_row("SELECT value FROM schema_meta WHERE key = 'version'", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, "36");
+
+        // Back to what a 1.2.2 library looks like: schema 35, none of the lens parts.
+        conn.execute_batch(
+            "DROP INDEX idx_tags_concept;
+             ALTER TABLE tags DROP COLUMN concept_id;
+             ALTER TABLE inspirations DROP COLUMN auto_tag_sig;
+             ALTER TABLE inspirations DROP COLUMN lens_suggestions;
+             DROP TABLE lenses; DROP TABLE concepts; DROP TABLE concept_entries; DROP TABLE tag_answers; DROP TABLE clip_frames;
+             UPDATE schema_meta SET value = '35' WHERE key = 'version';",
+        ).unwrap();
+        conn.execute("INSERT INTO inspirations (id, type, stored_path, created_at, updated_at) VALUES ('a', 'image', 'x', 0, 0)", []).unwrap();
+        migrate(&conn).unwrap();
+        tables_ok(&has);
+        assert!(has("SELECT COUNT(*) FROM inspirations WHERE id = 'a'"), "items survive");
+
+        // Already at 36, a table or column gone missing comes back at the next start, before any
+        // item query reads it (the empty-grid gotcha).
+        conn.execute_batch("DROP TABLE tag_answers; ALTER TABLE inspirations DROP COLUMN lens_suggestions;").unwrap();
+        migrate(&conn).unwrap();
+        tables_ok(&has);
+        assert_eq!(crate::commands::load_inspiration(&conn, "a").unwrap().id, "a", "the item query works");
+    }
+
+    /// The upgrade sets every tag's count from its links: a count left over on a tag no item has
+    /// any more goes back to 0 (the old rebuild kept it), a count that was too low comes right.
+    #[test]
+    fn upgrade_recounts_every_tag() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO inspirations (id, type, stored_path, created_at, updated_at) VALUES ('a', 'image', 'x', 0, 0);
+             INSERT INTO tags (id, name, source, created_at) VALUES ('used', 'used', 'user', 0), ('unused', 'unused', 'user', 0);
+             INSERT INTO inspiration_tags (inspiration_id, tag_id) VALUES ('a', 'used');
+             INSERT OR REPLACE INTO tag_usage_counts (tag_id, count) VALUES ('used', 0), ('unused', 5);
+             UPDATE schema_meta SET value = '35' WHERE key = 'version';",
+        ).unwrap();
+        migrate(&conn).unwrap();
+        let count = |id: &str| -> i64 {
+            conn.query_row("SELECT count FROM tag_usage_counts WHERE tag_id = ?1", [id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!((count("used"), count("unused")), (1, 0));
     }
 }
 

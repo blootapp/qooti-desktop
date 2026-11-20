@@ -20,6 +20,7 @@ import { api } from './tauri-api.js'
 import { getSetting } from './settings.js'
 import store from './store.js'
 import * as events from './events.js'
+import { tagLabel, labelLensNames } from './lenses.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 
@@ -192,7 +193,8 @@ function bindActivityTrail() {
   on(events.FILES_IMPORTING,      ({ total } = {})       => action(`importing ${total ?? '?'} file(s)`))
   on(events.FILES_IMPORTED,       ({ imported, skipped } = {}) => action(`imported ${imported ?? 0}, skipped ${skipped ?? 0}`))
   on(events.GRID_ITEM_DELETED,    ()                     => action('deleted an item'))
-  on(events.TAG_CREATED,          ({ tag } = {})         => action(`added tag "${short(tag?.name, 30)}"`))
+  on(events.ITEM_FILE_CHANGED,    ({ cause } = {})       => action(cause === 'restore' ? 'restored an original' : 'cropped a picture'))
+  on(events.TAG_CREATED,          ({ tag } = {})         => action(`added tag "${short(tagLabel(tag), 30)}"`))
   on(events.DOWNLOAD_STARTED,     ({ url, quality } = {})=> action(`download started: ${short(url)} (${quality ?? '—'})`))
   on(events.DOWNLOAD_COMPLETE,    ()                     => action('download complete'))
   on(events.DOWNLOAD_ERROR,       ({ message } = {})     => action(`download error: ${short(message, 160)}`))
@@ -456,13 +458,14 @@ export function redact(text, home) {
 
 // ─── Public API ───────────────────────────────────────────────────
 
-/** The full plain-text report (also shown in the feedback dialog's "what's included"). */
+/** The full plain-text report (also shown in the feedback dialog's "what's included"). Lens tags
+ *  the log and the trail named by their stored name (lens:<id>) show their label. */
 export async function buildActivityTrail() {
   await flushLog()
   const fe = frontendInfo()
   let snap = null
   try { snap = await api.diagnosticsSnapshot() } catch { /* old backend / browser */ }
-  const text = snap ? buildReport(snap, fe) : fallbackReport(fe)
+  const text = labelLensNames(snap ? buildReport(snap, fe) : fallbackReport(fe))
   return redact(text, snap?.home).slice(0, REPORT_BUDGET + 1500)
 }
 

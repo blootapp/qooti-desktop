@@ -1,0 +1,747 @@
+{
+ "about": "Inputs → expected outputs of the §0c shared-tag model. Lenses: valid/built/qooti-lens-{design,motion,thumbnail}.json (bars 0.30 pictures / 0.20 videos). Item vectors: {basis key: weight} on a 512-vector, then L2-normalised. Scores within 1e-3.",
+ "lenses": [
+  "valid/built/qooti-lens-design.json",
+  "valid/built/qooti-lens-motion.json",
+  "valid/built/qooti-lens-thumbnail.json"
+ ],
+ "scoring": [
+  {
+   "name": "design scores the shared tag d_type on pictures; motion's picture pool only sees it as \"something else\"",
+   "item": {
+    "kind": "picture",
+    "aspect": 1,
+    "vector": {
+     "d_type": 1
+    }
+   },
+   "expect": {
+    "rule": "picture",
+    "byLens": {
+     "design": [
+      [
+       "d_type",
+       1
+      ]
+     ],
+     "motion": [],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "motion's video entry of d_type never reaches pictures",
+   "item": {
+    "kind": "picture",
+    "aspect": 1,
+    "vector": {
+     "motion/d_type": 1
+    }
+   },
+   "expect": {
+    "rule": "picture",
+    "byLens": {
+     "design": [],
+     "motion": [],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "motion scores d_type on videos (video rule); design decides its own entries there",
+   "item": {
+    "kind": "video",
+    "aspect": 1,
+    "duration": 12,
+    "frames": {
+     "count": 8,
+     "vector": {
+      "motion/d_type": 1,
+      "d_dark": 0.2
+     }
+    }
+   },
+   "expect": {
+    "rule": "video",
+    "byLens": {
+     "design": [
+      [
+       "d_dark",
+       1
+      ]
+     ],
+     "motion": [
+      [
+       "d_type",
+       1
+      ]
+     ],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "design's picture-only entry is in no video pool",
+   "item": {
+    "kind": "video",
+    "aspect": 1,
+    "duration": 12,
+    "frames": {
+     "count": 8,
+     "vector": {
+      "d_type": 1,
+      "d_dark": 0.2
+     }
+    }
+   },
+   "expect": {
+    "rule": "video",
+    "byLens": {
+     "design": [
+      [
+       "d_dark",
+       1
+      ]
+     ],
+     "motion": [],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "a video with one frame uses the picture rule over the VIDEO pools",
+   "item": {
+    "kind": "video",
+    "aspect": 1,
+    "duration": 12,
+    "frames": {
+     "count": 1,
+     "vector": {
+      "motion/d_type": 1
+     }
+    }
+   },
+   "expect": {
+    "rule": "frame1",
+    "byLens": {
+     "design": [],
+     "motion": [
+      [
+       "d_type",
+       1
+      ]
+     ],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "failed frames (n = 0): the cover, scored with the VIDEO pools",
+   "item": {
+    "kind": "video",
+    "aspect": 1,
+    "duration": 12,
+    "frames": {
+     "count": 0
+    },
+    "cover": {
+     "motion/d_type": 1
+    }
+   },
+   "expect": {
+    "rule": "cover",
+    "byLens": {
+     "design": [],
+     "motion": [
+      [
+       "d_type",
+       1
+      ]
+     ],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "a cover in design's picture direction finds nothing on a video",
+   "item": {
+    "kind": "video",
+    "aspect": 1,
+    "duration": 12,
+    "frames": {
+     "count": 0
+    },
+    "cover": {
+     "d_type": 1
+    }
+   },
+   "expect": {
+    "rule": "cover",
+    "byLens": {
+     "design": [],
+     "motion": [],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "base entries split a specialist pool: the anchor d_type takes half of motion's picture pool",
+   "item": {
+    "kind": "picture",
+    "aspect": 1,
+    "vector": {
+     "d_type": 1,
+     "m_green": 1
+    }
+   },
+   "expect": {
+    "rule": "picture",
+    "byLens": {
+     "design": [
+      [
+       "d_type",
+       1
+      ]
+     ],
+     "motion": [
+      [
+       "m_green",
+       0.5
+      ]
+     ],
+     "thumbnail": []
+    }
+   }
+  },
+  {
+   "name": "thumbnail covers no video: its video pool suggests nothing",
+   "item": {
+    "kind": "video",
+    "aspect": 1.78,
+    "duration": 12,
+    "frames": {
+     "count": 8,
+     "vector": {
+      "t_face": 1,
+      "d_logo": 0.3
+     }
+    }
+   },
+   "expect": {
+    "rule": "video",
+    "byLens": {
+     "design": [
+      [
+       "d_logo",
+       1
+      ]
+     ],
+     "motion": [],
+     "thumbnail": []
+    }
+   },
+   "note": "thumbnail's t_face entry is picture-only, so no video pool holds it; design's d_logo wins every frame (in motion's pool too, as an anchor, so motion gets no vote). Avoid vectors where a pool is exactly uniform: eight additions of 1/5 give a mean of 0.19999999999999998, just under a 0.20 bar."
+  }
+ ],
+ "display": [
+  {
+   "name": "motion on, picture: borrowed tags whose design entry covers pictures, plus own entries covering pictures",
+   "kind": "picture",
+   "enabled": [
+    "motion"
+   ],
+   "scores": {
+    "d_type": 0.6,
+    "d_dark": 0.5,
+    "m_green": 0.4,
+    "d_poster": 0.8,
+    "t_face": 0.7
+   },
+   "expect": [
+    [
+     "d_type",
+     "motion",
+     "borrow"
+    ],
+    [
+     "d_dark",
+     "motion",
+     "borrow"
+    ],
+    [
+     "m_green",
+     "motion",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "design on, picture",
+   "kind": "picture",
+   "enabled": [
+    "design"
+   ],
+   "scores": {
+    "d_type": 0.6,
+    "d_dark": 0.5,
+    "m_green": 0.4,
+    "d_poster": 0.8,
+    "t_face": 0.7
+   },
+   "expect": [
+    [
+     "d_poster",
+     "design",
+     "own"
+    ],
+    [
+     "d_type",
+     "design",
+     "own"
+    ],
+    [
+     "d_dark",
+     "design",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "thumbnail on, picture: d_type is not borrowed by thumbnail",
+   "kind": "picture",
+   "enabled": [
+    "thumbnail"
+   ],
+   "scores": {
+    "t_face": 0.7,
+    "d_photo": 0.3,
+    "d_type": 0.6
+   },
+   "expect": [
+    [
+     "t_face",
+     "thumbnail",
+     "own"
+    ],
+    [
+     "d_photo",
+     "thumbnail",
+     "borrow"
+    ]
+   ]
+  },
+  {
+   "name": "motion + design on, picture: a key ranks with the FIRST lens that shows it, so motion's borrows come before design's own",
+   "kind": "picture",
+   "enabled": [
+    "design",
+    "motion"
+   ],
+   "scores": {
+    "d_type": 0.6,
+    "d_dark": 0.5,
+    "m_green": 0.4,
+    "d_poster": 0.8
+   },
+   "expect": [
+    [
+     "d_type",
+     "motion",
+     "borrow"
+    ],
+    [
+     "d_dark",
+     "motion",
+     "borrow"
+    ],
+    [
+     "m_green",
+     "motion",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "all three on, picture: d_photo is shown by thumbnail (borrow) before design; col: hints last",
+   "kind": "picture",
+   "enabled": [
+    "motion",
+    "thumbnail",
+    "design"
+   ],
+   "colTags": [
+    "7"
+   ],
+   "scores": {
+    "d_type": 0.6,
+    "t_face": 0.7,
+    "d_photo": 0.9,
+    "d_poster": 0.8,
+    "col:7": 0.95
+   },
+   "expect": [
+    [
+     "d_type",
+     "motion",
+     "borrow"
+    ],
+    [
+     "d_photo",
+     "thumbnail",
+     "borrow"
+    ],
+    [
+     "t_face",
+     "thumbnail",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "motion on, video: motion's own d_type entry covers videos; at most 2 on a video",
+   "kind": "video",
+   "enabled": [
+    "motion"
+   ],
+   "scores": {
+    "d_type": 0.6,
+    "m_screen": 0.5,
+    "d_dark": 0.7
+   },
+   "expect": [
+    [
+     "d_dark",
+     "motion",
+     "borrow"
+    ],
+    [
+     "d_type",
+     "motion",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "design on, video: design's d_type entry covers pictures only, so d_type is hidden",
+   "kind": "video",
+   "enabled": [
+    "design"
+   ],
+   "scores": {
+    "d_type": 0.6,
+    "d_poster": 0.5,
+    "d_dark": 0.4
+   },
+   "expect": [
+    [
+     "d_poster",
+     "design",
+     "own"
+    ],
+    [
+     "d_dark",
+     "design",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "thumbnail on, video: its picture-only entries are hidden; a borrowed tag whose design entry covers videos shows",
+   "kind": "video",
+   "enabled": [
+    "thumbnail"
+   ],
+   "scores": {
+    "t_face": 0.9,
+    "d_photo": 0.8
+   },
+   "expect": [
+    [
+     "d_photo",
+     "thumbnail",
+     "borrow"
+    ]
+   ]
+  },
+  {
+   "name": "add-by-hand tags, unknown keys and a video-only entry on a picture never show",
+   "kind": "picture",
+   "enabled": [
+    "motion",
+    "thumbnail",
+    "design"
+   ],
+   "scores": {
+    "d_brand": 0.99,
+    "m_meme": 0.98,
+    "ghost": 0.97,
+    "m_screen": 0.96
+   },
+   "expect": []
+  },
+  {
+   "name": "suggestions off: nothing shows",
+   "kind": "picture",
+   "enabled": [
+    "motion"
+   ],
+   "on": false,
+   "scores": {
+    "m_green": 0.9
+   },
+   "expect": []
+  },
+  {
+   "name": "equal rank and score: by key",
+   "kind": "picture",
+   "enabled": [
+    "motion"
+   ],
+   "scores": {
+    "m_render": 0.5,
+    "m_green": 0.5
+   },
+   "expect": [
+    [
+     "m_green",
+     "motion",
+     "own"
+    ],
+    [
+     "m_render",
+     "motion",
+     "own"
+    ]
+   ]
+  },
+  {
+   "name": "col: hints show only while their tag exists, after every lens key",
+   "kind": "picture",
+   "enabled": [
+    "design"
+   ],
+   "colTags": [
+    "7"
+   ],
+   "scores": {
+    "col:7": 0.9,
+    "col:8": 0.95,
+    "d_logo": 0.1
+   },
+   "expect": [
+    [
+     "d_logo",
+     "design",
+     "own"
+    ],
+    [
+     "col:7",
+     null,
+     "col"
+    ]
+   ]
+  }
+ ],
+ "picker": [
+  {
+   "enabled": [
+    "motion"
+   ],
+   "expect": [
+    "m_green",
+    "m_screen",
+    "m_render",
+    "d_type",
+    "m_meme",
+    "d_dark"
+   ]
+  },
+  {
+   "enabled": [
+    "design"
+   ],
+   "expect": [
+    "d_poster",
+    "d_logo",
+    "d_photo",
+    "d_story",
+    "d_dark",
+    "d_type",
+    "d_brand"
+   ]
+  },
+  {
+   "enabled": [
+    "thumbnail"
+   ],
+   "expect": [
+    "t_face",
+    "t_thumb",
+    "d_brand",
+    "d_photo"
+   ]
+  },
+  {
+   "enabled": [
+    "thumbnail",
+    "motion"
+   ],
+   "expect": [
+    "m_green",
+    "m_screen",
+    "m_render",
+    "d_type",
+    "m_meme",
+    "d_dark",
+    "t_face",
+    "t_thumb",
+    "d_brand",
+    "d_photo"
+   ]
+  },
+  {
+   "enabled": [],
+   "expect": []
+  }
+ ],
+ "signature": [
+  {
+   "installed": [
+    {
+     "id": "thumbnail",
+     "sha256": "cc"
+    },
+    {
+     "id": "design",
+     "sha256": "aa"
+    },
+    {
+     "id": "motion",
+     "sha256": "bb"
+    }
+   ],
+   "maxvid": 60,
+   "text": "lens-score-4|clip-b32-q8|maxvid=60|design@aa,motion@bb,thumbnail@cc"
+  }
+ ],
+ "basis": {
+  "d_poster": 0,
+  "d_logo": 1,
+  "d_photo": 2,
+  "d_story": 3,
+  "d_dark": 4,
+  "d_type": 5,
+  "m_green": 10,
+  "m_screen": 11,
+  "m_render": 12,
+  "motion/d_type": 13,
+  "t_face": 20,
+  "t_thumb": 21
+ },
+ "entries": [
+  {
+   "lens": "design",
+   "id": "d_poster",
+   "media": "any",
+   "basis": 0
+  },
+  {
+   "lens": "design",
+   "id": "d_logo",
+   "media": "any",
+   "basis": 1
+  },
+  {
+   "lens": "design",
+   "id": "d_photo",
+   "media": "any",
+   "basis": 2
+  },
+  {
+   "lens": "design",
+   "id": "d_story",
+   "media": "any",
+   "aspect": [
+    0.5,
+    0.6
+   ],
+   "basis": 3
+  },
+  {
+   "lens": "design",
+   "id": "d_dark",
+   "media": "any",
+   "basis": 4
+  },
+  {
+   "lens": "design",
+   "id": "d_type",
+   "media": "picture",
+   "basis": 5
+  },
+  {
+   "lens": "design",
+   "id": "d_brand",
+   "suggest": false
+  },
+  {
+   "lens": "motion",
+   "id": "m_green",
+   "media": "any",
+   "basis": 10
+  },
+  {
+   "lens": "motion",
+   "id": "m_screen",
+   "media": "video",
+   "basis": 11
+  },
+  {
+   "lens": "motion",
+   "id": "m_render",
+   "media": "any",
+   "basis": 12
+  },
+  {
+   "lens": "motion",
+   "id": "d_type",
+   "media": "video",
+   "basis": 13
+  },
+  {
+   "lens": "motion",
+   "id": "m_meme",
+   "suggest": false
+  },
+  {
+   "lens": "thumbnail",
+   "id": "t_face",
+   "media": "picture",
+   "basis": 20
+  },
+  {
+   "lens": "thumbnail",
+   "id": "t_thumb",
+   "media": "picture",
+   "aspect": [
+    1.6,
+    1.95
+   ],
+   "basis": 21
+  },
+  {
+   "lens": "thumbnail",
+   "id": "d_brand",
+   "suggest": false
+  }
+ ],
+ "borrows": {
+  "motion": [
+   "d_dark",
+   "d_type"
+  ],
+  "thumbnail": [
+   "d_photo"
+  ]
+ }
+}

@@ -24,13 +24,15 @@ const SOURCE_LABELS = {
   file_import:  { key: 'activity.src.file_import',  cls: 'tag--file'      },
   pack_import:  { key: 'activity.src.pack_import',  cls: 'tag--pack'      },
   mobile:       { key: 'activity.src.mobile',       cls: 'tag--mobile'    },
+  crop_copy:    { key: 'activity.src.crop_copy',    cls: 'tag--file'      },   // Crop's "Save as copy"
 }
 
+// A source this version doesn't know shows as "Unknown", never its stored id
 function sourceTag(importSource) {
-  const s = SOURCE_LABELS[importSource]
+  const s = Object.prototype.hasOwnProperty.call(SOURCE_LABELS, importSource) ? SOURCE_LABELS[importSource] : null
   const el = document.createElement('span')
   el.className = `activity-tag ${s?.cls ?? 'tag--file'}`
-  el.textContent = s ? tr(s.key) : (importSource ?? tr('activity.src.unknown'))
+  el.textContent = tr(s ? s.key : 'activity.src.unknown')
   return el
 }
 

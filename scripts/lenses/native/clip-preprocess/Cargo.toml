@@ -1,0 +1,17 @@
+[package]
+name = "clip-preprocess"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Dev tool: the app's exact CLIP image decode + preprocess (clip.rs) for the lens tools"
+
+# Same `image` version and features as src-tauri (Cargo.lock copied from src-tauri, then pruned by
+# cargo), so decoded pixels are identical to what the app's indexer sees.
+[dependencies]
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+
+[profile.release]
+opt-level = 3
+
+# Keep this crate out of any parent workspace.
+[workspace]

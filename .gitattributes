@@ -5,3 +5,8 @@
 public/models/ocr/dict.txt text eol=lf
 # Models are binary.
 *.onnx binary
+# Tag lens files: the app embeds the bundled copies (include_str!) and the catalogue checks
+# each file's size and sha256, so they must stay byte-identical to what build.mjs wrote (LF),
+# also on a CRLF checkout (CI on Windows).
+src-tauri/lenses/*.json text eol=lf
+lenses/**/*.json text eol=lf

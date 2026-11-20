@@ -13,7 +13,7 @@ const IS_TAURI = '__TAURI_INTERNALS__' in window
 
 let _invoke  = null
 // Long-running by design — not worth flagging as slow.
-const SLOW_OK = new Set(['download_url', 'import_files', 'enhance_image', 'apply_update', 'export_all', 'diagnostics_snapshot'])
+const SLOW_OK = new Set(['download_url', 'import_files', 'enhance_image', 'apply_update', 'export_all', 'diagnostics_snapshot', 'install_lenses', 'retag_all', 'crop_image', 'restore_original'])
 let _listen  = null
 
 // Lazy-load Tauri modules so the bundle doesn't error in browser
@@ -150,6 +150,16 @@ const tauriApi = {
   deleteInspiration:  id          => _invoke('delete_inspiration', { id }),
   enhanceImage:       id          => _invoke('enhance_image', { id }),
   deleteEnhanced:     id          => _invoke('delete_enhanced', { id }),
+  // A card's picture turned out another shape than saved (media-shape.js): → true when
+  // saved, false when nothing changed or the id is unknown; 'bad_ratio' outside 0.05–20
+  setItemAspect:      (id, ratio) => _invoke('set_item_aspect', { id, ratio }),
+  // Crop in the image player (crop.rs). x, y, w, h: fractions 0–1 of the picture as it is
+  // shown; mode 'replace' | 'copy' → the updated item (replace) or the new one (copy).
+  // Errors: bad_rect, bad_mode, not_found, unsupported, unreadable, too_big, too_small,
+  // no_change, disk, changed, busy, already_saved:<id>
+  cropImage:          ({ id, x, y, w, h, mode }) => _invoke('crop_image', { id, x, y, w, h, mode }),
+  // The first original back → the item. Errors: not_found, no_original, original_missing, disk, changed
+  restoreOriginal:    id          => _invoke('restore_original', { id }),
   findDuplicates:     ()          => _invoke('find_duplicates'),
   markNotDuplicates:  ids         => _invoke('mark_not_duplicates', { ids }),
   findSimilar:        (id, limit = 80) => _invoke('find_similar', { id, limit }),
@@ -209,8 +219,14 @@ const tauriApi = {
   hubRefresh: ()     => _invoke('hub_refresh'),
   listMilestones:  () => _invoke('list_milestones'),
 
-  getNotifications:      ()  => _invoke('get_notifications'),
-  markNotificationRead:  id  => _invoke('mark_notification_read', { id }),
+  // Notifications under the bell (announcements.rs, MD/qooti-notifications-spec.md §4.6).
+  // list / sync → { items, unread, last_sync, next_check_s, synced }; list reads the cache
+  // (instant, offline), sync asks api.bloot.app (lang 'en' | 'uz'). event kind: 'seen' | 'click'
+  announcementsList:       ()         => _invoke('announcements_list'),
+  announcementsSync:       lang       => _invoke('announcements_sync', { lang }),
+  announcementsEvent:      (id, kind) => _invoke('announcements_event', { id, kind }),
+  announcementsMarkRead:   ids        => _invoke('announcements_mark_read', { ids }),
+  announcementsMarkPopped: id         => _invoke('announcements_mark_popped', { id }),
 
 
   getMobileConnectionQr: () => _invoke('get_mobile_connection_qr'),
@@ -219,14 +235,27 @@ const tauriApi = {
   listExtensionClients: () => _invoke('list_extension_clients'),
   removeExtensionClient: origin => _invoke('remove_extension_client', { origin }),
 
-  claimAutoTagCandidates: (batchSize = 4)                    => _invoke('claim_auto_tag_candidates', { batchSize }),
-  finalizeAutoTagResult:  (id, confidence, model, status)    => _invoke('finalize_auto_tag_result', { id, confidence, model, status }),
-
-  listTagVocab:     ()                                          => _invoke('list_tag_vocab'),
-  upsertTagVocab:   (id, labelsJson, promptsJson, builtIn, sortOrder) =>
-    _invoke('upsert_tag_vocab', { id, labelsJson, promptsJson, builtIn, sortOrder }),
-  deleteTagVocab:   (id)                                        => _invoke('delete_tag_vocab', { id }),
-  resetAllAutoTags: ()                                          => _invoke('reset_all_auto_tags'),
+  // Tag lens (lenses.rs / tagging.rs, spec §6.3). Views go through lenses.js for the lens
+  // state; answers and manual adds are called directly.
+  listLenses:       ()                            => _invoke('list_lenses'),
+  // → one row per tag: [{ id, lens_id, labels, group, active, entries: [{ lens_id, media, suggest }], borrowed_by }]
+  listConcepts:     ()                            => _invoke('list_concepts'),
+  setLensEnabled:   (id, enabled)                 => _invoke('set_lens_enabled', { id, enabled }),
+  applyRole:        role                          => _invoke('apply_role', { role }),
+  installLenses:    files                         => _invoke('install_lenses', { files }),  // [{ text, sha256, size, id, version }], ≤ 3 files
+  lensStatus:       ()                            => _invoke('lens_status'),
+  // lens:status events are sent only while something on screen watches them (Settings ›
+  // Library); lens_status itself always answers. → null
+  lensStatusWatch:  on                            => _invoke('lens_status_watch', { on: !!on }),
+  // The stored suggestions of up to 1000 items in one call (more: the error 'too_many'):
+  // → { [id]: { conf: JSON text | null, model: string | null } }; unknown ids are left out. conf is the
+  // lens_suggestions column; the grid keeps it in the item's auto_tag_confidence field, as items come
+  getSuggestionMaps: ids                          => _invoke('get_suggestion_maps', { ids }),
+  // answer: 'added' | 'dismissed'; lensId: the lens that showed the row (null: unknown) → Tag | null
+  answerSuggestion: (inspirationId, key, answer, lensId = null) => _invoke('answer_suggestion', { inspirationId, key, answer, lensId }),
+  addConceptTag:    (inspirationId, conceptId)    => _invoke('add_concept_tag', { inspirationId, conceptId }),     // → Tag
+  retagAll:         ()                            => _invoke('retag_all'),
+  taggingWake:      ()                            => _invoke('tagging_wake'),
   copyFileToFolder:     (path, destDir)                         => _invoke('copy_file_to_folder', { path, destDir }),
   copyFileToClipboard:  path                                    => _invoke('copy_file_to_clipboard', { path }),
   revealInFolder:       path                                    => _invoke('reveal_in_folder', { path }),
@@ -338,6 +367,9 @@ export async function initDownloadListeners() {
   await _listen('update-available', e => {
     store.emit(events.UPDATE_AVAILABLE, e.payload)
   })
+  await _listen('update-progress', e => {
+    store.emit(events.UPDATE_PROGRESS, e.payload)
+  })
   await _listen('open-qooti-file', e => {
     if (e.payload) store.emit(events.QOOTI_FILE_OPEN, { path: e.payload })
   })
@@ -351,6 +383,16 @@ export async function initDownloadListeners() {
     try {
       const item = await _invoke('get_inspiration', { id: inspiration_id })
       if (item) store.emit(events.CARD_OPEN, { item })
+    } catch {}
+  })
+  // A title changed from the browser extension's collection picker: the card shows it
+  // at once, as if it had been edited here
+  await _listen('extension:item-renamed', async e => {
+    const { inspiration_id } = e.payload ?? {}
+    if (!inspiration_id) return
+    try {
+      const item = await _invoke('get_inspiration', { id: inspiration_id })
+      if (item) store.emit(events.GRID_ITEM_UPDATED, { inspiration: item })
     } catch {}
   })
 }

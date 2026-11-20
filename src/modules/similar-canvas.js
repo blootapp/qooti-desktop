@@ -9,6 +9,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { api } from './tauri-api.js'
 import { makeLogger } from './logger.js'
 import { t } from './i18n.js'
+import { matchRealShape } from './media-shape.js'
 
 const log = makeLogger('SimCanvas')
 const IS_TAURI = '__TAURI_INTERNALS__' in window
@@ -74,6 +75,20 @@ function makeTile(item, longSide, x, y, isFocus, tier = 0) {
   img.src = toSrc(item)
   img.alt = item.title ?? ''
   img.draggable = false
+  // Once the picture is here the tile takes its real shape (the same long side, so it never
+  // outgrows its square), and a wrong saved shape is corrected (media-shape.js). No motion:
+  // a resize is never animated.
+  img.addEventListener('load', () => {
+    const nw = img.naturalWidth, nh = img.naturalHeight
+    if (!nw || !nh) return
+    const saved = item.aspect_ratio > 0 ? item.aspect_ratio : 1
+    matchRealShape(item, null, nw, nh)
+    if (Math.abs(nw / nh - saved) / (nw / nh) > 0.001) {
+      const d = tileDims({ aspect_ratio: nw / nh }, longSide)
+      tile.style.width  = `${d.w}px`
+      tile.style.height = `${d.h}px`
+    }
+  }, { once: true })
   tile.appendChild(img)
   tile._item  = item
   tile._pos   = { x, y }

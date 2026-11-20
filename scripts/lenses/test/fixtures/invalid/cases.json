@@ -1,0 +1,1032 @@
+[
+ {
+  "name": "lens-id-pattern",
+  "kind": "source",
+  "file": "lens-id-pattern.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.id"
+  }
+ },
+ {
+  "name": "lens-filename",
+  "kind": "source",
+  "file": "lens-filename.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.filename"
+  }
+ },
+ {
+  "name": "lens-unknown-id",
+  "kind": "source",
+  "file": "lens-unknown-id.json",
+  "target": "promo.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.unknown_id"
+  }
+ },
+ {
+  "name": "lens-version-zero",
+  "kind": "source",
+  "file": "lens-version-zero.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.version"
+  }
+ },
+ {
+  "name": "lens-version-float",
+  "kind": "source",
+  "file": "lens-version-float.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.version"
+  }
+ },
+ {
+  "name": "lens-version-too-high",
+  "kind": "source",
+  "file": "lens-version-too-high.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.version"
+  }
+ },
+ {
+  "name": "lens-role-unknown",
+  "kind": "source",
+  "file": "lens-role-unknown.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.role"
+  }
+ },
+ {
+  "name": "lens-role-for-id",
+  "kind": "source",
+  "file": "lens-role-for-id.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.role_for_id"
+  }
+ },
+ {
+  "name": "catalogue-two-bases",
+  "kind": "source",
+  "file": "catalogue-two-bases.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "catalogue.base"
+  }
+ },
+ {
+  "name": "catalogue-no-base",
+  "kind": "source",
+  "file": "catalogue-no-base.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "catalogue.base"
+  }
+ },
+ {
+  "name": "lens-unknown-key",
+  "kind": "source",
+  "file": "lens-unknown-key.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.unknown_key"
+  }
+ },
+ {
+  "name": "source-has-build-key",
+  "kind": "source",
+  "file": "source-has-build-key.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.unknown_key"
+  }
+ },
+ {
+  "name": "concept-unknown-key",
+  "kind": "source",
+  "file": "concept-unknown-key.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.unknown_key"
+  }
+ },
+ {
+  "name": "source-has-vec",
+  "kind": "source",
+  "file": "source-has-vec.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.unknown_key"
+  }
+ },
+ {
+  "name": "name-too-long",
+  "kind": "source",
+  "file": "name-too-long.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.length"
+  }
+ },
+ {
+  "name": "summary-too-long",
+  "kind": "source",
+  "file": "summary-too-long.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.length"
+  }
+ },
+ {
+  "name": "label-too-long",
+  "kind": "source",
+  "file": "label-too-long.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.length"
+  }
+ },
+ {
+  "name": "label-long-warning",
+  "kind": "source",
+  "file": "label-long-warning.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "warning",
+   "code": "text.label_long"
+  }
+ },
+ {
+  "name": "text-empty",
+  "kind": "source",
+  "file": "text-empty.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.empty"
+  }
+ },
+ {
+  "name": "text-not-string",
+  "kind": "source",
+  "file": "text-not-string.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.type"
+  }
+ },
+ {
+  "name": "text-missing-language",
+  "kind": "source",
+  "file": "text-missing-language.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.type"
+  }
+ },
+ {
+  "name": "text-trim",
+  "kind": "source",
+  "file": "text-trim.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.trim"
+  }
+ },
+ {
+  "name": "text-nfc",
+  "kind": "source",
+  "file": "text-nfc.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.nfc"
+  }
+ },
+ {
+  "name": "text-angle",
+  "kind": "source",
+  "file": "text-angle.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.angle"
+  }
+ },
+ {
+  "name": "text-control-cc",
+  "kind": "source",
+  "file": "text-control-cc.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.control"
+  }
+ },
+ {
+  "name": "text-format-cf",
+  "kind": "source",
+  "file": "text-format-cf.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.control"
+  }
+ },
+ {
+  "name": "uz-ascii-apostrophe",
+  "kind": "source",
+  "file": "uz-ascii-apostrophe.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "text.uz_apostrophe"
+  }
+ },
+ {
+  "name": "uz-backtick",
+  "kind": "source",
+  "file": "uz-backtick.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "text.uz_apostrophe"
+  }
+ },
+ {
+  "name": "uz-modifier-turned-comma",
+  "kind": "source",
+  "file": "uz-modifier-turned-comma.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "text.uz_apostrophe"
+  }
+ },
+ {
+  "name": "uz-modifier-apostrophe",
+  "kind": "source",
+  "file": "uz-modifier-apostrophe.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "text.uz_apostrophe"
+  }
+ },
+ {
+  "name": "group-not-object",
+  "kind": "source",
+  "file": "group-not-object.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.pair"
+  }
+ },
+ {
+  "name": "group-too-long",
+  "kind": "source",
+  "file": "group-too-long.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.length"
+  }
+ },
+ {
+  "name": "group-uz-apostrophe",
+  "kind": "source",
+  "file": "group-uz-apostrophe.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.uz_apostrophe"
+  }
+ },
+ {
+  "name": "group-missing-language",
+  "kind": "source",
+  "file": "group-missing-language.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "text.type"
+  }
+ },
+ {
+  "name": "concept-id-pattern",
+  "kind": "source",
+  "file": "concept-id-pattern.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.id"
+  }
+ },
+ {
+  "name": "concept-dup-in-lens",
+  "kind": "source",
+  "file": "concept-dup-in-lens.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.concept_id"
+  }
+ },
+ {
+  "name": "shared-twice-in-one-lens",
+  "kind": "source",
+  "file": "shared-twice-in-one-lens.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.concept_id"
+  }
+ },
+ {
+  "name": "concepts-none",
+  "kind": "source",
+  "file": "concepts-none.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.concept_count"
+  }
+ },
+ {
+  "name": "scored-81",
+  "kind": "source",
+  "file": "scored-81.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.scored_count"
+  }
+ },
+ {
+  "name": "entries-121",
+  "kind": "source",
+  "file": "entries-121.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.concept_count"
+  }
+ },
+ {
+  "name": "lens-no-scored-warning",
+  "kind": "source",
+  "file": "lens-no-scored-warning.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "warning",
+   "code": "lens.no_scored"
+  }
+ },
+ {
+  "name": "prompts-one",
+  "kind": "source",
+  "file": "prompts-one.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_count"
+  }
+ },
+ {
+  "name": "prompts-nine",
+  "kind": "source",
+  "file": "prompts-nine.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_count"
+  }
+ },
+ {
+  "name": "prompts-five-warning",
+  "kind": "source",
+  "file": "prompts-five-warning.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "warning",
+   "code": "concept.prompt_many"
+  }
+ },
+ {
+  "name": "prompt-nine-words",
+  "kind": "source",
+  "file": "prompt-nine-words.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_words"
+  }
+ },
+ {
+  "name": "prompt-seven-words-warning",
+  "kind": "source",
+  "file": "prompt-seven-words-warning.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "warning",
+   "code": "concept.prompt_long"
+  }
+ },
+ {
+  "name": "prompt-empty",
+  "kind": "source",
+  "file": "prompt-empty.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_type"
+  }
+ },
+ {
+  "name": "prompt-trim",
+  "kind": "source",
+  "file": "prompt-trim.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_trim"
+  }
+ },
+ {
+  "name": "prompt-braces",
+  "kind": "source",
+  "file": "prompt-braces.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_chars"
+  }
+ },
+ {
+  "name": "prompt-dup-across-lenses",
+  "kind": "source",
+  "file": "prompt-dup-across-lenses.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.prompt"
+  }
+ },
+ {
+  "name": "prompt-dup-in-concept",
+  "kind": "source",
+  "file": "prompt-dup-in-concept.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.prompt"
+  }
+ },
+ {
+  "name": "prompt-dup-shared-tag",
+  "kind": "source",
+  "file": "prompt-dup-shared-tag.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.prompt"
+  }
+ },
+ {
+  "name": "prompt-too-many-chars",
+  "kind": "source",
+  "file": "prompt-too-many-chars.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_length"
+  }
+ },
+ {
+  "name": "prompt-too-many-tokens",
+  "kind": "source",
+  "file": "prompt-too-many-tokens.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.prompt_tokens"
+  }
+ },
+ {
+  "name": "label-dup-en",
+  "kind": "source",
+  "file": "label-dup-en.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.label"
+  }
+ },
+ {
+  "name": "label-dup-uz",
+  "kind": "source",
+  "file": "label-dup-uz.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.label"
+  }
+ },
+ {
+  "name": "label-dup-apostrophe",
+  "kind": "source",
+  "file": "label-dup-apostrophe.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.label"
+  }
+ },
+ {
+  "name": "label-cross-language",
+  "kind": "source",
+  "file": "label-cross-language.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "dup.label_cross"
+  }
+ },
+ {
+  "name": "shared-label-differs",
+  "kind": "source",
+  "file": "shared-label-differs.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.label"
+  }
+ },
+ {
+  "name": "shared-label-uz-differs",
+  "kind": "source",
+  "file": "shared-label-uz-differs.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.label"
+  }
+ },
+ {
+  "name": "shared-group-differs",
+  "kind": "source",
+  "file": "shared-group-differs.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.group"
+  }
+ },
+ {
+  "name": "shared-media-overlap-pictures",
+  "kind": "source",
+  "file": "shared-media-overlap-pictures.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.media_overlap"
+  }
+ },
+ {
+  "name": "shared-media-overlap-videos",
+  "kind": "source",
+  "file": "shared-media-overlap-videos.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.media_overlap"
+  }
+ },
+ {
+  "name": "shared-id-label-and-media",
+  "kind": "source",
+  "file": "shared-id-label-and-media.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.label"
+  }
+ },
+ {
+  "name": "hand-has-prompts",
+  "kind": "source",
+  "file": "hand-has-prompts.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.hand_field"
+  }
+ },
+ {
+  "name": "hand-has-media",
+  "kind": "source",
+  "file": "hand-has-media.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.hand_field"
+  }
+ },
+ {
+  "name": "hand-has-aspect",
+  "kind": "source",
+  "file": "hand-has-aspect.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.hand_field"
+  }
+ },
+ {
+  "name": "suggest-not-boolean",
+  "kind": "source",
+  "file": "suggest-not-boolean.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.suggest"
+  }
+ },
+ {
+  "name": "media-unknown",
+  "kind": "source",
+  "file": "media-unknown.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.media"
+  }
+ },
+ {
+  "name": "media-missing",
+  "kind": "source",
+  "file": "media-missing.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.media"
+  }
+ },
+ {
+  "name": "aspect-reversed",
+  "kind": "source",
+  "file": "aspect-reversed.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.aspect"
+  }
+ },
+ {
+  "name": "aspect-zero",
+  "kind": "source",
+  "file": "aspect-zero.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.aspect"
+  }
+ },
+ {
+  "name": "aspect-one-value",
+  "kind": "source",
+  "file": "aspect-one-value.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.aspect"
+  }
+ },
+ {
+  "name": "about-not-text",
+  "kind": "source",
+  "file": "about-not-text.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.about"
+  }
+ },
+ {
+  "name": "borrows-unknown",
+  "kind": "source",
+  "file": "borrows-unknown.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "borrows.unknown"
+  }
+ },
+ {
+  "name": "borrows-own-concept",
+  "kind": "source",
+  "file": "borrows-own-concept.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "borrows.unknown"
+  }
+ },
+ {
+  "name": "borrows-by-base",
+  "kind": "source",
+  "file": "borrows-by-base.json",
+  "target": "design.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.borrows"
+  }
+ },
+ {
+  "name": "borrows-twice",
+  "kind": "source",
+  "file": "borrows-twice.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.borrows"
+  }
+ },
+ {
+  "name": "borrow-own-overlap",
+  "kind": "source",
+  "file": "borrow-own-overlap.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "borrows.overlap"
+  }
+ },
+ {
+  "name": "borrows-hand-warning",
+  "kind": "source",
+  "file": "borrows-hand-warning.json",
+  "target": "thumbnail.json",
+  "expect": {
+   "level": "warning",
+   "code": "borrows.hand"
+  }
+ },
+ {
+  "name": "bar-too-low",
+  "kind": "source",
+  "file": "bar-too-low.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.bar"
+  }
+ },
+ {
+  "name": "bar-too-high",
+  "kind": "source",
+  "file": "bar-too-high.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.bar"
+  }
+ },
+ {
+  "name": "bar-missing",
+  "kind": "source",
+  "file": "bar-missing.json",
+  "target": "motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.bar"
+  }
+ },
+ {
+  "name": "built-format",
+  "kind": "built",
+  "file": "built-format.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.format"
+  }
+ },
+ {
+  "name": "built-model",
+  "kind": "built",
+  "file": "built-model.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.model"
+  }
+ },
+ {
+  "name": "built-template",
+  "kind": "built",
+  "file": "built-template.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.template"
+  }
+ },
+ {
+  "name": "built-min-app",
+  "kind": "built",
+  "file": "built-min-app.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.min_app"
+  }
+ },
+ {
+  "name": "built-updated-at",
+  "kind": "built",
+  "file": "built-updated-at.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.updated_at"
+  }
+ },
+ {
+  "name": "built-text-model",
+  "kind": "built",
+  "file": "built-text-model.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.text_model"
+  }
+ },
+ {
+  "name": "built-placeholder-warning",
+  "kind": "built",
+  "file": "built-placeholder-warning.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "warning",
+   "code": "built.placeholder"
+  }
+ },
+ {
+  "name": "built-unknown-id",
+  "kind": "built",
+  "file": "built-unknown-id.json",
+  "target": "qooti-lens-promo.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.unknown_id"
+  }
+ },
+ {
+  "name": "built-version-too-high",
+  "kind": "built",
+  "file": "built-version-too-high.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "lens.version"
+  }
+ },
+ {
+  "name": "built-same-version",
+  "kind": "built",
+  "file": "built-same-version.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "built.same_version"
+  }
+ },
+ {
+  "name": "built-hand-has-vec",
+  "kind": "built",
+  "file": "built-hand-has-vec.json",
+  "target": "qooti-lens-design.json",
+  "expect": {
+   "level": "error",
+   "code": "concept.hand_field"
+  }
+ },
+ {
+  "name": "built-shared-media-overlap",
+  "kind": "built",
+  "file": "built-shared-media-overlap.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "shared.media_overlap"
+  }
+ },
+ {
+  "name": "vec-not-base64",
+  "kind": "built",
+  "file": "vec-not-base64.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.base64"
+  }
+ },
+ {
+  "name": "vec-511-values",
+  "kind": "built",
+  "file": "vec-511-values.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.length"
+  }
+ },
+ {
+  "name": "vec-nan",
+  "kind": "built",
+  "file": "vec-nan.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.finite"
+  }
+ },
+ {
+  "name": "vec-infinity",
+  "kind": "built",
+  "file": "vec-infinity.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.finite"
+  }
+ },
+ {
+  "name": "vec-norm-low",
+  "kind": "built",
+  "file": "vec-norm-low.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.norm"
+  }
+ },
+ {
+  "name": "vec-norm-high",
+  "kind": "built",
+  "file": "vec-norm-high.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.norm"
+  }
+ },
+ {
+  "name": "vec-missing",
+  "kind": "built",
+  "file": "vec-missing.json",
+  "target": "qooti-lens-motion.json",
+  "expect": {
+   "level": "error",
+   "code": "vec.base64"
+  }
+ },
+ {
+  "name": "built-borrows-unknown",
+  "kind": "built",
+  "file": "built-borrows-unknown.json",
+  "target": "qooti-lens-thumbnail.json",
+  "expect": {
+   "level": "error",
+   "code": "borrows.unknown"
+  }
+ }
+]

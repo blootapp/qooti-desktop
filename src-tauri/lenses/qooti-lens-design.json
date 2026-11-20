@@ -1,0 +1,440 @@
+{
+  "format": 2,
+  "id": "design",
+  "version": 3,
+  "role": "base",
+  "min_app": "1.2.3",
+  "updated_at": "2026-11-19",
+  "model": "clip-b32-q8",
+  "template": "This is a photo of {p}",
+  "text_model": "Xenova/clip-vit-base-patch32@6b7c523703ae26e39be4b03774966f8571c7f523 onnx/text_model_quantized.onnx sha256:73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a",
+  "name": {
+    "en": "Graphic designer / Social media post designer",
+    "uz": "Grafik dizayner / SMD dizayneri"
+  },
+  "summary": {
+    "en": "Posters, SMD, UI, 3D, illustration",
+    "uz": "Posterlar, SMD, UI, 3D, illyustratsiya"
+  },
+  "bar": {
+    "picture": 0.3,
+    "video": 0.2
+  },
+  "borrows": [],
+  "concepts": [
+    {
+      "id": "poster",
+      "label": {
+        "en": "Poster",
+        "uz": "Poster"
+      },
+      "media": "picture",
+      "prompts": [
+        "a poster design",
+        "a movie poster",
+        "a graphic poster"
+      ],
+      "vec": "jSXTGC4cFJ7KnY6dYSaGsKMj+SWHoAiiUSQ9IVGi2RVGHdAYvBDLnh0f7qAHKOaiJgqjl48Vxhe+n/EawSMql/0hax1QpqOgCJ/znW4bIJwlIaygGR/loBYj+iPcIUIdr570n/8fQqUeJrucXqBlnqCmaqC4H3gdriWToRCaIJzAHLah7pmkp06f9iHolbSoJacgIHCJu6NaJIUg3J1oHskhDJCUGwMlypJcI0gjG50moG4YahmjoT2x3iUbpRAhlh+QnCghT6gunmAYCJ4Fn/KgZaIFGQUTKqCNGaui3CcYHH0fvJ1BIHIhM51GHHgiGpaToKGgfaAEIi6hrKCcG9UkWCh6JDOlDqL2ON2bEiRknEqkmpytIj8SYCFFpCwdIqaLGWIelCB9HGIcziNTIJciDZ1FI2sdKpFDGSakHyHoI06jXJ98oZ0d2aBOoHIgASBUndmZFaCUGEIiUKBnIaCi+B5SpbUd+aMdoHKdaKCeoyOcDxiCnAegXp08paSjTyb5HGah8xfWIQWWnKDHnZYcYRiuFI4ltCBjHjYmTpxzJmwlNaBOIHak0iTTpp+hkqOWnRujqiJEHyOgQZsKpaccAaEbIEoVNKQfmeCdXxi1oB4ZhBwopacayZQaodyfGAvpJK2fb6WInqelsCBUDdohQ6F6pLsY7iQHnj6cpRIJI+WgCiKDJSOhPx5lHQSlxaBDIlKgr53+HCIcU5y+JCmk66f4j3gcshwPklYlXaQhocwf4SFPHKwhlBy9H3ae4CFLkVWkQ6WgmDulYiKioNGm0oQWnXGQXqBnHt0kpSDJo50g86CdFsSiN6eqI/Ci9jjPHWYhCRieizohZx12IwAdkibuIMghpqcLogCaopbyndO06BLTGkkhJKEjJwKkbyJKJVYcE6DcINunKoxHDPod9BmPHI8fQpg1FgsnjJnoGhcXp5YsJJ2TaCcJo0IhMqWCIeGKICShpJcjSB+EKG0mhJ5ZoIehAx91nLigj5rDI30agKg0oY0goCCNnzuke5iMHhYdlCAxnCcibiEJHB2faySvIYUhPqLjkH+jyqgPHbEhTR1Dm+ad0CE1o1mZliHHoJmgHqRPoIYYiRoAHEIkPKHMnB+jfh3PnvGbcSSCIyUd86H+oK6EJRv5pQ6kj6UcHh2krZoZpHEg5qBPGkalXxqjoL4Wh5u2CHOcx6RIIPMevSD2j4GiPqHMIQCjHZrbpDenjKVwgQgYY6OwjUqkNJ9tFJ+gzqVyFhsktiRqIMun6BhEJMQcryPQk4QlT6GLriAiAiPfHJGkPqKCIekdg5hHkEkjLSOBqSUe9JjGIHwXT6WQmn4gqh8FHC4ZRyncGf4hCKEim7ip1Jr2og=="
+    },
+    {
+      "id": "typography",
+      "label": {
+        "en": "Typography",
+        "uz": "Tipografika"
+      },
+      "media": "picture",
+      "prompts": [
+        "a font specimen",
+        "a typeface showcase",
+        "expressive lettering"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "aYZwHwyVFx8soy6UXCVssFwkBh2cG+Wl4iC3oWAZJ6XaGSoY4J6mEr0dM6PMJ5+laqAwHiMfvhYTpVSVyhgKpvMcfiLjFxufJCEyHjwg+J+GHeSlZplFoLIQQJofI2UV4yNOpb2ZhKdHHY2jip/WmAkkAKRYH8Gc4yF7omshCKRSJMMaaBjApuqbSJjHIkukQ5xrHUCci519IMsh/B1gGyckfiU7GsIgEaisGlUjOiIHJEydQR36nkyxJSiKDgoiryZmn74fmaoml+UkvqCFFH+i5SNlnjWcd5+8nRKihyrepJgNaKbfIewjvaFOpKQT354kpRalHKdonHcjAiYnGoUdvh8hj+ak2pzvOLIkkiYOmJmh0SI1oeCVNqFfm08bw6JwnUOgJZkapeSP+h5YIXYi5R55ohSY0SJbJbKkfyEiEPcc953YoSUfi6PtIb+clR9boe4N5J+SoNKaVZh1I/QgBZaopfQiLKMBFDWkiKLEpG+miiURpFyiUJ7AohqnAChjIDacKgu9JNajFZ+KnOEEBCLWogIkDBqpmesgRp9CIuQg9xnhJI6kDyHFHaidG6XMo+2ldh0zJBSfKxcEH9CilqbRIlsYqqG+oGajsRcymU2YLBx7osiXCBVzoAMZfJ2aJq+Z0ZCPp7YRaCAiItYUMZdZoIUhcqSTpDafFqXdHL+TPhLBILWf4iC9H+iURKNJoDqWbZw+ndYVRyHnICqhtaU9JD6VPQkhohSRwRdZH3si2p5LGLuaDJggkqyawRfVo6qj9RqKnwIOaSBToDKolaGFnVaVJBu+nickriTMB7QZTaApohSkKqK6I64j7TgbJbKd2SBIosOiJRgoIT0jQSe3oGkg76Lyos8g9xQDJQC1apzlnBibChd3IqydsSSQI9EZQBoyII2kmhe3oHCSe6DCFs4gEh3yHsgll6DHoAWVTBaeINiW2SXwHVCW2aQejP4jPJ/5p98iqCWuKL4kapkbIHgga422FiaV5yWPnyofeKrGGFsiIJ/HHgWhmZ5znFehbR91JOkhiSYSINec/5prF3+W+yO6pW+l9J1RHo8llSI7njEnpiDlIQudgifRIqck9ZtPpikiGyT6HwAmwqQAIzChAZiWoXOZ/x8EmgIgRiTMopmiIprpIYukHRuhhQCbm6P1o2wkw53ZoNUh7yTGnPqjhBSnF0GlsaICJSMWuyKsowelxZoRIkGhY6WxpeeotaJYpGuhaJJIGpeh9RSGGTMa1KVIm9oiWiarmfylIaKCHoWa7SLzoiwmeJzgrH8iXR7KmX2mxaDQlkcjUqj9nQ2jYxqIqIgiZZclHjwkkqQIGM4d8hZnHSoL0igbFHUf0h2YEqqk26T1GQ=="
+    },
+    {
+      "id": "social_post",
+      "label": {
+        "en": "SMD",
+        "uz": "SMD"
+      },
+      "media": "picture",
+      "aspect": [
+        0.5,
+        1.3
+      ],
+      "prompts": [
+        "a social media marketing graphic",
+        "a digital marketing post",
+        "a marketing graphic",
+        "a business social media post"
+      ],
+      "about": {
+        "en": "Text-led marketing posts, on square and portrait pictures only (9:16 up to a little wider than square): on wide pictures it picked thumbnails and web pages. CLIP can’t read the words, so what a post is about (sale, giveaway, quote) can’t be a tag."
+      },
+      "vec": "7AlLHSQYUxhlIL8RYySEr6knmpoMoA6kliIQFNyjKiBeImQZtxlXICwlqqQRJwmg75nTHaGlJSCmkekfqiBTnCgR3hbDHeEQaRw7msSdmKOIoiMa4iEuIYsaWg6MHRYkeiH6pAIiDJ2qIFKjz5l2ItYg1aSCoTka0aO3nZadLw6WIFadrZ37oKcdnJvUoZ2ha6SAIwilR6GrGusdRh7bGe0gn6ChIeKURSO2I7sZmqS7ImmgEZ+in0+xESV7pUedyxwgERwdWqQmjlWdwJj8pB0kzp+mG08ZVSQinzKi7SupoBkfC6DPHEQkNhLnIG+hT6IZnfSgJaUbJaoX3h19J1sgRCJ2nSCoZaX8OM+iWSU4nSajp52IIEuZ8JUpHEoiq6ZMHdeehqH0HGEfSR4LlZcmeJRxoxiZq5Y2JR2ijiQlHYijUZ+zopiazKNnIzIlkR1mmbkd1JzymHKPcpeCHwecUR/rme2iv6Zzmnif9Q2JpnAUECSPGVAf+5Plo1CiiiKhHNcXaaDDIKqgYZ+bnLmejhyUINwlCqDcnoojz5biH0ckLB6mnryiqyPWoxGeUaHpoTycHZwnKMyipqAuJCMaypRpmakaWSBbGKAbPCQ7okebU51hpTEkkKAeFasizJ3mJI2juqPLpQQj3ijgHv8hqpUCoDCSAoJSIQ+mz5/OGiKdpyTvJV6lMSGPHiMdZZ3+Hw2lG6EOGnyiFKDYHrSdi56xoCck8CEHnJIlwxqjm5siAiQdm08jDBbNoICcFp37m7ei4hSepbuhaiAuGuWm8ggrnLkbjBl4E30j5ZX3oMwm+6Sqn3GYVpxEhxag+zhamK+RjiRVHIOkjBzWJYkdYyQbo8igO6RRo14VgRevmAu1hh81nLiRWSUdJYGlTSR5HDuj+53YJQ6mlyRuELsbvJWeokkjmBTzm4IhqZ/HIAqdNRfMHBAd6yXio5YlACPIFBwiAh3so1ESVSTjJsQjU6ThHmaWDCEIHwSkPyOTJGqiE6ibpZyZ2pKPidoQu6EvGHcZUCHZofYZiyWJHCkknyMKFJcf0KFVHGifC6UegWseuiBXoVujrZ6toL4gViSaIy8dmqD3imMYX5YpFuUha6bRl1SkIqD5IRKfQqKjIAAjRB5OlreoYh5PHECd2aIwnpGl7yMgoaQh2R7fHbYhtSJjIbEYvZ9bncsd5qNWGvcX5yDqnAGhWhN9JK2hA4y9o1KkGqWWlbibIp4anzakDpyIoAGel6NVFTAifCMTpLOdvqDjHH8YOh3vodYdmZM4raogyyQVHCqe9xSIJOwZixy7nAyeHSiiqtGkjCCQIAeWhJxDHUAkHZzcnjwclydpg9Sdz5V4GnyUExzkoA=="
+    },
+    {
+      "id": "infographic",
+      "label": {
+        "en": "Infographics",
+        "uz": "Infografika"
+      },
+      "media": "picture",
+      "prompts": [
+        "an infographic",
+        "a chart with statistics",
+        "a data visualization"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "opdpHTufIxnVF9KhqiEnsNUopqASFQukA6NyiiUf4hyzodYiGyLJJSKdPaMZJT+fCRRknXOiJpk+neogAScOmNgj+iSRIjMc/JrqlM2JmKATqD2ioSCrJBKkjBcKGAogxqTEkegiYp4sJK2QQxJWG/uhCBuDoMgnPZw+pfugFaRQJMGcOKCUo0sdxB5Cmw6cx6eEJoeiwp2rJREZHR7Pj7qdGqMcpocnSp/PllslPROOIh+gGZ5AHf2wnCRKmj0afhmvooIjX6DkoxGjMpUhpY6kKZt0pUkbhhIzHacWaSaim1Chm6FDmoMkvx11oZoeDaKKpK2ccJgqJEgdVRQyJUUZhyZ5IkWe85z5OFciviFVouSmqaBUmH4eVyAOnukYPqK0oOmjL6NInWkdSiMvGYYiKKBgoAoiepyRI1yhFCcNIxyksaHbpgYYUaGrIXgklCFWm/6fg59cpmWi0JjcIbqkRR2TlKiF5KA0mHSk3B1Boeig+iG5G6mcSh5dny2k/SZBmsOklBzrIsagH5zwIeQiQiFUELMfBRJUITogSJ7RJrsh75j/oF+iOSLXoiGmtKSqIOaoOx37JjMXLhqvlbAmGZ9BpXgVPJ7unqshriHMorehARgcpiEf9574om8kIaMTHBgdIKSLpo2VsST1ocQdIonznikgECEHHq6d5KKKJJycYhNtEsClYySeIK8hWaD5mRinLJ1JGoSi4KBaJQKXb5wGmkgZgh+gmVUneprKn+olkiPLoxIcPCRRnfekJSIaoLoTWpuTpF6lnJN2G1OmAqLpG7agHpgYHaYVtSPgnmojUBlKouCj3aEiog0b+DhOJv+iISThIbggMyN8I5sg/SNBpHIeiKNVoyGlAx8Wm/K07J6HJEoguCU0I0mmpCUfIXgbupgFH+Oh7iBWlCMj/J3Bn5WVJB0/HLMlG6PhJj+jiiHMHz2fDB27oKEgcaOuoQ4hmIz4qXEhmCWIJ3gmPZXUpRwLCR/DoA+h8pjHomyaDaqooKEhvZreoV+V1hx4GMqd26Qtn0mhuiPnJJYZdiQ2Fu8esKG3I+ehyQHSIVgjYiRClIyU+YH2lpMf2BXiIfUlwKJMH6SVLyfFmg4eVKRCHCKiiCEGoDAdApLvmFMhG5AbnmanfxrFIVSbuaYlGp6k0KPZnPwZZiHoof+ckRZco/ukz5tAGR4YkaF0IrgX2SAloACan6iIHZ+QHqXkokweh5RqGsAkKKSSoW6iYqHUll6k2aTDGjYkkCBeGPym8gw6GDUYMhxBoRMmF6DkrOQcCiVRHd2e2p87H3seK6BZmjcShCeepbqd6yTmGxghbpUhigugJB8OoD4huyKAHEUgSqAwoQil/6GaGw=="
+    },
+    {
+      "id": "packaging",
+      "label": {
+        "en": "Packaging",
+        "uz": "Qadoq dizayni"
+      },
+      "media": "picture",
+      "prompts": [
+        "a box packaging mockup",
+        "a branded box",
+        "a food packaging design",
+        "a can and bottle mockup"
+      ],
+      "about": {
+        "en": "Boxes, cans and bottles. “A product packaging design” and “a bottle label design” pulled in paper-like social posts, so they were replaced."
+      },
+      "vec": "3RpXAtsZcI0vIu4AxyA2sJokh43Xm12kkxvvGeidTBsmJPufMaInGCClxqL+JaKgd5kjlw6kGCT2obYdwBJ+IKYDRCS9GcOkLSSHG/EI15cspMqdvxWtF7IfvaD5JCAkdiECoGoWZ6WUiTSl+6DjoW+lPaALISUgNh3soKSgiaGJIp2gs5IipJgcCh2LGZql9JvhDfqiHaBdnAudA5gEoHgT3h4yIcOgOpyyHQ8hGKCjHuuZmZfSHCCxWyQDpVsZaBlZFv4jcKGgJNymDZnmn/2jnyMxolacjCMTJA6Z4CmGmtWhJKGDmnAiyh2+oBGYpKH3p6odXKd0IQ0YSBgMIZskuCTZn0ClGh4HOckgcR/qoBmkXp1PFOagb6DJoxAdLaSboiSeZKM/nAgdXp3aHnAbZ50co6WgvZj+ILelJCQJHF6Z4x5VnQKkYBUiJf4jv56sEs0kxp7qnKuSM5WFJLYdZR8uoXah36BSmZikdaTjo4ikQyLqlouf6B8OoiGaYSNbIOahpJi4GGygEKH/G6ujVBy0ny4k9Ro/HcQbCpiyIeCVwBl+G1WhwyamIsUVA55bnhyhOp7yHCWk/CC3IcyRD51rFM2XOpp/IN4YphMTHHsg+R22nrQmqqOUorAg3J1NI9yfrqYSonahbSRmKDwfzJRbm4ikNSGKGN+jM5fGJNyYAKKDIHeiciVinOGYgKS3lfaaiZJVIeKgJiBllCOZTYknEZIhnhpqCUsgZZ3IHgAUCiA3JREdxCIBGWydDiWOoCOjryXuIMSkliL8nJufqx2ynLMIWZhYIpCapx2ZH3abh6H8mySlOp1OHmikBjk8mtwcehx0CtGULiabIOskiikNn3WYFKQnpGsggx/2Hq60jSC0oQAbHyL0JLWhFCRLD6Mk2ZAoJLmiVijUoygc8Br6oYIgOhRDDE8ga6McJl6iaZy5nSmfjSkeGfEXoqeVoN4fIx1Fo10lCCQ6Kagl46O6lMqaWyF8Hnuk2aO+IVOkQqiWpSMGwZKuJcGQuQmhIZmScpTwoLkWnCTzgUQYZyG9miUKz6BwGpKkHJ3iIPQjQyb7jwWdCx5joSCWWRoLKNYX2Z4YIEQe0Rx1Hq8aOKLFH1UVoRVnIZEdppS4oeIiqp0UpVuoah0TIh6fViBrGEKdN5pbpbwgmZwlHpUUxKGxoLGTGCBpmpikiKYDJCwk8B6rFxwcqqIsJGueGZL3pN+hMJ1Sp+6gop2uIJ2fKB83o/AZW6S0HT8h7CUZoKulI5hmJAOlORXEnb0gO5g9rackF5xVJjekch/gITIkpaDZlkCgYp9alWwb5RxAJBOcmqCajY0eAaHuJJQhqiceHsudTyZunqemi52Kpg=="
+    },
+    {
+      "id": "ui_design",
+      "label": {
+        "en": "UI",
+        "uz": "UI"
+      },
+      "media": "picture",
+      "prompts": [
+        "a phone app interface",
+        "a dashboard interface",
+        "app buttons and switches",
+        "a user interface design"
+      ],
+      "about": {
+        "en": "App screens, dashboards, components and widgets in one tag. Separate Mobile app and Dashboard tags split each other and measured 38 % and 27 % strict at the 0.25 bar. Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "6BpEnEOkVaIroYKRvCIYsBooEokeme+hlKABIe6gHxuOIEcY2BSRoO0mf6MvKAme5aRSGFOgb5zEGKohHhLcnp+gEyUWIOghzo6Bna0fiKJCqJqem5hBHjwUbpB5nOAkMZnfoDEllB4YJtAY9qEhEPINT6CtpH4MTw/VmX2lm6F1FQ2avZbMo9gfm59CH4+kT6GQH+Gj4J57HCGa6h4WnbAfGYWOHjqXzxRNFusnH55wIo6iYp5rH1axESITovscFyHsm/gj3qT5mKcXXBVoo9SeE6KhoVWd1xv/olWO0ye8nJqfC6CvFQ4ozx9dmiqZ4pkkoTOZtCDbHwwkhiD1JJmH5yRFIZemXqEEOXuYRCR2pXmh3B7dm8igtZWDn3MZSpw7m4oUGKZqGR+etxxVnAwj4x9qolOjIaHSHumhrSOgGk+kU54Io8GlzA/hJA0ggx/nFQ0WP6WVmW+iUiAUHsCd9SQqIB8grKBRmiWgD55LpxehzR7iGtiiiyBqqBWhGCaMJGsfYqHfHuWhBKFAoeMfOxw2Gd0h3Bm6otIQSR5JJJQc3KAFGAWiayHElkqhH6GXol6fByYlIemmS6C2JVkhEJmCIJwchyKEF0okOB3ZHdwcmhqQmSoZ2SBtpeIaZaETHkAhYqUTppMn3x7fJA0YyZYIH74dARlhIJSh6p2nHLKdjiH2JMykGSSNGQkkWxWHpV6ih51TlSiff52LH+uevp/em50kOSBDHuklkaEonEwhFBuekBAkWySnIcCkjyBcoSmLCSLGnDWiiI6cHSqkYKS4oOWUn59UBzudNhmAoiojN5tflC6kLaQElUeYBDlMnX6i7yV2Hc0Y8SGNJD4RCihynWMg+6Nqoh6kLxRrFLq0QKGqJMWZ9iJ6HEihcSVsJHUYpZjwJ2aZ+yNnphkfEaDBpkUWaSVcnvOgKp2uEnCbVSA7I6objybajcsaRhoLmjkl9iHSpkMc7RzYHVAlWaE7m2sN16PfHkWmIZuCFI8gHKhxoAqXVCO7Ip6fk5wzFCUkWKLJmAgcfhyzkl0HgyR1kHkfp6J2oKSgB6GMIfoe2ySNFaUfdx23oBkY7yQYGiIm6xt2FR4dRyMAoJoiVJe8mzalBqEEo3IkEqOIFUElJBCnp16li5zVlqeg4aa1EEkXvJompYijdiNQn3AQF6CPHH+VFp2oIKiUPBguIuoaDxwPHcUbXaUaJm6hKqXBoxeleaI+oYudy56TlSWkZiHIHwWLVqMnIwUgRyiKIiyoq5msIhOS0B4Dnr8iEhCGrYQhoBzWJpeZRxH2GwEl2SCYD40cOiHbpVeYzCAcI/+YDaVlHVogpwcTE9kgCyhVI/kc5hzDEeSYJqHSoA=="
+    },
+    {
+      "id": "web_design",
+      "label": {
+        "en": "Website",
+        "uz": "Veb-sayt"
+      },
+      "media": "picture",
+      "prompts": [
+        "a website landing page",
+        "a website layout",
+        "a responsive website design",
+        "a website homepage"
+      ],
+      "about": {
+        "en": "Landing pages and website screenshots. Its misses are slides, carousel posts and editorial layouts with a header line."
+      },
+      "vec": "jKJuHyehEpxrFfkhkCW0rx4sLR4XIiOdCyBMGZUY2Re2F4SfoBk6oFAi+J+wJOun9KQ8HBOabCJNoI8n0yLKHKiaGiHfnyMVYh3VGkCcuZfwpG6k7w3qF7QlcJnUoF4dth3mmEwf+54FJ+mdgRwXIJykXaIqpMslRp0YptWbwZ/nIIkcYR0RpB8lgBt0nnqn8Z4+ICWd66CtpOYgSSHBGhYfQ5/GHACgyx3UJOUkqKCrJHijmaP6Hy6xWCYQpaEhVx8XINsiqalop0EkZaVmpTCh46GzoTaifaOKHgYdVCOYniGW1BwXIcAl95/ukMKkCCSSoLsbb6caIrcl0Z4EIqwgECi8lRKoro/sOPWa9RPdpRyg25aPFAUdhqBJEhchWqYiJKig+ZFlmdadmiG8Ficl4qVzmDylXh2fIR4cQCZ/HyqnsqKSpDKhJKDMJ6ccWZslIESlEKRjI3kbyJ7bJVoOJiUOHEIYOKMOot2kkpm1pXed5iSHnoWl2xI+qNegKyVjHKiJfKaPHp8bbacdHYUYcSF5FX0hipzvp3gm/qEwIXEcK55EHFSlQSa+pl+amqUboccj8BhKG72iyaDVJdUkng2GHhgkp5xRpKefMCIWGXelxRuIp9MgcqKgpowhmJ0yJf8cv6PEpFYkTpkXJQgeOJwOIl8grR4UIkMbuqLrISYg+ySGGV+k7KAznEsVQB+4nk4U5aInnVGfVqTRJHQdZqTCn2Yk/p0KnNokcaXyoSsla5pmIbYWaCCamKKa6R15INic8SaagEyokiTnJP2mXyA3JU4YR50KIMMX5aNRpGcgPaJgn6qkJqIRmJ8g7TiVHCYiIiPtIAckA5rvHM+hrCftmMqjQKhrnlyfjxz2oYC0PyXjFK0N2R0DJaChSiOiJ6AiKqHaJzSk+yBopLAiDp8oFwEfCCdEn9IdfqanJoMkB6d0HtuduiSLHwYd+xgGoXclQiZ4qcGRbB+YH/ghzqSpHReaJaSVmfehIxjmKMMcyKd7oRShBCX6mdujMSTtpT2aP6L2HYsiyyJRHYcjjyhAnKkcM6RaFfekPKplJD8iBCXBlJqhhJgupC2Y1SQQJooYY6Acm+wlfyNOFFklZJ6dniGoRxqQoKaRoqR8JPgh1RjIpIKmsJdPmDgeqqOKo1KeXKPWpe0evyOLowcYhiSVIjKnm6HXHl6hUJBVITgb+BqFIuGahZ2nFoAdqAJuo9Smr6Lil7AgTp9AHbWmc436opOnW6NGIscijyjuGpuo/R3rHQscxCBCoGImqh+Trr8fMyNfnyOkVR+anwQmLKRKoqyVXR5CqcSgTR4LnfOY7aRzHo8maaAMIWIkFygaHimfayPpnsakAx6KkA=="
+    },
+    {
+      "id": "icons",
+      "label": {
+        "en": "Icons",
+        "uz": "Ikonkalar"
+      },
+      "media": "picture",
+      "prompts": [
+        "an app icon",
+        "a set of icons",
+        "a glossy app icon",
+        "an icon design"
+      ],
+      "about": {
+        "en": "App icons and icon sets. Its misses are 3D objects and UI screens built around one object."
+      },
+      "vec": "fiW5mP+h96DRH1uk2SBhsJ8mj4yQEwakK5r9o2wWNRWCJy+V6RbfnrIkhZaMKE2iCKArGHkWI5keoFqUSqJEoLMgayZZn+ieM6NypkAhmBkQpYidAaHZHz4fDCHTo1MkWhh8puUhq5jaItuX95/6nieY3BKNonGZKiNzoduhdaScEzmkrpWmp0mi6hYrGMmk1p1gl9CjnJqRllkW+xUDI3QRESHBjaqcQCAmHmAlt5eHI5GmkKFNnlKxfSXglymNIiM1lUYiMad1IbsX75yMm5Seup+6Hd0gMSd4ozke1CYIo2GkEKNZoCsjRI+SHeuYNadJoYuVshQuIkcfYR86HruWeigMD2umVqLvOLWZoSHIoSqfE57qGQOcoBqYoqahIKcmH+wluxQuInyeFSLjlgsgEp4FnWWgDaTuJSOksSQ6ISunvRxEoiCnwwMEJk0kXSPkm1Ci+6aAoHmdnxzIGkalHiTwl+6Q8R1anUCXgZ5spVeheBzwnSGlXhXIoiaczifaJpgjqqDnIMgdx6bfm7UcfhvrmyEkwCIRnVwcE6PbIoMcqqQwIEukyiSpkm6hYKEDnAwUOCPzm+qkQ54hJHEj2aD3H6EAzyRfIkEiMyQJHWCguBqOoAQegB5apncaVRmZIJoXDKaNpqmeEyOLI/QkjxZmFesgNSDrEvSgWxi7GEakuBw7JFSkMCEbHROhNRqvln2geR4PHKGkGaJEHmSUEqg7ICUlhCQBIfQo/5+DpCMkQpWPGgoh0SXaGZKljxuOpGuhTJFcmJmlmCJFIaSmNaPTo++izKTrpEqg7x4OpXMlXx2tosalzKf1He+b7jhAABubqCVUlpMjkBzaITAYiygVIjkj96DgnUKjLSKgnc20xppTIp+aDBQzIjClJiR3JCEjhB27J5SVIyCEo+Mhn6SBpZkkySL+GAWd6Z39HfWdKiXZJv6fKSbAIjgehJo5GrkjiSWUptwgbCR9JUAlhKcPgiUkpB3fmG6lXZPBIXEe5akNn3KhDR2WHtWhGR0xHaYlQ6IHnZEh0Ygwo+iHTB6THLYXdqJ6ovycsqSQI9ILVSUCoDad/pl5Gg+jmCWFINIgPYApnQMokx3zoLogM6J7FrmkZJqIomko5aJYGmMj3iKepZylO6BOmP+hKKTpHKGmkZKFpUeh3CE+neicxCEGIGgZ2ZxuIm2hGaScF9ocYCPiljMdPKaMJregQaTvpgSo/qbEpPWJN5ocI0mg8SCoG3ef6qZMJf4lMCjZGd2nJhYCIw2QKiSujHgjE4fVrZAkkxoiJRee1QNWJK4jfZa9oX2esx+MpE8hmB6KI9wcOZrllQghHRZtID8eViWTIMYX+Rh2kb+nkBdFpA=="
+    },
+    {
+      "id": "illustration",
+      "label": {
+        "en": "Illustration",
+        "uz": "Illyustratsiya"
+      },
+      "media": "picture",
+      "prompts": [
+        "a flat vector illustration",
+        "a digital illustration",
+        "an editorial illustration"
+      ],
+      "vec": "xiQPk9uhvB4SkVqmsCQfsM4qIB0SGIWlkyG+o7okOiPEHHSXaJpaJDUi7KFsKfKfn59KlqecnB2voZydzB8poaIgax1jp2KkVSEfnjAYnqMio0eeMR5wHJUeDaEypOAbWR4aHMmbUxlKIhCiXp7IoE0fPKavleIgPiF7pHqg4JN1IiagBKZwpI6X4yDlonemE6SrI1ukIp3sIgKkbqNOJD4kxhySHvckFqCOJxAi/qKGl/CguaFAodywFSbMpH2cDCLzGDcm/qaFpMejy55NpjabFKBfoGIaNyM4mIOgTx0zpwkkk5z8nxsm0JNXnYmjx6GVokWUbKQxJM4lGZ7gI3OdRCdwmaehA6UFOT0cBSDImBuga4s4HRghOqPQI0wU3aQZHtIW7iKwF7yeUyR3jgskw6TFl0QUnh7aKNCjHSZVJa+hPyIapgyipacAnr4hpaHlHF4hUpzmHtKdxBU5ISOn8iM6pPGl+ZqPGnmkUJdgqCaQSSLbnxKiiJ35pMIdEB+HHSWmPBhHJFQgkRUYHRmYoCT0I1MiuCSGHZgk+R39IS0mbJ+xJO6kjiBepLahB6RWFh+nFyMyo4egxSBeFqciAR40ktMgeR/vG4IdBSFYoa+g7R4ipKUhWyTXo/QgMRwtHmwftaSanpupMCKlHNgbwiB9HaGc3iQglnciF6DZJfocPB8FJCum9RYZH0Oj5aUDIxCfAhT/GYaUkqWbJB+hEaQaH3EePaDIG3olOKYZmewgyBuInwcQpSQUoAiZYZwtoroVDxyBoBWlhSPQoVWlWpoXnMQYJae0oBmnWiMfpsyXWSP9mkwZmZMHnhKiAzl3I5oYEyG1lzucrZ18nxKitynVobYmHBicpL8g1CDcgt2zKyFilyukAiNZJGqkyyX+mugYRyGmJV0WAyChpIgYgh4UpSsl9aDipvUW2JQ1mx4kmSSZFjyk3yjRFvCf8qVypSgZeCXMngMkgiQbKc4lkqQ8EBsZaxh2HQmb3R/nJKYYzaUrqL+cXpuyFP+g85G0Hhalg5e9nY0liiSSofKdtB2gnWegHqWjoeWYp6nLHsMg+iNEpgKYJ6CGopOiIyJAJFIgAaE3oYId9SGDkageZqcHl1okzhSbHykjgKDwI0aVJx5WpJigTyMyHSsIRaInoy6lWx3xorgeyiPhEneg1SAcDfqeCJcspG2gXp4YHYictyZeIZIfDxc7IjQgMxBRnk2jTpaUpt+iThmzJROhdCVCIa2hlqhxIJgkdybVHg6nTiRkIHOc6SMcBXIizhvdrVQdzyGuICejPaEpKKIgS5z1GkOayyTLqD4ZQo1tI98cCx58IJonT6W+JNGbfypkJR+hniKSHiqpt5kyoQ=="
+    },
+    {
+      "id": "collage",
+      "label": {
+        "en": "Collage",
+        "uz": "Kollaj"
+      },
+      "media": "picture",
+      "prompts": [
+        "a collage",
+        "a mixed media collage",
+        "a cut-out paper collage"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "OSbQlEQZViRoIBuKxSbBsJUo/RiJISSltKCcoASk3JzmCtCgvpmGJW8jF6SuKEcj7B0ToBgeIBxSII8ajCQEoaAkViCCqYWcWJq2lVIdxJfymPKj7pgQJncgUpdeFOafGSZaosYMuRyUJHIjsZmOpGuil6MkpDsOCh/vmW+jDJ5fI6kWXBoDpRccrSaVHNul6RyHnZKgDqZtGImhAh1qk6Ukpx48HKkiLKF5IdcksiT0CsmkCp9+IxaxYielmKEaHiJKlbQnnKOgJLSfnaLankilGqKzJLikYRuIIrWSdBrdn1aAz6SHovUlkyCFIYMk+KFzqIeXrqZMnEchdBwjJfAjACnqIFKoUaTeOHweYiG9HjWnnCgbn3Yh2pyWoCGmGJ9WoyGUxZn/pDAdvp2dIToeeKQNoWAdGZgyJoambB5xJ7WlsRY/oKOkIxfpHmUoUpx4H3kh0R16l+gYGyB6H7alCaJDpVWjs6JKgUyi7aIpprOiPyFPnimkbCLgpBQgXSHwINik5Y2ipMqePp7WJAmdtSHJnNkggycsIlQnqyEvJRgksaL9JfugOSUHonMjTaSVn06oIqF0phUPIaH5HiAf5RweneqmuqGwJOscliKHpyyJvyQapH0jCiOopFkkzKV1EGImj51iogKiiCFUIrQgyiaakM0ki5iZJriSnxkcoyGhuiECJROl7CVHn7qjy6hIlQylgZqEJEMdoRSsocaiiqPdlyAkYpt+npQkNJ4LodWgEyZQIo0c8iWVnPQj9CAZo4Sf+pobCHamnCOvHaCmUJxAo/KTpKM+n+imKR87peMhiB5LJX8WmqNiIsSo3jjPovWeXhaUlJsoBp7nIICcISheoTIoaqbzpVafBSixpEC0FKN8FAagCCDHJ8ekSiXvDhMWgaCFJ8ql1KN2ppAl2J0cpagfGyDAHpwp+KgMJOihQ53lKFClWif2oVshRqKgIoeZepwWpKMlSxjKKHcb1CHrgJKIThn/IVSndCXOJMUQEqUupLEhMiXJmbug1ZydJiqcRiAAnRAktRpXomekdyb9JDGXxaYKpfodxKk6JUAjHygjnTwk6iMklvQjXyGQIdYREaTAoa0dfRsQpWwlk6D9G28ZsRzoHcogeSSiouIcUpxDphogqyHSoOmoJZqFH+UdMadJoz8fgaMUnk4kS6V7pvGlko2qnyqgXSAjH6meciIdG2Sf+qZNJsahPqZkpK2k4qVSp7WlWRqKkE6jnJgVp9SkRKdXI8kgzSftIN6o7qCoJbkayCCgHzYfBKBfrY0lziZqJa+iIB03Ka6gPJ9XJTQi+iTJpLeLMaUUJOQbt6Q8IC4nzKFile+W9CiKnEegtKBhHACsLBLRow=="
+    },
+    {
+      "id": "render_3d",
+      "label": {
+        "en": "3D",
+        "uz": "3D"
+      },
+      "media": "picture",
+      "prompts": [
+        "a 3D render",
+        "a shiny plastic 3D object",
+        "a 3D product render",
+        "a clay 3D render"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "BCQ1Iy6nH6XBonyi3yg+sE0oFSLeExKkuKWPmjeiMCdXKEigKJwIoOom9KLZJ8al0KTkoDGh2ibhoJCi+COOoDagOiDCnzWlZBUyoNOL7pzPpJSIVCb2H/Ukrp8+nwIeoRnHFSyeXot6JMClLxj6F7qk+6Ctm38dDSfLooKkjp60GmWfbRgApmYeCBzjHCSoDgwzlrmmrZXiHAaQw6IcnAIcjyCQH5eVRaVUJi8oYaQBISCiORa/oDCxeyGLnOQdvh5zILskK6YjHNukTAWglhqlqJz+oVsdOyFZnaIjXSO3o/+e9KToIC4ka6WaIxadFB2ZpCKmmKRfHN8iTqBVjL0j9iB7mseoUZn+ONUjAScvp/qgAiT1HTubdqCaiTEc8aPrHT0Kq6LCo0MTc5NiIHifKqCKowCYuZ18JZOkwCYnojSkaCPunludK5wDFoocLp+rIAwgk5fhoGym86CUJw+lHCVvpBmg0iILnNiiSaQ+qFClKB2EoLGnRx73oHOl/CTsJA4YCx6nFPCgvaCKJASe6hErnhYo2CDXHHwmlJTGIgMlISL/mcuiM6OyHnQYI5Vqm32j2R3jlwScbpjnmDohiaS5pDWc0SBaopQlNB+zm2kiMhpcohIjaSLPo0OYU6BpIZIhZ6FkqD4kXCNmI7glrhaXHReg9iVQJfIdtZqAI/WWYCIVKKyo/yP2JGieU6M1o1+gIw40IMukmqYcJNum3RseIRglfpvlovoaXaeUFQwe1QDGoSEoUCabJ3GgB6LtoqMhNR+IFaKjrh5FmwKnMJe8oMsX66K/oOakxxz+DpOkBBYCpHOZ5KK/H6am/Tj5lCcgsh6EJWceOB1fm0skTSp/nhqaiKcLqGcfhCR8Hg20ECDAohUgQiAaJOGf+iJBHsOgDqIlJsWkr6AWo2Mdyh8iJUUWBaRRokib+qAwI1+W05FvpKmb7ScEHW8ce6gmjlUg2iMhnvCUjCYqDFQkfaShIxid1xSXnE6lkpveIaAf/qCFofAd3CIsIjafCyW8n3Ckyh03oDsgxJ9hoG6nDR3cGKscd6Qdp6qePZsSk7KUZCWVndKZJh1snX2gPKQLIF4ZaZ/fEBUlshr/mc0eGx/AnpqbLCJPmIkgo5oQpZkeoZyqoHeieSEOn7SmAaIUn5MdmpwUnaGTPZgtF0YY1KBtn98bQBQbpLwbwB6pJr+dYCa/ITkHPaZGIjck85wRn9ClyKJlofSmUxyolnOjTZ8/IqKeIqQEGC8Z7CfjJkml45etJQYdlZ6XmjSkBRDGrdkYByOlJmSlxqHkKZcido+pkd4f7yIgpAQhfhwnIFATXpzgH6skG6S3I2QVJidjIkSoISDOH/WmjKbUnA=="
+    },
+    {
+      "id": "minimal",
+      "label": {
+        "en": "Minimal",
+        "uz": "Minimal"
+      },
+      "media": "picture",
+      "prompts": [
+        "a minimal design",
+        "lots of empty space",
+        "a simple minimalist layout"
+      ],
+      "vec": "7h1EoA2dmiCiHvehKiQesHYoLZn+jWyiVKHUpBQYrKAYlw2i8xWDlJsi4aN9KPigkqFsEUsduKDMn+uXuR7il4IhKyVJIH+ky5SjpAKNRJ6LoiWcfhjQnb8gap6enhuWghZqIVicvKPDImufYqGZkqSRGqWyoZAhKByhnACkOZ70GCqi/ZXrpaMhjxzwHRaoEp/8HSqlzR1eIBIhjRtOlg0hVB/xnAQm3hasHc8nDp2zHlim/JbhGkyxQSWKpJoXxCU8pGAl6KnGmQiYXJwOpDSkkKC9iMWcByG0luGSGSiWob4atqVhH5wkcZg7mQWhc6dppaweO6JzICIjIhx6HL4WxSVaD0eoJhwLObEfwxZToc6c5orVIqKhAZ3imUci96VuHZWe2ZpDoYihRCRaHIwizKKAHh2SPpxRJHISoCMmHjWfZZYRoxSg9BQ9JpYatKElHPyiPp5emQkhXSJ2JY2fwB2tovudKBkQm6qXdBsXpdaceKIXoZ+iBJldp4qijSTWHZ6cvqFyI7WbCp65HtkVFiDLol2c7CBvHQgkNx7nJk4gHhhPIcacEyQ9FvygbqWUoIaer5tqnVSmLyMhKAmYwZhRI58dP6J4IjAeGR6hoEYX+ZQXnfAjRI5zpV8SZKYYHRQf+59upzMjbJ3YH8oeoByOJD4iGZGonb+jbRUGlpoTeiGAEeajYBkEn40kLBoSokGhLJy+opWRPaDkl1WlM6UsHAgklCTSJGsk1pskIFkmsp0EIMcTZR4VHyCfYSW/op6VZCTBok6m2pyDHOemo5Q5HD2l9aDQnPGfzR7Ao+IZbB2AoRSkX6baHDodCTmiInGeUyRsICkaZgWtmbKa6in7FCwj1qAtFxWh5xjGnXq0YpqyGOEU+B2SHWGkUSTlJFcf4B0LHXag7yA1o+0f/p1XjgggnyTeIYMcs6WJIlggQqCCHa2iISb7oaAYHaW+Hy0mLiS5pfQQ9B1fJxkgfKD3FVALlp3blpOhzpoZmqIb7KXEpAoeE4fZIniRPB54HnkdY6G1H3UfFpybIpIbPCU5o0MeNx5CoWaY9iHYHs+XpiVVoh+b7ZjPGG+dwh1NIk0l26E1H7UfwST3GRQg6qIvlxyRXBZGnzGboqLtG0wlbyCFoYui6RCkHimkPKWbn+2jSaGGm3COXCCLm9md4iQxIZufg6CQmuehbJ2gIBSdCRxVlY2ZPaYiJiqdJqMFqLelKJmzoL4JwqC9HQqiTBlwHhaabKTLGrAgMSUDm06nZqJtID6L2CKPFFoneyHcrKweOiTdnq2mESG1lFscO59ymy8jNCQNoGQWsiNfJC8krqaqGsYhy6GqIRQZWyYaJsWadRtRo1SmoKMOoQ=="
+    },
+    {
+      "id": "retro",
+      "label": {
+        "en": "Retro",
+        "uz": "Retro"
+      },
+      "media": "picture",
+      "prompts": [
+        "a retro vintage design",
+        "a 1970s style graphic",
+        "an old faded print"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "PSOFHoSj1xyGnW2hzyVNsOYcNKA6jt6gGx3CFH+g7xzkJTUhyyKUIr4nk6SSKWigoyBinUGjiSL+oOSgRh++nj+H/yDZpaaibZ8TmokhQyQxoHSbCKG+oDsiXpo8m4kj3Rcopb0gQ6VVIRshmh18on+dgqGQnNyU4BzVnH+kcqDwoTMYaZRupaufdyAVovmlQKUqIFSnbKAtIhSYv4+bHaQjTpFfFLYXYhm6IdUhm53wHrkZ0xk3JFSxbyQDnO8mESGBoLsk56igoYeioaHrIZUXwqSZHnSZ2SGmoXaiPChqGqqXWaL2IXYh0aQKHkEhX5yYqNGeKaQaHhcf2CB0Jhwk3yQRpXSm0ab/OHyeJSWFo5OcYSLDIZudM6GCpYIfTKONnH2Yj5D1HcGd0iSyIVwjJ57xmj6G6JtTKZagSR13JQOjFxzIocSj5aKpHWOfg6G0GQKiKKIIIgYaZh39IfMfbR08IJOiwKCZmPGhop2RqJ8Zzx01oT+iaaLxos+k/SbeJkKcE6T6JPcZCaEkpICctZvvGdsjGCBcInMgsKLOIDsmhqEIIVmm1yDxlN8X0aPzmCOptSS8ohylJ6AkIWIi56CfIiMRU54qHp0ayhPCnWiasxl8oSokZhj0F0mYmaWwIeacy6B9ofWkgB0LIrkgkhHDDewhqSCIG66kYI3omqmgOyKXJAmm6yNRIWOkIB3EDq6kPKHdnQyhIaJtIbeh4aW5IKYkxKK4HRImJaWWEGElhZJrox4gWiFdIZecNKO0mkGnAhs8nIWnmR86o5KlXhvCoJyh9ZqRosAWYZyJojYkrhx1nfaipKNRHT6Z/Th8JSaao5pTFUKgGR0zJJ4d7CjHlC0ZtqQKpkGROSKropO0No5doBQkkR99F0ihLCXyHMcUaZ5FJgKjsJ3IonidkxnxoWkdJZa5E58keqKRG4sg0iEZKD4U9ifSo1ucoqbUIaEiLB+3pO0jTJl+JmwhjaLMHC4k36AVIAejRh/ZH8EfS6OspLIlaZmMoBob7BnTHCYfA5tKmOIhdJ0bHuqiIhtlHoolraHJoXIkrZ2EHswhKiWkiMKg756uHi0lVR3eHaAfH6FZIDkcGBlqHyQiW51ZGsWl+CK/ofeZohz5nLEjpCKRoJ0PI522mQSiWoIaoXqga6BDomQd8KJPGLwcX6Cumdkd7yBznYKht5VCJAcg8CI5ljqjJaWCJmib+p0+otCkzJj7pNqhfqA5IA6bvp5wGX+gS6SAIqwghCHRITCnRpxBJMcPCiY9HK0lCKK9rcMgnx48ICSg86O7JJcgKZ8lpJAbHiKLpQualB1rIF8ezqImovUh8RwkliOktSj7IDiimZEzIL2lFKA2Ig=="
+    },
+    {
+      "id": "dark_cinematic",
+      "label": {
+        "en": "Cinematic",
+        "uz": "Kinematografik"
+      },
+      "media": "picture",
+      "prompts": [
+        "a dark cinematic film still",
+        "a moody low-light scene",
+        "a dramatic movie frame"
+      ],
+      "about": {
+        "en": "Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "NRdymscVxRpuEQugwiRGsNuUwSIfopGgb5r/H2Gj7CPeoTKHaCByovMffJ8cJkaephjinz2bGBj8kCagtSHcIEkZzhjTGRWgHBxNlukfhiG9lFWiICD6jrohmyGRJTYj6x5Zo2wX+aWHIiuk9J40oCqjcqR0IukiKR8+mFKhtR+iIomfwyFeqBQUjY1epJGkKaB/JF6ZO5wAkSeQnyM2F5cazRS6HzAi1RWRIC8nAqBAnFOkhIsRmnOxHqK0pT0fV57kGSMjfqefnNWmLxdIpjegzqPPIb0ZpCIKk8obJCggINuZR6YaIfUcr55UISog1qXLpMmgp6QhJsQgABceJCob1yM9FxOmfKEOOTUfrJfSo8CjKJQkHCycr52lpCAdWKJ1HBshXhc3GFgd5h6QHEYhGqOPk9MgMiCtJf2gcRrnGUCjcpx+ohydQZ1coBcfnBoKlnkdKpjLmDyfDptLJEGiJRjCpyCbiRlbn1yiDBZapeShMB3JIRGjEpiYn/ihKCKSHSsimKCNGU6Vs6DBoXejFxxAnG4k4pjOHdEgXx6dHsET3JGMnrifLSEPjk+gE5/yEMukBiBwoCMSciGWICsgmqATHAUdOhSyIEIeYxIFm7MbzI4KHDwgL50dohqfGJNDJr2kNpwqpImE4CS4IkgjPRwSnmqUDJY6hjWhRxgaHFCckCQ0IdyijyIaInWbwKHlDdSh/ZYdoIKOIR6YHteglqTqmRoZ6pyBHiEhqpsWGlUhoxvbjAEiqxtpIfOaN5DQoYygMR/zmoigOJ4wG/OiZhv1oKOb6p4AoWQeOCBsnjES4p5ioFQeKaWZmeSjDTmZoYQffCbfH7mh5STcJj8aCycqIHCaFKLJoAAhkSG5ls+075oEHgUkkSGGIpOj4x+1H/WiOqJPJGKkaB7uo5cbwqB+nNGgZaI7Agsh5iA0INCibRmhG84Ppx4GoFwiuKW5GwIYYiSPnCUgLhhunMMlw5paGCGdqBSiHLOhMBkgILAhLKPIoE4bmZizIf4WKRrrlCYfpx0Oi+wOQR6CIYqc0CCGoGAcJx5FpfKW2BoXlq0XZKB/mc4Yd6DDmz+e8ZH0HAOfKKIgIKkjMpAQI88d/Z6QGxSkaxlcoAIblyLeoeAk3ha2oFgiLpjxnrqk0KhiHPWZ+pAIpS8g+B1ymPodzpdtm08aUxyGHFSRAaaeJTEkaSRPI5Kas6HXFtue751LqLGio5gAoeqTaZvvHfmZKiLJBFyeK6ABjJcl/BUPpfmkQqK+IImLZx4Rmgwjh6BurUgil5GQFe+kYZ9FJIsgqp/4n1Aj1BzZoWoSh4O1HEEcr6HmC3IbE539oFOeTydyFpOYaYw6obykHKTMGg=="
+    },
+    {
+      "id": "portrait",
+      "label": {
+        "en": "Portrait",
+        "uz": "Portret"
+      },
+      "media": "picture",
+      "prompts": [
+        "a portrait photo of a person",
+        "a close-up of a face",
+        "a studio portrait"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures."
+      },
+      "vec": "tyBhnjOgcCCUnVuk6SJFsOkkZR38oFKloZ6NnjsehRlSKJ2cvhWHG8sog5ZHJB6ku6J+nFmgPyQOoHiegiIJm9mUMSLpoRqWDZVSoc4dfhkvn1kIJR7DI2wkqyPnkfsldyRSnNeaMaUqIIOmFKH9o6Sf7p35ndgeZigmoHql/ZxwHr2jiph/pSOfWyRPpBalEqLRJI+kf6H3IUMamYYDn7ag4CM5oBMPop12I08pVZo3oB2iJ5qElFGx2pg7m5Ed+54NnsEieZ6WHymkFCGuohmjWqOyJBQdBCVRm/qU/CDSlHSdmKKcnWklo5hTHGuheaGppMue4ac2IW+YWZexIZmeKScxIJimg6QMObgivSQrpV2hSZUclMqeJh77o3SVJKElIUOWnJczijiZ0SJhokAjraVOEjUclhtdIr+l1yEEFHempJhVp8ahkxg4mCebQhw6oCgha6GIobKc45d6I+Kh2CWdoSSgQ6TBm+Gdypmmp0mciiCrmw6jf5mfn52jrSeOIsAlzx/jlOoWE6TnmRmaihwknJQmsRyYGjQg5J2yIRMh0xOooAOZbyehnPCdY6OTHMKjaSawF0CJNRTAmNUggKCIGbadG4szFkgj2SO0n8GbThsKpPAhEaFio4IhyCBaHS+iLZyBpg2f1SRGH6wh954xGUmi1SOtE5UW5ZoqFYCgCiS9H+SWTRxgIIukwKC6ILedfCNJjJqiaaGRIU2cCZnVlfwb9x4iJNYe7Zh+lSSdcSKmIiocdyOpnOiZ/513pCAbNB1UJhKkfiJ7GR+n6g4aGHUhi53zoRagZBnYms0iuSRYpDKZvZ/znxufDDklngYetiU/H5CZuyQBH8oatyacILUjPKYCo5SeWA68HW60IxkjH40hKBnaII6hbCU8JHgbx6RPIWOhbCGioyGkbR1eoOAdm6W7pOkdSp3THkmXtSGQI6ib0h63FT8jmqBomK2bqyTbn3WgFiOQmJMg9Y4/oO2bnxfcGTGlEhohIwYie6d/oTUh+p1IIZsVnR7PlsykuhmMpFMi1Bevm++NhCKZHvciLRF3oC0W1CMYIzwf/iQhlQkfIp6YHr6kgyH9IOAghZUJGKsg4iHdGa8lSZ77IcektxwPo2gkt6B2IJUm5xTgoAgSPpkdngWhZqR1GmSm2yJ4oHEeTyAIkO+atBUgnY2cySQ9mDahIqLEJaAhHiXknlGZ96MiJeAcuKDnoiek5aNuofGhehKcngOk6iRyG4idEqZCI50gmh7YneSnIyC6IsuV/SQjlxElXhs9raIjMZv3E7GlmJ1CJLYi16FxC4cfoYFloSMXPBuuGJ6AApmMHRwkE6SSoOAcvinRHTKAqZt0o4mmL6AYoQ=="
+    },
+    {
+      "id": "fashion",
+      "label": {
+        "en": "Fashion",
+        "uz": "Moda"
+      },
+      "media": "picture",
+      "prompts": [
+        "a fashion photoshoot",
+        "a model in stylish clothes",
+        "a fashion editorial photo"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures. Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "Gw0xGJ0c+5P+pE2jEhzSrxUolqBEoTmexKXcH3iawaCYnieXeaPDCzAkLqDmJfihZp4Inh2i8iJXom2gxxl/mV4ToBUnpgekBaGmHikgHiaUntAZ/CAFl2skASbzHdgYECX5F+8iradomhegOhXsomqhG6EwonqYXCZPGqCm+SCmnI2dUiWGqKWHHhSroGyY2aVFG4alxhYOJ+4ZkhwunB+crKCGit0ZCgaGIAoiHKPioAET+xSKjKCwDRBcIA8avpRhnJ4mMCXPnneliI2uosYgZ6Q5JzMkNB3/qN6Wgid0GVghA6R3lDEkn5WhIIof0qHSpuIgLKWfG1ydaaHgJJMgqSReCLSkZKArOY6iQSTkow8RNCPuHRels6ArpPkiWZ7hjsqZs5GMoXQdgCEbJKcolSEYJF4iIYAQKQehUCN/I0WjMyFOosmQuKE7IF+EPQ1go6cQdo9woYKkMyBNI+0cjCJOF6af/5OpkX6XwiVxoquhKCCqoR2dbB5ZoB2lcRwlIXeiBKPMjoYWp4w7pTGdNx3goMiXraC/nHUfOxh2IZohF5SgpxicaSU6l9ugUKPQIH2liSCQpEmhxZ4eF8oUHxhrEowV9JqRHUcjwaHIHWKh6pVZpgscq6Lyo0YcwJQuJUikYJ0qnreVXx6aFq4ekKEBGP8bLJ1/HMoerJ2nGZuhoCCBIU2kz5jJInClSY5ZId6gGCH5mDKcwSCOGQiiLKPEou4d/JERFMIdnIznl2Md8aI9H5ykhSJ3FomZ5yA4naCYchTmICGVMotMnrGkWhTTGXogAp6GovYiZ4wQpB8dNJoBpAedI6EuFyykKjlWHSgfKh70IOKcVh4qJJaKOyUmCjahKqXroXKdcSQTnVezfyMBHfEiAxqvIsKhtiB6IQ4g5x2HIcmWYiQpGS0RThxrnbSASKHSnjEjmRw8kpuZHx3qmFihPieNovQidh8LmCAhSySiJ38bgx4VpAsjQJZenEQGWxwBDtuaNJgcJwIkLB+PnXydwqXmmS2jjpQbEkOfBJuioG4muKZGHb+b8wsWoDwhAaN7pMwiESSBF6ScniRrEhEhdaOXm0OlgRVEGpiX16CAItYjRSAiE9wmD5l1I26kd6RMnXYiip9eJAklrB/nnTygqx6pIBibDCRbINemTZOLINQfPyD1oZuWjiWREx2gPiFMnlShvqBsIR8c0KNLHBCg7J53IfiimqDqHMKndJl1oECk9Z8yHmCd5RNcpHuY6aH2IAglOx7/pOakGKLYDAYgrBhqIYMZBSF/rPiEhozxEwKmQpIVIOAkyKAViEoaOiRfIRChNBh7EqEgG57/G9wNMR9Jnmsi7ikFoUOhDSEwF7qlPqCBDg=="
+    },
+    {
+      "id": "product_photo",
+      "label": {
+        "en": "Product shot",
+        "uz": "Tovar surati"
+      },
+      "media": "picture",
+      "prompts": [
+        "a product photo",
+        "a studio product shot",
+        "product photography"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures."
+      },
+      "vec": "mxwFIVWdFhyanr6cwCRqsFAnQCBcojCn/6LBmZueY5ApJs6VH5OWFSskQhbyJoakKaIjGGihMSIbkV+asiACEMwXWCB9izkUMwHcoEog2xJRoRmaRyRQHDob/5TJHyglViRynq4hU6a9Fcel+Zr1nhKhXJ5bEBQcbR2XnMqknCFxI+2faxBrpmEVQpewpEui8aKGJrGh6aPOHmgh1xxIltoUER2yH7egL5xjJIYnEqDOH+SdUZ5NFZexvZxzlbscbpyIHWkT66KklAym6Y+7oKWSzqCpHnwAoSQHpAmXYigylSyZnKGZIfwlLZa6D3ecDx2woEMUkqXUIE8fqBYKI4MTxiARIH2oxqP/OKYdoyS/l0efkCCrIWyiSBbxnw8bsqaLHHAgSKP0mSYd9SJzEcMgD6WQm+UUpB7FIyak8yXBlH6kQSASpsqe0Im9HOkfO5SFHmKfXxhMlOeizKAyJVShlCS9oWia+aShmqOiIB1BpiOarB7GHQ+hCxs+nnqm5yIRHEMhFpFalxCfyKDjC36guCK4ku4k4BkckjclTRuzFj8bJZgdnqmi7yanodgc3qEmoQKnOyP+nimhYI9LHvUhIaKJGHCP7piMEk8eZyDoobIZAaCQpS0kVJwHoLkgpB9xJsChIaFlpBYkoCP5JFMkj5gjnYGa0RiPHS2a2p5zFnuNiCTHI3ykHCH0Ip6euqNjJMujth2gmx2kWKEfHlKhiqNBEpgaeR3BGT8hKBSZFe6glxOFHqgcUiOTIRadXp/SoekQ6SBqHQ2g5SDCiw+jXJ/8nGwd1JwZpCyf/A5FmVAdFBzgpGaffZnBmCah/jjVoP+ejSFWIK6a/iUXJj8gaidHHG2c6KUHo9eU9xy/lPa09B8uFkgeeCAXHWyYDCTWIe0bv59HI5qkkSTfoCGb0xwKmr8hN6E7oQAhb6BRIUaSyBFNIRyZcSMxCPMkFaA6nwkgfiVkG7IYOCEiIlQk4qWonsGaDiLVGJuiACIDJQuZLabxpQac6BJrHw4cNR1dnUWaIZx2opEbRx5xGUIg3SJghWQe0p7vmtefciCZInMVACXVohIXApzqmV2hmB9FIH8YcqLrHYsg9ReklnEjbZC3Iiui/x7aoAskrReFIXMnpRjNpGykgBuLFbiil51HoeCjkxmroD4keiCBFQaUFSEJIouY6CA0nK+aqqUXJemRECUwIBaYUKGLIzmYKKE8pSqlZZx5mZ2h/R1XlmqkKiOTnDKad6WCIlYjRyJOoMmnDB3uIRch2SLbF+0gdxt4rVsioSQhH4ij05LaIbIn/6L3G5sTRBuxp3eZXB5RG4mYCZ06lX4jEqR2mZ0gkyjFHbWcdR5Noxan6p/4og=="
+    },
+    {
+      "id": "food",
+      "label": {
+        "en": "Food",
+        "uz": "Taom"
+      },
+      "media": "picture",
+      "prompts": [
+        "a food photo",
+        "a plate of food",
+        "food photography"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures. Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "jB6DIfQeMiRXl7icCiHWr1AlQJwAozylJp9+HkKhexofKJwbS6Bmn0umvaA2kACeqB8coVugxh4SHqQkwIZDnmSh7h2OmWykGB8bESee/Rn6o9IdSyXpGLabPhYhKdkmUCTHHVeYcqW+GoOkf5i0Gi6fl50rob4hlhYbnCqm7Z3AHnqkTSDPIXKeqh/LoPaeeqVaJZKlThpnmZ+dTSLqGVQbtiD/FjmhMp+uIdklexIcIlYjLiQLodCwXCYan6gVgJTrmQolRhudA7yhQxs2nFOmBqLvJTqTqCTTpGIk6CdAC7EQkaa2oZArIiF+mLCko5/fpvCg4KV2JcgevZOEEt6AbSWSGdGozaMTOdWht4fGpcWmahP1IIKcTiRFn/Alk6JbovSINaXlmpmfJJmoGEQgOZ1Mm5gkGJEOIpeodyU8oYujPhtWo+uj9iNpiNqbxZWPHg0gOJFwkYekr6PSJgSl3SJgIfuh0KJsEZmhipE6olqm8h4pIWCgbSQkmAidOCRcIjUdbB1bpMuh4KH4Ifyhk5svITGUBSQ8mUIgixEKIGAQQSI7H8Gh55TZIJCl46PoHAGiIiFSJtAklpN1pEUl46QjGAWYvpu8mrUjH5uFIICkBJuIlz4lx6F8mrMajhSZItal0qMQoZOh7iREJMkcQZv7mS0TPpwznViUUpXJIZKaNCKcJqqlqiMHIN4gvpS3IGakkRhYnSKkfSD9lwWm76GvHnOYLB22FDAgtp1dJNIYmyXKICudUCUjHOYa5iI3kQ2fpCBZIZCi9CFblwcbCB/Unmgf6aA/ob6lzCITmdImAxpfoD+ReKETkkemEzm8pLodkSMBJDsdqyUmJW8mLilGIXMU46QWnUkVMiNjotSz5KAZnbYihZXTI/ymTCTrHvIfgaJtIiSeKCRwpiekQx/omDsgzZzwnA8k/h1ZJhub5Ypam06g/hYMoyImNKjFoHAgkSUiIi4jMh2jKKcn9aJ9kpceHyRjJKmh7xp+lU4dS6gUpXMaH6nkI/ibTooflLugWBwHouidWCW2I0okBiTRnyEXbKBzo3Cj/CPcJo6cLSW4nJMU1pmtnV8ZUh8qJGuis52TGnMmihRaHY+Va6W0HH0fNR1LoG0iwZ1jmYwhHaFUoAOiLyWTo8ui8B4OnVae15u9o7ckHyQhIXmkppY1HiqglSRznDGjpaDgIK8l750zHcugS6fsn2ScaZmzpnCmeqbYo4abaCIJIjejSpz8Hz4M7aSJH5wiHCT7onOmAZkDJbSiACPLGIMR0yDkq24gvxyao0QdraGGGrsmwKF3nw4eWyDjJnQWrpwfIWQlu6QApaUklaCvGQgepSVenWshcyF3nqOkD6dNog=="
+    },
+    {
+      "id": "nature",
+      "label": {
+        "en": "Nature",
+        "uz": "Tabiat"
+      },
+      "media": "picture",
+      "prompts": [
+        "a landscape photo",
+        "nature scenery",
+        "mountains and forest"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures. Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "QSISne8Z+RbXnVugFiJJsD8izyFEoKulYKXimlgYNh78Fz8kU5wkIPokfI7RJ9+nUKSjILAQHBuEmbsh5R93lDYXIR35odQiLSW9FI4H8iHcoSWdZx0fnWoiRJnKHF8ktCdZoFUkqKMYJU6lMpZYnmygU6RTITIgwx9XpImhD6AtIBSeTCLSoFAetyC7osCk8aN5JA+mTqfaCaEi1KAgolQeLCWkINMaNZpcIHIgN6DyH4CcDZ23ncCwhSXNFQ2OIiE3H/wgk6lUoRmkBCJ/pCqhxKXSIuUdfx+3m6idsyLJoJcej6XzIf8h7yNMohIed58LozahlKgRJ6KR0ZmpndAkuB+7HXKdCqAYObAV2iKzmUacXp1KnRegEBm2nokdPJzboQCYUKB+lKyjFRqDo78ghJ6RIXaePqPXI+2kCB/RH0akGKHXoXaiEyT+HekhJ6EuF+weaaAQlCWksA3jJliknyCPp3CO+6GMEY+nq5Vwo3GaDh+UHIWhPZyEpqSjgygrkpalmyDhAqkc/iWTnh0XEZnoo5kPnB3/okocqqTBHIsgOaMyoVGlpiVLoKGkA6XqoowfOiUWmcUYTKHJnkgm3KFxHJihRpasE9YkBp/gnkMiNhm1IVCimRzwpc+T/h9yJXillxsBG20ZiSFYIYYhiRiin4scHx8okSagExlnI3ykBCobJ8ocuSE/GtIjiqAeoqujnBbenW6bPxonH2ijiqUjGdwjoJ3DoiQnfKTEn/gO2SMUHm6dJSYJIs2eI5XuluGl4SBNpNiZ3ZjMIFednJO6nWUa96HZo+SjCJIjojsktyMRnhMcQhICIUCkFzk9oEAjvQtnFj8hNiX9EYkj4CpsIOgcB6YWmk8a/5ciIYyz96Ntk6ohCJy+ntekXibNIjMk56KVn9milCF3pHikPKA3oPQZh5Z2IYEg6pLyJJIczhScIfgR+QuhpW8fXiWsoCSg0SDaoEWjk5bGmgAko57mHCqVSJpZI3miNiFWpM6cXBcImVUmJh+ZFmsYoiGqHZaiOJwModAh16ZKIcOfkiUEmFKczaPaGLWkXCiLIaic0SQZH9gZJR4wnU+lNyS1GiUlupwhJPMeASNNEw8lOqUJIsckqh4znSqWZagXF9Ac1508F5cbV5ggHGajI51loyuk9ZSamWQZeRnnmOeiQCGMFSakVSKbnSgRZaSHIwkb+qCmHFilGaiEJ5eieSQFpaCiqKTko3WhdRhVJQqcMxoznESiUKT0JQ4lSSGwEXynoZxEoLyhQiBhIfWf/xmkrNcjDRaoGmiiHpwJIwMmCqFzJQSfjAROI7mclxLSAQ+gmKe8oM8oSxRmFk8c2ymFjrSdkSFSofih6qQRJA=="
+    },
+    {
+      "id": "architecture",
+      "label": {
+        "en": "Architecture",
+        "uz": "Arxitektura"
+      },
+      "media": "picture",
+      "prompts": [
+        "modern architecture",
+        "a building exterior",
+        "an architectural photo"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures. Shared with the motion lens, which describes it for videos."
+      },
+      "vec": "cCWuHWygpKBRmRqjDSVMsDAefpM4olANCJkLljqlZJwLm3cd8Z8KI9gpO6TxJ3chCaQBmXqdnJ5CmEUlVByVpDgcvx9MHOigVo6HoEybySJEpGYb/KCopHQizpuoIheezgJ2nEgjPxkuIWSlHhxNm4Gj+6S0IOKcBBj3nL+nBKFbk6Ag4CCSpJKY/p1hoA6hZpDDHnym1pj+JTEkE5qUIocAyhZwpGEk2qGuFt4mc6BBoa8YdCDoGiGxlCdDoVkYIg9DJEwh+abwoL+lfiEHo66aTKLsnZAdTyCcnlsSPCXAnM+dV6PTHyckwiKnInoiA6W5oMgixaA7I2ch96HDHZ4gySXoD52gNZwIOdqaryDwpeOfT6QyG4UZABvUoxwlJIlDnLwg+6FupDujtJThly0myZ2KEAqhDaBsJOKmpCJYH/ObM41CpUSgfJrEHQqeCJrTlyElDIc7oSakc5zoJ/ueeqJMpEuaaaNaHh+in50KqLgd9BrzmUKk4ZHwoTWk9R33GEAYhZjtHc2fSKUoo3mgcZ36n8McJg/noTckxAnFIHab7hY/ofugcCbAI7ChGKVtnZamhSP4IoIhTR2KmgKcM5YVIq6g0aFwl+ggyZLqltghcBl3INAgN6C0p7SLFZ4KJGekz5s1pcgpmiK8JOoUFKSqGDEipBqAGtkbYBzjJZieYig1KH6kwZWWIdIlJAg0IGohSSBIom6h7J4jnXqiUqMYIBWhvp4JolAlx5zMHnWeIQxOGbacQSiPGokdGJw3pEudkhF4oJygEqALpCaf9hiEFimcJZbTpZaezCDkov6ddpb/lpIeIZNAFWCiCDnMHNAk3SEaH32mDB5KIGIgVSeWnCQjIqZTnROYKiGpHIa03KSaICwfDCJdI2GbXCMmIW6ahR9TI7mifZsopZ8hRqB5n5kZvxkmn2gkpJ/qHSGaJqXeoCGkoibFIQElfadVpWgfnxlZoScZeB+JIPwfCJ1pom6e2qRvGUaifSAwonGX3pohIZOY5yTeHBca8h9mpKuWDqBAm2oZfpQXJBYcfR6GobkjN5+lEUMZuiR6kJ6UiSXAk0oZKZAqH7udtyB3H7mcU6XqHSMk1SLoJs4gKZ0dHxIcXCPgG5QYyqAtGFkmdp7sEfoNgR8MHv2lMh1niNmkXRgtmrSN6CPtlQegfCKPlICXGiN+GaUjGKWVJkIZihtUmbSkDyHAJMydsBuypHCkpBwqpPOZFJsZJyilWKFjmr4RlaRbIBUhESBfIImlGB9mGQ+kCifvHnAcpqIQrRwkTiAHI8qc85+iHs4kvqGtn0kWKCX2oluhxZqFGs2cSZ1RH0glkKLUm/cjMydnH7QfXYxvnJGmgqGnpQ=="
+    },
+    {
+      "id": "interior",
+      "label": {
+        "en": "Interior",
+        "uz": "Interyer"
+      },
+      "media": "picture",
+      "prompts": [
+        "an interior design photo",
+        "a modern living room",
+        "a room interior"
+      ],
+      "about": {
+        "en": "Rare in the test library, so it was barely measured there. Kept on purpose: photos need a home in the base lens, which is the “something else” for the specialist lenses on pictures."
+      },
+      "vec": "byN4HQmho5oSpaWhcSUgsBic2CKapdqe8Qz5g+2djxwAoPWcc56WIv4mpaSoJ3IYSZ6+H5+ceqH4nTAOAiaYFLkakSR8psSgfSIuo28c6hhjnw+O2R2dmwohg6IJouUhqY0thhsie6AzJJWkkKPPlcuntp5FncMfq6XJmlymc5wAoY8kiSXFoKIjtSGIlPmk1JJHISimOSBSJpIldiA9mAigG5lolqcmnRWlIZ8myKDhpN0U/Ju3og2xFiGRpKseZiCpIdIl36RyoliheSU8peyYQ6AVDrQejiWxn1CccihCn8IjDRCykgUnwB/SIS4kV6BQp9CZ7RBmIlKW/KHxH1kW05N2GWWlr6EMOR2h2yRJpJIY4hwPneIYNx4boOElmhlMnDQcaKiHnsKbMhGfoOoiTAsmGTCgv6FPF0qifyCGHt+eO6IdpUamfSIrEM2QfiH9HPQcT5yUoYOcFR5mJw6d6xwWoCmPSqTtEq+k/ZdJp/OgFyS0lMugdZxUon6jiiHPntKijpzgH+8fX6dWij4WswnBnh8geph5DhwhWhyvH1CZERnejjGfkSUJoNylN58tIMUbsSG2IYEa459ln9khdpi2H3oYVaT2nGMgZKBamoEhfRq2H0IS7RfypS0gvZwDIHukHJ3JpXsqCSBUkZobiZdRJPoiriEVIGGbGSRLJn6fTSWRJGakESRSJE4klRUboPOicyJLpKGg3qEDlzmjBaKDHp+Wbpz/oSIk4ZbOJBSc9iD/Hz4g/iL3Dkmir6I1nLmYSRi7Fv+YcpiJIvKjUiDWmh8ke6X8nPmfECSUIFYdQRucnlecr532lX0jCzkhoFgerCWBIj0bpic2EsAeEyhEJbAfXJ+ppPiZiIgAGDm0qJ4/JNUh5KALoBigOSEvI2OldqRjHCaiJhzspPUiGp5HpbUn2pzLmZYoSxtoIzYeaxRBoieYtiS0pEgi76eNoS4iFyMwoqGdXCRpmEEjzp9Sj5kRd6COHbyiOCXGIKIaNJ9PFHaYQBrKHQidVicmnxuYqgj4CgGK2BMFKCsgUyWkoDEkkRyWoWsgjiXjI2EcHCtypVGaqBM0GD4X6KMtGvaVWhwMHzAmZCQ2JH0f7xKCICUXnR6ZE9Mjex99n6MnHqQkI6+i6x3dGkamCJHBmWifhiC+oB6ZISSWmfml8pvRGFGi2iHEmtihnZyfIUcW8SKennOdnYUKKBKcbCUQFEMgyxYrotwf7SL4Ib6kVAI7oCuYvKIZHxAoaiBwF0WmMp2xHjEd1yASHaknxRtkrXgk2J/kJFcls6JFGyQjzqCsnH8grCQHIQGZ/B5XHfiiHaV2maskM6IDnaQgSCjeIcmg6B6JmMOhx6Kpog=="
+    },
+    {
+      "id": "space",
+      "label": {
+        "en": "Space",
+        "uz": "Kosmos"
+      },
+      "media": "picture",
+      "prompts": [
+        "outer space",
+        "a planet in space",
+        "an astronaut in space"
+      ],
+      "about": {
+        "en": "Rare in the test library (5 items), all right or related."
+      },
+      "vec": "DCDaGcUbm5npl1yerhWhr8UgiRVro3+SayARGHOfNJZ7JJsg1iAkJJgi1palJDSizKIYoxsfnRxcpBibPyAtoWQkUyTJIBkg6hF5nsGe1xyulMGe3BzxIY8lcyIdngIlaiE7IrIZRZzJJeqkHaQAoeumdAt6oaUZ/SYrpaOldp8DIxKkdBtHmDOcxps2n1+pBKFxJ62lXqQ3oSMjIIunnqman5h5okgaKqCqHO8nS6TzmfeZzZ6QJP6wiRxGm0YmwCNrpogisaZuH7ycxCSjoLymfJJgGMCSkCJEFoqQZCECnMkgqqX2KK4nUyY6JTYbdKV2qKgUHadGJUkaiyNlHQAZ9SDQI/ilyKETOZ6kDiTJoT2oIRRXm4qdBp1VpWAe9J8fHT0gcBOMFD+OMSdAEmybMaTrGnYYgxu/IgilOSR0GQih+Bq9odcfQCK9HBChHhzEGjgZMZ+Noeua8ZPHJtanOhpopwGlxxXHpOAg4SAIlCiiLyFtpQuiZx0roOakFiJ6Jf0h05rKoKAdsyAjnMOf9CS5pkSd1iWrFvAiDyAuHiMmmyArCt2ihJ6Rm72eL6e8oYaloh0fHbSmEh9MEgol3aPho++hDBuboIkeJiI2lz4l5ppRIvugU51hpqscDZ1ZJT2kcoeBp+sdiSUNnZ4SWZTlJcqS0hgsFUqczSQqHGigoiGTIHSkTx91JdgYc6XMoNeevKE0mHGhWqIwIJycLaI7HwMfyxedJGAfwSD4oD4hpiJLIhEg1B+eH7KkIyMhIZcdlSQ5p5ukVaLvId+k+pUwI0IktBd4ojCfDSAjodqO7yEZouqeLaWwIgAQEzmsHh6kyCOTHhGktiQVHR0eqyiHoWAYraZSIQGe4CJOGQW0Ep3JHZwjNx7SnAmcshh8HBkfF6MhG7OYIiOCkHoY2p6Hm9YgmZ4FJkcfwaGYJI0ao6G3HfAj+CSAngUh259QmJsIAB40pfwZiJkuokohxR4GHqoec6TVIQKo+KAopbMctKUUpcQjKJ8MIOKd6yTJoiShnqA+mPkfv6SKJPgabSVFo8Cc959rnt0goiVlGYYY7yRBoUQfLw1dkewfmyN9FuIgtaGjJKSe6wmCJDifPqdjoN+ebyOQGCygYKQxIG8gbyDLHfAfv555oTilHaZopIyiOyNdoKYb2pbgnymcaaDIIG+h7xvNolgi0SMTIGmdciMoIf2igKYDInih1J/ooq6hX6lBpoii7xzeIHmgbCG9HSKYDJwhJAKcJBqdG/qmaJ9aJYycqSDaIUcisBqKrBUdQiPDl4qjY5/xHBwhBaYzk9wf4x/fHachiSAaHiuaFacbIY8n8pRbIpYkuCOvI6WZwR5fpcWdHaSblQ=="
+    },
+    {
+      "id": "holiday",
+      "label": {
+        "en": "Holiday",
+        "uz": "Bayram"
+      },
+      "media": "picture",
+      "prompts": [
+        "a Christmas design",
+        "New Year decorations",
+        "a festive holiday greeting"
+      ],
+      "about": {
+        "en": "Christmas and New Year visuals. Rare in the test library; right where it fired. Add other holidays here if they measure well."
+      },
+      "vec": "eyKRGtieSxLtnrainyUWsJmfviSZm1SXcx+am1+eXSAaGA4aIKJfIT+nVqBMJzwdXgSjmEihxhmWHdqX3CKFnoKlnyFdpcehZiB/GGgmmx1enj+XGiQgoDMis53JpBoloiCCExOWoZ08H2mhPh4ZIpyeCJ/wHbcc0KIMpAaf2xUdJ8qk9ZqPqNgSNZiDo6SAb5K8Hs2hhqBzJfMiZRyiFT6cWRzOG54m1KC/HRKOOB11kYahLZ4mozqxd6X8owgdhCBknOsjpQWPJJ4g9J99mkekJJ34JOScaZwWo1scYihyoXob9qHuF0cgIqJjJGOfFab5pNAabqM8IBEjDRuAIj8kZCPbGBmk2CEHOQ2jSCILEYykkiRIHA2gYyEOFI0eDaYDlQUdz6V4GJod8JoLG9igGx9om+Mg8pmqIC2fbRtpntii2gnOmbuev5ohKDcix5wLHr+hKJ+aoIGZvJOaJUqmK52XpACiOKO1pHinFyCIn4mdEhXan6WmiB2OnpOgzxnAJGQlsptEJOIfPqeEHT2faJb8oXQgUiERoXgkippIGDqaCqb4I62hpiaqnYqkOKj5pEGkPxg1EKUkjaBkETeYK52uoh2dQiEUDK2gQxzYpAueNaSXKNAjfo1GpZef56O2Hs2g16QfpKEMpCKmHXkZ/Jt6GeMkmyRfHECgQxsiInkRAiKEJLCkTSCdib8YLCCNnJ6gv6CYmz2n+B6CFkykYpZxIXiYxBosnOEcDKCGnoqW+yM5IiwnTaKuGQCgESHknW+goR6qnNSTeRngHImqGBlTG0Gbdx2ho32CVxgBnoYjFZkXGCkRDSDeJNgiBjlnIQ6hTpRcF0AgwR7uJnAczCiwoYshA57AmBMUrhZfGYi05Bf0IUYeKyWNJ5um4CLBoaucA5fNIAikKyBQpOwgIKB4pFMgjx0BGu0la6McKC8hZKTSJNAd8RzoGveUzSIio2+Y4CZ/qcAerplXJ6QoZ6RzoDcVuiTdoKOkIBjmIBEgAB58GTMXv57VlrYilB5iIOMd6pw4JK+idaGiIJMg7xcToYokIZ+EoHKdXxcHIr8kcyj+I30ifCGGpKwXvyK/IVIiW5+HoKmgCBjlJaslVqJynRMhmh3tm1CLpp0II+oi2hiZl5cVKKD5IXmeEhijpoeiRCHyosAk25bnnlQfIhcXolCYSyKiFU8VcKawIfwcWx8zFMuWqhR2nqAOGCPBn22lOaUkpK8bpJw1GVCkwCJ4IgoZQaSzJd4gDif7HiyoGR5mow6hfiTGHFsijJaFrIkg6KC3I62gZZ8HFAEYGKDJpRMgw5/wFs6k/x3aIA2cuZzkGyWdTBx1HKKYSiPGo28aSqFgGB6o2qJGng=="
+    },
+    {
+      "id": "logo",
+      "label": {
+        "en": "Logo",
+        "uz": "Logotip"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand, as in the motion lens (shared tag): in tests it fired on any small mark on a plain background, UI frames included."
+      }
+    },
+    {
+      "id": "brand",
+      "label": {
+        "en": "Brand",
+        "uz": "Brend"
+      },
+      "suggest": false,
+      "about": {
+        "en": "Add by hand, as in the motion lens (shared tag): in tests it fired on social posts and agency graphics, not on brand identity work."
+      }
+    }
+  ]
+}

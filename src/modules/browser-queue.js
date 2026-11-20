@@ -15,6 +15,7 @@ import { api } from './tauri-api.js'
 import { t } from './i18n.js'
 import { enhanceSelect } from './select-menu.js'
 import { isDialogOpen } from './dialog.js'
+import { startupBusy } from './role-step.js'
 import { makeLogger } from './logger.js'
 
 const log = makeLogger('BrowserQueue')
@@ -37,12 +38,19 @@ const openSites = new Set()     // grouped view: sites shown link by link
 let plan = null                 // { is_free, ext_limit, ext_used_today }
 let pendingClear = null         // { ids, timer } while Clear all can still be undone
 let waiting = false             // an open is waiting for another dialog to finish
+let starting = false            // start-up's first look for waiting links hasn't finished yet
 
 export function init() {
   store.on(events.BROWSER_QUEUE_CHANGED, onChanged)
   // Links still waiting from an earlier session, once the library is up
-  setTimeout(() => refresh({ open: true }), 1500)
+  starting = true
+  setTimeout(() => { refresh({ open: true }).finally(() => { starting = false }) }, 1500)
 }
+
+/** Links from the browser are about to ask what to download: start-up's first look for them,
+ *  or their dialog waiting for a free moment. One-time tips wait for it (grid.js), so this
+ *  dialog never opens on top of one. */
+export function linksPending() { return starting || waiting }
 
 function onChanged(payload = {}) {
   if (payload.count !== undefined) refresh({ open: true })     // the extension handed links over
@@ -61,21 +69,21 @@ async function refresh({ open }) {
   else if (open) openWhenFree()
 }
 
-// After whatever else is on screen: another dialog, onboarding, the walkthrough.
+// After whatever else is on screen: another dialog, or start-up's own steps (the sign-in
+// screen, the role step and the gap before the tour, the tour and its extension promo:
+// role-step.js startupBusy).
 async function openWhenFree() {
   if (waiting || overlay) return
   waiting = true
-  while (isDialogOpen() || busyElsewhere()) await new Promise(r => setTimeout(r, 800))
-  waiting = false
-  if (!items.length || overlay) return
-  try { plan = await api.getFreePlanInfo() } catch { plan = null }
-  show()
-  log.info('opened', { links: items.length })
-}
-
-function busyElsewhere() {
-  const onboarding = document.getElementById('onboarding-root')
-  return !!document.querySelector('.wt-root') || (!!onboarding && !onboarding.hidden)
+  try {
+    while (isDialogOpen() || startupBusy()) await new Promise(r => setTimeout(r, 800))
+    if (!items.length || overlay) return
+    try { plan = await api.getFreePlanInfo() } catch { plan = null }
+    show()
+    log.info('opened', { links: items.length })
+  } finally {
+    waiting = false   // only once the dialog is up (linksPending covers the whole wait)
+  }
 }
 
 // ─── The dialog ──────────────────────────────────────────────────
