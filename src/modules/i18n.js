@@ -104,8 +104,8 @@ const strings = {
     // Settings — General — Profile
     'settings.section.profile':  'Profile',
     'settings.photo':            'Profile photo',
-    'settings.photo.sub':        'Shown in the top bar',
-    'settings.photo.change':     'Change photo',
+    'settings.photo.sub':        'Set in bloot apps, shown in every bloot app',
+    'settings.photo.change':     'Change in bloot apps',
 
     // Settings — General — Language
     'settings.section.language': 'Language',
@@ -592,8 +592,8 @@ const strings = {
     // Settings — General — Profile
     'settings.section.profile':  'Profil',
     'settings.photo':            'Profil rasmi',
-    'settings.photo.sub':        "Yuqori panelda ko'rsatiladi",
-    'settings.photo.change':     "Rasmni o'zgartirish",
+    'settings.photo.sub':        "bloot apps'da o'rnatiladi, barcha bloot ilovalarida ko'rinadi",
+    'settings.photo.change':     "bloot apps'da o'zgartirish",
 
     // Settings — General — Language
     'settings.section.language': 'Til',

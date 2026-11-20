@@ -177,28 +177,32 @@ function setupAvatar(settings) {
 
   const avatarBtn = document.getElementById('top-bar-avatar')
 
-  if (settings?.profile_image) {
-    avatarBtn.textContent = ''
-    const img = document.createElement('img')
-    img.src = settings.profile_image
-    img.alt = displayName
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
-    avatarBtn.appendChild(img)
-    avatarBtn.style.background = 'transparent'
-  } else {
-    avatarBtn.textContent = initial
-    avatarBtn.style.background = avatarColor(displayName)
+  // The photo comes from bloot apps (licensing.js mirrors it into profile_image);
+  // without one, the initial on its colour.
+  let photo = settings?.profile_image || ''
+  let name = displayName
+  const paint = () => {
+    avatarBtn.innerHTML = ''
+    if (photo) {
+      const img = document.createElement('img')
+      img.src = photo
+      img.alt = name
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
+      img.onerror = () => { photo = ''; paint() }    // a damaged photo file: the initial instead
+      avatarBtn.appendChild(img)
+      avatarBtn.style.background = 'transparent'
+    } else {
+      avatarBtn.textContent = name.charAt(0).toUpperCase()
+      avatarBtn.style.background = avatarColor(name)
+    }
   }
+  paint()
 
   store.on(events.SETTINGS_CHANGED, ({ key, value }) => {
-    if (key !== 'profile_image') return
-    avatarBtn.innerHTML = ''
-    const img = document.createElement('img')
-    img.src = value
-    img.alt = displayName
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
-    avatarBtn.appendChild(img)
-    avatarBtn.style.background = 'transparent'
+    if (key === 'profile_image') photo = value || ''
+    else if (key === 'display_name') name = value || 'U'
+    else return
+    paint()
   })
 
   // Build dropdown

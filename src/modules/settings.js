@@ -2,7 +2,6 @@ import store from './store.js'
 import * as events from './events.js'
 import { api, listenEvent, popMobileInbox, mobileInboxCount, mobileConnectedAt } from './tauri-api.js'
 import { t as tr, setLang } from './i18n.js'
-import { openImageCropper } from './image-cropper.js'
 import { sfx } from './sfx.js'
 import { getLocalVocabVersion, getLatestVocabVersion, checkForVocabUpdate, forceSyncTagVocab } from './tag-sync.js'
 import { openHub } from './licensing.js'
@@ -190,7 +189,7 @@ async function render() {
             <div class="settings-row-control">
               <div class="settings-avatar" id="s-avatar-preview">
                 ${settings.profile_image
-                  ? `<img src="${settings.profile_image}" alt="" />`
+                  ? `<img src="${escHtml(settings.profile_image)}" alt="" />`
                   : `<span>${(settings.display_name ?? 'U').charAt(0).toUpperCase()}</span>`}
               </div>
               <button class="settings-save-btn" id="s-photo-change">${tr('settings.photo.change')}</button>
@@ -585,17 +584,13 @@ async function render() {
 
   const avatarPreview = container.querySelector('#s-avatar-preview')
   if (avatarPreview) {
-    container.querySelector('#s-photo-change').addEventListener('click', () => {
-      openImageCropper({
-        onSave: async dataUrl => {
-          await setSetting('profile_image', dataUrl)
-          avatarPreview.innerHTML = ''
-          const img = document.createElement('img')
-          img.src = dataUrl
-          img.alt = ''
-          avatarPreview.appendChild(img)
-        },
-      })
+    // The photo is set in bloot apps (your bloot ID page); qooti only shows it.
+    container.querySelector('#s-photo-change').addEventListener('click', () => openHub('account'))
+    // A damaged photo file: the initial instead of a broken image.
+    avatarPreview.querySelector('img')?.addEventListener('error', () => {
+      const span = document.createElement('span')
+      span.textContent = (getSetting('display_name') ?? 'U').charAt(0).toUpperCase()
+      avatarPreview.replaceChildren(span)
     })
 
     container.querySelector('#s-lang').addEventListener('change', e => {

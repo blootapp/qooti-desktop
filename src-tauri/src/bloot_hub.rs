@@ -42,6 +42,8 @@ pub struct Account {
     pub state: String,
     pub name: Option<String>,
     pub bloot_id: Option<String>,
+    /// The profile photo set in bloot apps, as a data: URL (qooti can't change it).
+    pub photo: Option<String>,
     /// free | pro (only meaningful when signed_in)
     pub tier: String,
     pub pro_until: Option<i64>,
@@ -88,6 +90,16 @@ fn verify(raw: &str, device_id: &str) -> Option<Ticket> {
     (t.device_id == device_id).then_some(t)
 }
 
+/// The profile photo set in bloot apps. It never leaves this computer: bloot apps keeps
+/// it in the shared folder as `photo-<bloot ID>.jpg`. None = show the initial.
+fn photo_data_url(bloot_id: &str) -> Option<String> {
+    let ok = !bloot_id.is_empty() && bloot_id.len() <= 40 && bloot_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if !ok { return None; }
+    let bytes = std::fs::read(shared(&format!("photo-{bloot_id}.jpg"))).ok()?;
+    (bytes.starts_with(&[0xFF, 0xD8, 0xFF]) && bytes.len() < 1_000_000)
+        .then(|| format!("data:image/jpeg;base64,{}", STANDARD.encode(&bytes)))
+}
+
 /// The newest `iat` qooti has accepted, for the clock-rollback guard (§5.3 step 5).
 fn max_iat_file(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join("bloot-max-iat"))
@@ -99,7 +111,7 @@ fn hub_installed() -> bool {
 
 pub fn account(app: &AppHandle) -> Account {
     let signed_out = |state: &str| Account {
-        state: state.into(), name: None, bloot_id: None, tier: "free".into(), pro_until: None, hub_installed: hub_installed(),
+        state: state.into(), name: None, bloot_id: None, photo: None, tier: "free".into(), pro_until: None, hub_installed: hub_installed(),
     };
     let Some(device_id) = read_json("device.json").and_then(|d| d["device_id"].as_str().map(str::to_string)) else {
         return signed_out("signed_out");
@@ -121,6 +133,7 @@ pub fn account(app: &AppHandle) -> Account {
     Account {
         state: "signed_in".into(),
         name: t.name.filter(|n| !n.trim().is_empty()),
+        photo: photo_data_url(&t.bloot_id),
         bloot_id: Some(t.bloot_id),
         tier: if t.tier == "pro" { "pro".into() } else { "free".into() },
         pro_until: t.pro_until,
