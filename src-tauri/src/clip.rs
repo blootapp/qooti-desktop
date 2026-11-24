@@ -298,6 +298,7 @@ fn store(app: &AppHandle, id: &str, path: &str, result: Result<Vec<f32>, String>
     let db = crate::lenses::lock_db(&state);
     let (model, blob) = match result {
         Ok(v) => (MODEL_TAG, to_blob(&v)),
+        // (A file that can't be reached now never gets here: picture_round leaves it out)
         Err(e) => { log::debug!(target: "Clip", "embed failed id={id} err={e}"); (FAILED_TAG, Vec::new()) }
     };
     match store_with(&db, id, path, model, &blob) {
@@ -508,6 +509,8 @@ fn index_video(app: &AppHandle, ffmpeg: &Path, id: &str, path: &str, duration: O
 /// once their thumbnail exists (embedded from the thumbnail — used by recommendations;
 /// Find similar stays images-only).
 fn pending(app: &AppHandle, n: i64) -> Vec<(String, String)> {
+    let skipped = unreachable_now().lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let n = n + skipped.len() as i64;
     let state = app.state::<AppState>();
     let Ok(db) = state.db.lock() else { return vec![] };
     let Ok(mut stmt) = db.prepare(
@@ -518,9 +521,29 @@ fn pending(app: &AppHandle, n: i64) -> Vec<(String, String)> {
            AND (i.type IN ('image', 'gif') OR (i.type = 'video' AND i.thumbnail_path IS NOT NULL))
          ORDER BY i.created_at DESC LIMIT ?3"
     ) else { return vec![] };
-    stmt.query_map(params![MODEL_TAG, FAILED_TAG, n], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map(|it| it.flatten().collect())
+    stmt.query_map(params![MODEL_TAG, FAILED_TAG, n], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map(|it| it.flatten().filter(|(id, _)| !skipped.contains(id)).collect())
         .unwrap_or_default()
+}
+
+/// Pictures whose file couldn't be reached this run (a library on a drive that isn't connected).
+/// They are tried again at the next start, like videos; only a file that is there and can't be
+/// read is marked as failed.
+fn unreachable_now() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static SET: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    SET.get_or_init(Default::default)
+}
+
+/// Failed marks go at every start: before 1.0.1 a picture whose drive wasn't connected got one for
+/// good. A picture that really can't be read is marked again after one try.
+fn forget_failures(app: &AppHandle) {
+    if let Ok(db) = app.state::<AppState>().db.lock() {
+        match db.execute("DELETE FROM clip_embeddings WHERE model = ?1", [FAILED_TAG]) {
+            Ok(0) => {}
+            Ok(n) => log::info!(target: "Clip", "{n} pictures that couldn't be read are tried again"),
+            Err(e) => log::warn!(target: "Clip", "couldn't clear failed pictures: {e}"),
+        }
+    }
 }
 
 /// What one indexer round came to.
@@ -542,7 +565,17 @@ fn picture_round(app: &AppHandle) -> Round {
     let n = batch.len();
     let mut stored = Vec::with_capacity(n);
     let mut round = Round::Worked;
+    // The model itself can't start: nothing about these pictures
+    if let Err(e) = session(app) {
+        log::warn!(target: "Clip", "the model session didn't start: {e}");
+        return Round::Nothing;
+    }
     for (id, path) in batch {
+        if !Path::new(&path).is_file() {
+            log::debug!(target: "Clip", "picture id={id} can't be reached now: it is tried again at the next start");
+            unreachable_now().lock().unwrap_or_else(|e| e.into_inner()).insert(id);
+            continue;
+        }
         let r = embed_file(app, &path);
         let ok = r.is_ok();
         match store(app, &id, &path, r) {
@@ -654,6 +687,7 @@ pub fn start_indexer(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         idle(Duration::from_secs(40));   // let boot work finish first
+        forget_failures(&app);
         let mut logged_done = false;
         let mut next_model_try = Instant::now();
         let mut write_failures: u32 = 0;

@@ -10,6 +10,7 @@
 
 import store from './store.js'
 import * as events from './events.js'
+import { friendlyDownloadError } from './download-errors.js'
 import { api } from './tauri-api.js'
 
 const _entries = new Map()  // id → entry
@@ -126,8 +127,12 @@ export async function retryDownload(id, fallback = null) {
   const e = _entries.get(id) ?? fallback
   if (!e) { console.warn('[tracker] retryDownload: no entry for id', id); return }
   console.info('[tracker] retry', id, e.url)
-  _entries.delete(id)
-  await api.clearFailedDownload(id).catch(err => console.warn('[tracker] clearFailedDownload failed:', err))
+  // The failed entry goes only once the new download is on its way: the link was lost when
+  // the retry itself was refused (the Free plan's daily limit)
+  const forget = async () => {
+    _entries.delete(id)
+    await api.clearFailedDownload(id).catch(err => console.warn('[tracker] clearFailedDownload failed:', err))
+  }
 
   const src = e.importSource ?? e.import_source ?? 'app_download'
 
@@ -135,6 +140,7 @@ export async function retryDownload(id, fallback = null) {
   // trigger extension delegation (queueExtDownload) — calling downloadUrl
   // directly bypasses that logic and the error is silently dropped.
   if (src === 'mobile') {
+    await forget()
     store.emit(events.EXTENSION_ITEM_RECEIVED, {
       url:          e.url,
       type:         'link',
@@ -144,7 +150,14 @@ export async function retryDownload(id, fallback = null) {
     return
   }
 
-  const newId = await api.downloadUrl(e.url, e.quality ?? 'best')
+  let newId
+  try {
+    newId = await api.downloadUrl(e.url, e.quality ?? 'best')
+  } catch (err) {
+    store.emit(events.SYSTEM_TOAST, { type: 'warning', message: friendlyDownloadError(err), duration: 6000, key: 'retry-failed' })
+    throw err
+  }
+  await forget()
   console.info('[tracker] retry started as', newId)
   importWhenDone(newId, e.url)
   store.emit(events.DOWNLOAD_STARTED, {

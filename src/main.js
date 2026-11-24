@@ -266,12 +266,14 @@ function buildProfileDropdown(displayName, initial, avatarBg) {
   who.innerHTML = `<span class="pd-name"></span><span class="pd-sub" data-i18n="account.bloot">${t('account.bloot')}</span>`
   who.querySelector('.pd-name').textContent = displayName
   head.append(av, who)
-  if (getPlan() === 'pro') {
-    const badge = document.createElement('span')
-    badge.className = 'pd-plan'
-    badge.textContent = 'Pro'
-    head.appendChild(badge)
-  }
+  // The menu is built before the account is known, so the badge follows the plan
+  const badge = document.createElement('span')
+  badge.className = 'pd-plan'
+  badge.textContent = 'Pro'
+  const showPlan = () => { badge.hidden = getPlan() !== 'pro' }
+  showPlan()
+  store.on(events.LICENSE_STATUS_CHANGED, showPlan)
+  head.appendChild(badge)
   el.appendChild(head)
   el.appendChild(Object.assign(document.createElement('div'), { className: 'pd-divider' }))
 
@@ -787,6 +789,7 @@ async function boot() {
         if (view === 'grid' && !_gridOpened) {
           _gridOpened = true
           afterGridOpens(settings, walkthroughDone, firstRunDone)
+          openLaunchFile()   // started with a .qooti file while signed out: it opens now
         }
       })
     } else {

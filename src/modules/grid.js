@@ -10,6 +10,7 @@ import { visibleSuggestions, parseConfidence, tagLabel, getTag, questionsNamedLi
 import { startupBusy } from './role-step.js'
 import { linksPending } from './browser-queue.js'
 import { showPrompt, confirmDeleteItem, isDialogOpen } from './dialog.js'
+import { showCollectionsUpgradeModal } from './collections.js'
 import { t } from './i18n.js'
 import { getSetting } from './settings.js'
 import { getPlan } from './licensing.js'
@@ -18,6 +19,7 @@ import * as motion from './motion.js'
 import { setPageBar, setPageBarCount } from './page-bar.js'
 import { installUpdate } from './update-screen.js'
 import { matchRealShape } from './media-shape.js'
+import { EXT_URL } from './links.js'
 
 const log = makeLogger('Grid')
 
@@ -28,7 +30,6 @@ const FREE_ITEM_TEASER = 40
 const PRO_ITEM_LIMIT   = 100000
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
-const EXT_URL  = 'https://chromewebstore.google.com/detail/feopgkjmnlaokclcpphaejjlpgdncdjf'
 
 let _saveDialog  = null
 async function getSaveDialog() {
@@ -138,7 +139,7 @@ export function init(el, _settings) {
     handleCopy(_hoverItem, null)
   })
 
-  store.on(events.GRID_RELOAD,       ()           => reload())
+  store.on(events.GRID_RELOAD,       ()           => { reload(); refreshCollectionCount() })
   store.on(events.GRID_ITEM_ADDED,   ()           => reload())
   store.on(events.GRID_ITEM_DELETED, ({ id })          => { removeCard(id); checkEmpty() })
   store.on(events.GRID_ITEM_UPDATED, ({ inspiration }) => updateCardTitle(inspiration))
@@ -203,6 +204,7 @@ export function init(el, _settings) {
     if (view === 'grid') requestAnimationFrame(() => { _fitQueue.clear(); fitRows(allRows()) })
   })
   store.on(events.UPDATE_AVAILABLE, (info) => {
+    if (info?.asked) _dismissedUpdate = null   // asked for in Settings: shown again even if dismissed
     _pendingUpdate = info
     log.info('update_available', { version: info?.version })
     renderUpdateBar()
@@ -240,7 +242,7 @@ let _collectionBar = null   // the page-bar spec while a collection is open
 
 function enterCollectionMode(id, name) {
   filter.collectionId = id
-  filter.tagIds = []
+  clearTagFilter()
   filter.page   = 0
 
   const chipsBar = container?.querySelector('#filter-chips-bar')
@@ -254,14 +256,21 @@ function enterCollectionMode(id, name) {
     action: { label: t('action.export'), onClick: () => exportCollection(id, name) },
   }
   setPageBar(_collectionBar)
+  refreshCollectionCount()
+
+  reload()
+}
+
+// "35 items" after the open collection's name
+function refreshCollectionCount() {
+  const id = filter.collectionId
+  if (!id || !_collectionBar) return
   api.listCollections().then(cols => {
     const col = cols.find(c => c.id === id)
-    if (!col || filter.collectionId !== id) return
+    if (!col || filter.collectionId !== id || !_collectionBar) return
     _collectionBar.count = t(col.item_count === 1 ? 'collections.items_one' : 'collections.items_many', { n: col.item_count ?? 0 })
     setPageBarCount(_collectionBar.count)
   }).catch(() => {})
-
-  reload()
 }
 
 async function exportCollection(id, name) {
@@ -283,7 +292,7 @@ async function exportCollection(id, name) {
 
 function exitCollectionMode(navigateToCollections, { keepBar = false } = {}) {
   filter.collectionId = null
-  filter.tagIds = []
+  clearTagFilter()
   filter.page   = 0
   _collectionBar = null
 
@@ -322,9 +331,25 @@ function renderActiveFilters() {
   }))
 }
 
+// The search, colour and type filters in force. Inside a collection their controls are off
+// screen, so what was left on in Home doesn't apply there (and is back when you leave).
+function shownFilters() {
+  return filter.collectionId
+    ? { query: null, color: null, mediaTypes: null }
+    : { query: filter.query, color: filter.color, mediaTypes: filter.mediaTypes }
+}
+
 // Filters other than the collection itself (search, colour, tags, media type)
 function hasNarrowingFilter() {
-  return !!(filter.query || filter.color || filter.tagIds.length || filter.mediaTypes)
+  const { query, color, mediaTypes } = shownFilters()
+  return !!(query || color || filter.tagIds.length || mediaTypes)
+}
+
+// The tag filter goes, and the chip row says so (it showed the tag as on while everything showed)
+function clearTagFilter() {
+  if (!filter.tagIds.length) return
+  filter.tagIds = []
+  setActiveChip(container?.querySelector(`#filter-chips-bar [data-filter="${filter.sort === 'recent' ? 'recent' : 'all'}"]`))
 }
 
 // ─── Shell ───────────────────────────────────────────────────────
@@ -445,10 +470,12 @@ function renderShell() {
 // Shown under the tag pills when the backend reports a newer version.
 // Clicking Update downloads + installs it behind the updating screen (update-screen.js),
 // then the app restarts.
+let _dismissedUpdate = null
+
 function renderUpdateBar() {
   const bar = container?.querySelector('#update-bar')
   if (!bar) return
-  if (!_pendingUpdate || filter.collectionId) { bar.hidden = true; return }
+  if (!_pendingUpdate || filter.collectionId || _pendingUpdate.version === _dismissedUpdate) { bar.hidden = true; return }
 
   const { version } = _pendingUpdate
   const textEl = bar.querySelector('#update-bar-text')
@@ -475,6 +502,7 @@ function renderUpdateBar() {
   }
   dismiss.onclick = () => {
     bar.hidden = true
+    _dismissedUpdate = version   // until qooti starts again, or a newer version comes
     log.info('update_dismissed', { version })
   }
 }
@@ -635,15 +663,16 @@ async function reload() {
   try {
     const isFree = isFreePlan()
     const colCount = calcColCount()
+    const { query, color, mediaTypes } = shownFilters()
 
     const [items, planInfo] = await Promise.all([
       api.listInspirations({
         collection_id: filter.collectionId ?? undefined,
         tag_ids: filter.tagIds.length ? filter.tagIds : undefined,
-        query:   filter.query ?? undefined,
-        color_filter:     filter.color ?? undefined,
-        color_tolerance:  filter.color ? filter.colorTolerance : undefined,
-        media_types:      filter.mediaTypes ?? undefined,
+        query:   query ?? undefined,
+        color_filter:     color ?? undefined,
+        color_tolerance:  color ? filter.colorTolerance : undefined,
+        media_types:      mediaTypes ?? undefined,
         // Free plan always fetches by recency so the visible pool is always the
         // 200 most recently imported items. Qootify shuffle happens client-side.
         sort:    isFree ? 'recent' : (filter.sort ?? undefined),
@@ -878,7 +907,9 @@ function render(items, colCount, trimOrphans = false) {
         <button class="empty-state-btn" id="empty-add-btn">${t('empty.collection.btn')}</button>
       </div>
     `
-    grid.querySelector('#empty-add-btn')?.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED))
+    // What's imported from here goes into this collection, as the text above says
+    const into = { id: filter.collectionId, name }
+    grid.querySelector('#empty-add-btn')?.addEventListener('click', () => store.emit(events.IMPORT_REQUESTED, { collection: into }))
     scrollEl.appendChild(grid)
     gridEl = grid
     if (before) motion.fadeIn(grid)
@@ -1126,7 +1157,7 @@ function makeShelfCard(item, idx) {
   titleEl.className = 'shelf-card-title'
   titleEl.textContent = item.title ?? ''
 
-  card.addEventListener('click', () => { _suggestTip?.hide(); openDetail(item, renderedItems, idx) })
+  card.addEventListener('click', () => { _suggestTip?.hide(); openDetail(item, renderedItems, indexNow(item, idx)) })
   card.addEventListener('contextmenu', e => {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, item, idx)
@@ -1336,7 +1367,7 @@ function makeCard(item, idx) {
   card.addEventListener('click', e => {
     if (e.target.closest('[data-action]') || e.target.closest('.suggestion-item')) return
     _suggestTip?.hide()   // the tip only shows over the grid itself
-    openDetail(item, renderedItems, idx)
+    openDetail(item, renderedItems, indexNow(item, idx))
   })
 
   card.addEventListener('contextmenu', e => {
@@ -1845,7 +1876,10 @@ function _generateThumbnail(item) {
     vid.preload     = 'metadata'
     vid.playsInline = true
 
-    const cleanup = () => { vid.src = ''; vid.load() }
+    // Stop listening first: letting go of the file fires 'error' on the element, and a
+    // preview that was just made would count as failed.
+    const onError = e => { cleanup(); reject(e) }
+    const cleanup = () => { vid.removeEventListener('error', onError); vid.removeAttribute('src'); vid.load() }
 
     vid.addEventListener('loadedmetadata', () => {
       vid.currentTime = vid.duration > 0 ? Math.min(vid.duration * 0.1, 5) : 1
@@ -1873,8 +1907,15 @@ function _generateThumbnail(item) {
       } catch (e) { cleanup(); reject(e) }
     }, { once: true })
 
-    vid.addEventListener('error', e => { cleanup(); reject(e) }, { once: true })
+    vid.addEventListener('error', onError, { once: true })
   })
+}
+
+// Where an item is in the list now: deleting a card moves the ones after it, and with the
+// index from when the card was drawn the viewer lost its arrows
+function indexNow(item, drawnAt) {
+  const i = renderedItems.findIndex(r => r.id === item.id)
+  return i === -1 ? drawnAt : i
 }
 
 // ─── Short-form chunking ──────────────────────────────────────────
@@ -2087,10 +2128,15 @@ function showContextMenu(x, y, item, idx, { openCollect = false } = {}) {
       const name = await showPrompt({ title: t('collection.new_title'), placeholder: t('collection.name_ph'), icon: 'folder' })
       if (!name) return
       try {
-        await api.createCollection(name)
-        log.info('collection_created', { name })
-        store.emit(events.COLLECTION_CREATED)
+        const col = await api.createCollection(name)
+        // It was made from this card's Collect menu: the card goes in
+        if (col?.id) await api.addToCollection(col.id, item.id)
+        log.info('collection_created', { name, id: item.id })
+        store.emit(events.COLLECTION_CREATED, { collection: col })
+        const card = cardMap().get(String(item.id))
+        if (card && col?.id) updateCardCollectionPill(card, await api.listCollections(), new Set(await api.getCollectionIdsForInspiration(item.id)))
       } catch (err) {
+        if (String(err).includes('UPGRADE_REQUIRED:collections_limit')) { showCollectionsUpgradeModal(); return }
         log.error('collection_create_failed', { name, error: err })
       }
     })

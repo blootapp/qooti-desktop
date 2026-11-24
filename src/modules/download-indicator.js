@@ -149,7 +149,8 @@ function buildRow(entry) {
     retry.className = 'dl-row-btn dl-row-btn--retry'
     retry.textContent = t('dl.panel.retry')
     retry.addEventListener('click', async () => {
-      await retryDownload(entry.id)
+      retry.disabled = true
+      try { await retryDownload(entry.id) } catch { retry.disabled = false }   // the toast says why
     })
     actions.appendChild(retry)
 

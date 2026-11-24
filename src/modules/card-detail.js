@@ -70,8 +70,9 @@ export function init() {
       if (debugEl.classList.contains('open')) { closeDebugModal(); return }
       close(); return
     }
-    if (e.key === 'ArrowLeft')  { navigate(-1); return }
-    if (e.key === 'ArrowRight') { navigate(1);  return }
+    // Not while typing a title or a tag: there the arrows move the caret
+    if (e.key === 'ArrowLeft'  && !isTyping(e.target)) { navigate(-1); return }
+    if (e.key === 'ArrowRight' && !isTyping(e.target)) { navigate(1);  return }
 
     // C: crop the picture (no modifier keys, not while typing)
     if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isTyping(e.target)) {
@@ -1155,7 +1156,7 @@ async function reloadTags(itemId) {
 async function saveTitle(value) {
   if (!currentItem) return
   try {
-    await api.updateInspiration(currentItem.id, { title: value || null })
+    await api.updateInspiration(currentItem.id, { title: value || '' })   // null would mean "leave it"
     log.info('title_edited', { id: currentItem.id, title: value || '(cleared)' })
     currentItem.title = value || null
     store.emit(events.GRID_ITEM_UPDATED, { inspiration: { ...currentItem } })
@@ -1295,6 +1296,8 @@ function setupEnhanceUI(item, img, tools, origSrc, onChange = null) {
 // playing and idle), a centre play affordance while paused, and a scrubber with the
 // buffered range, a handle and a hover time tip. `onMeta(w, h, duration)` reports the
 // real video size so the stage can fit it.
+let _fsListener = null   // the open player's fullscreen listener (one player at a time)
+
 function makeVideoPlayer(src, onMeta) {
   const wrap = document.createElement('div')
   wrap.className = 'video-player is-paused'
@@ -1462,7 +1465,14 @@ function makeVideoPlayer(src, onMeta) {
     if (document.fullscreenElement) document.exitFullscreen()
     else wrap.requestFullscreen().catch(() => {})
   })
-  document.addEventListener('fullscreenchange', setFsIcon)
+  // Until the player is gone: a listener on the document would keep every opened video alive
+  const onFullscreen = () => {
+    if (!wrap.isConnected) { document.removeEventListener('fullscreenchange', onFullscreen); return }
+    setFsIcon()
+  }
+  if (_fsListener) document.removeEventListener('fullscreenchange', _fsListener)
+  _fsListener = onFullscreen
+  document.addEventListener('fullscreenchange', onFullscreen)
 
   requestAnimationFrame(() => vid.play().catch(() => {}))
 
@@ -1497,7 +1507,7 @@ function typeLabel(item, durationSecs) {
   const kind = item.type === 'gif' ? 'gif' : item.type === 'video' ? 'video' : 'image'
   const parts = [tr(`detail.kind.${kind}`)]
   const fmt = (item.mime_type || '').split('/')[1]
-  if (fmt && kind !== 'gif') parts.push(fmt.replace('quicktime', 'mov').toUpperCase())
+  if (fmt && kind !== 'gif') parts.push(fmt.replace('quicktime', 'mov').replace('x-matroska', 'mkv').toUpperCase())
   const d = durationSecs ?? item.duration_secs
   if (kind === 'video' && d) parts.push(fmtDuration(d))
   return parts.join(' · ')

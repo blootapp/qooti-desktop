@@ -42,7 +42,7 @@ function header(title) {
     </div>`
 }
 
-export function showPrompt({ title, placeholder = '', value = '', confirmLabel = 'Create', icon = null }) {
+export function showPrompt({ title, placeholder = '', value = '', confirmLabel = t('action.create'), icon = null }) {
   return new Promise(resolve => {
     const overlay = getOverlay()
     overlay.innerHTML = `
@@ -86,7 +86,7 @@ export function showPrompt({ title, placeholder = '', value = '', confirmLabel =
 
 // Without checkboxLabel: resolves true/false.
 // With checkboxLabel:    resolves { ok: true, checked: bool } or false.
-export function showConfirm({ title, message = '', danger = false, confirmLabel = 'Confirm', cancelLabel = 'Cancel', icon = null, checkboxLabel = null }) {
+export function showConfirm({ title, message = '', danger = false, confirmLabel = t('action.confirm'), cancelLabel = t('action.cancel'), icon = null, checkboxLabel = null }) {
   return new Promise(resolve => {
     const overlay = getOverlay()
     overlay.innerHTML = `
@@ -122,6 +122,8 @@ export function showConfirm({ title, message = '', danger = false, confirmLabel 
     }
 
     function onKey(e) {
+      // Enter with Cancel or the X focused presses that button, it doesn't confirm
+      if (e.key === 'Enter' && e.target.closest?.('#_dlg-cancel, [data-dlg-close]')) return
       if (e.key === 'Enter')  { e.preventDefault(); confirm() }
       if (e.key === 'Escape') { e.preventDefault(); close(false) }
     }

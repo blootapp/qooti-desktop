@@ -194,10 +194,10 @@ function groupHtml(g) {
           <div class="bq-name">${esc(g.name)}</div>
           <div class="bq-meta">${esc(count)}</div>
         </div>
-        <select class="settings-select bq-format" data-site="${esc(g.name)}" aria-label="${esc(t('bq.format_for', { name: g.name }))}">
+        ${formats.length > 1 || mixed ? `<select class="settings-select bq-format" data-site="${esc(g.name)}" aria-label="${esc(t('bq.format_for', { name: g.name }))}">
           ${mixed ? `<option value="" selected hidden>${esc(t('bq.mixed'))}</option>` : ''}
           ${formats.map(f => `<option value="${f}"${f === value ? ' selected' : ''}>${esc(t('bq.fmt.' + f))}</option>`).join('')}
-        </select>
+        </select>` : `<span class="bq-fixed">${esc(formats.length ? t('bq.fmt.' + formats[0]) : '')}</span>`}
         <button class="bq-icon-btn" data-act="toggle" data-site="${esc(g.name)}" aria-expanded="${open}"
           aria-label="${esc(t(open ? 'bq.close_site' : 'bq.open_site', { site: g.name }))}" title="${esc(t(open ? 'bq.close_site' : 'bq.open_site', { site: g.name }))}">${I(open ? 'ui/chevron-up' : 'ui/chevron-down', 16)}</button>
         <button class="bq-icon-btn" data-act="remove-site" data-site="${esc(g.name)}"

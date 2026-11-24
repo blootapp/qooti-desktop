@@ -263,8 +263,15 @@ function buildFailedRow(entry) {
     e.stopPropagation()
     retry.disabled = true
     retry.textContent = tr('dl.stage.retrying')
-    await retryDownload(entry.id, entry).catch(err => console.error('[activity] retry failed:', err))
-    row.remove()
+    try {
+      await retryDownload(entry.id, entry)
+      row.remove()
+    } catch (err) {
+      // Not started (the toast says why): the link stays here
+      console.error('[activity] retry failed:', err)
+      retry.disabled = false
+      retry.textContent = tr('dl.panel.retry')
+    }
   })
   actions.appendChild(retry)
 

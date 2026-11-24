@@ -19,13 +19,21 @@ export function init() {
       duration: 6000,
     })
   })
+  // The extension's server runs a moment before this page listens: saves, links from yesterday
+  // and browsers that asked to connect meanwhile come now
+  api.extensionPageReady()
+    .then(waiting => { for (const q of Array.isArray(waiting) ? waiting : []) askToConnect(q) })
+    .catch(err => log.warn('page_ready_failed', { error: err }))
 }
+
+const _asking = new Set()   // origins with a question up or waiting its turn
 
 // A browser extension asked to connect. It gets a key only if the user says Allow;
 // any other answer (Don't allow, Esc) leaves it unconnected, and qooti won't ask
 // about it again for a while.
 async function askToConnect({ origin, browser } = {}) {
-  if (!origin) return
+  if (!origin || _asking.has(origin)) return
+  _asking.add(origin)
   // After whatever is open, and after start-up's own steps (the sign-in screen, the role step,
   // the tour and its extension promo: role-step.js startupBusy), like the other questions that
   // open by themselves. The extension keeps waiting meanwhile (its request stays pending).
@@ -43,6 +51,8 @@ async function askToConnect({ origin, browser } = {}) {
     if (allow) store.emit(events.SYSTEM_TOAST, { type: 'success', message: t('extpair.done', { browser: name }), duration: 4000 })
   } catch (err) {
     log.warn('pair_answer_failed', { error: err })
+  } finally {
+    _asking.delete(origin)
   }
 }
 
@@ -117,25 +127,25 @@ function trackDownload(downloadId, url, extId = null, itemTitle = null) {
         : (payload.paths ? [payload.paths] : [])
 
       let imported = 0
+      let have     = 0   // already in the library: the app side told the browser so
       try {
         for (const p of allPaths) {
           try {
             await api.finalizeDownload(p, url ?? null, extId, itemTitle)
             imported++
           } catch (err) {
-            if (!String(err).includes('duplicate')) {
-              log.error('finalize_error', { error: err, path: p })
-            }
+            if (String(err).includes('duplicate')) have++
+            else log.error('finalize_error', { error: err, path: p })
           }
         }
       } finally {
         // Error is the default outcome — only suppress it if at least one file
-        // was imported.  This covers: empty paths, all-failing finalizeDownload
-        // calls, and unexpected throws.  The Rust watchdog is a belt-and-suspenders
-        // backstop if this call itself somehow never fires.
+        // was imported, or is there already.  This covers: empty paths, all-failing
+        // finalizeDownload calls, and unexpected throws.  The Rust watchdog is a
+        // belt-and-suspenders backstop if this call itself somehow never fires.
         if (imported > 0) {
           store.emit(events.GRID_RELOAD, {})
-        } else if (extId) {
+        } else if (extId && !have) {
           try { await api.setExtProgressError(extId) } catch {}
         }
       }

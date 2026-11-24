@@ -72,7 +72,7 @@ export async function installUpdate(version) {
     log.warn('update_install_failed', { error: String(err) })
     store.emit(events.SYSTEM_TOAST, {
       type: 'error',
-      message: t('update.toast_fail', { error: String(err) }),
+      message: t('update.toast_fail'),
       duration: 8000,
     })
     return false

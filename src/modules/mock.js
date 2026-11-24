@@ -2,6 +2,8 @@
 // Swap stored_path for picsum URLs so cards render with real-looking images.
 // This file is never imported in production — only tauri-api.js uses it.
 
+import { EXT_URL } from './links.js'
+
 const NOW = Date.now()
 const DAY = 1000 * 60 * 60 * 24
 
@@ -172,7 +174,7 @@ const annSamples = () => [
   { id: 'ann_newsextension001', kind: 'news', pinned: false, popup: false, read: false, seen: false, popped: false, test: false,
     title: { en: 'The qooti extension got faster', uz: 'qooti kengaytmasi tezlashdi' },
     body: { en: 'Save from YouTube, Pinterest and Instagram in one click.\nPick a collection right on the page.', uz: 'YouTube, Pinterest va Instagram’dan bir bosishda saqlang.\nTo‘plamni shu sahifaning o‘zida tanlang.' },
-    button: { label: { en: 'Get the extension', uz: 'Kengaytmani olish' }, action: 'link', target: 'https://chromewebstore.google.com/detail/feopgkjmnlaokclcpphaejjlpgdncdjf' },
+    button: { label: { en: 'Get the extension', uz: 'Kengaytmani olish' }, action: 'link', target: EXT_URL },
     image: { src: ANN_PICTURE, w: 1200, h: 600 }, published_at: mins(125), ends_at: null },
   { id: 'ann_updatetaglens001', kind: 'update', pinned: false, popup: false, read: false, seen: false, popped: false, test: false,
     title: { en: 'Tag lens is here', uz: 'Tag lens keldi' },
@@ -280,6 +282,17 @@ export const mockApi = {
     delete MOCK_INSPIRATION_TAGS[id]
     return Promise.resolve()
   },
+
+  findDuplicates: () => {
+    if (!new URLSearchParams(location.search).get('dups')) return Promise.resolve([])
+    const copy = i => ({ id: i.id, kind: i.type, title: i.title, thumb: i.thumbnail_path ?? i.stored_path, created_at: i.created_at, collections: null })
+    const pick = (from, n) => _inspirations.slice(from, from + n).map(copy).sort((a, b) => a.created_at - b.created_at)
+    return Promise.resolve([
+      { reason: 'exact',     distance: 0, items: pick(0, 3) },
+      { reason: 'potential', distance: 0, items: pick(3, 2) },
+    ].filter(g => g.items.length > 1))
+  },
+  markNotDuplicates: () => Promise.resolve(),
 
   importFiles: paths => {
     const NOW2 = Date.now()
@@ -415,6 +428,7 @@ export const mockApi = {
   getMobileConnectionQr: () => Promise.resolve('MOCK-QR-KEY'),
   resetMobileConnectionKey: () => Promise.resolve('MOCK-QR-KEY'),
   answerExtensionPair:  () => Promise.resolve(),
+  extensionPageReady:   () => Promise.resolve([]),
   listExtensionClients: () => Promise.resolve([{ origin: 'chrome-extension://mock', browser: 'Edge', approved_at: Date.now() - 86400000 }]),
   removeExtensionClient: () => Promise.resolve(),
 
@@ -564,7 +578,7 @@ function bqItem(platform, i, ageMin, choice = null) {
     title: s.titles[i % s.titles.length] + (i >= s.titles.length ? ` (${i + 1})` : ''),
     kind: s.kind, site: host, source_platform: platform,
     choice: choice ?? (video ? 'video' : 'image'),
-    formats: video ? ['video', 'thumbnail', 'link'] : ['image', 'link'],
+    formats: video ? ['video', 'thumbnail'] : ['image'],
     saved_at: NOW - ageMin * 60000, preview: bqTile(a, b),
   }
 }

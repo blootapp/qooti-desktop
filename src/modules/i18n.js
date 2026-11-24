@@ -165,6 +165,7 @@ const strings = {
     'action.save':       'Save',
     'action.cancel':     'Cancel',
     'action.confirm':    'Confirm',
+    'action.create':     'Create',
     'action.done':       'Done',
     'action.skip':       'Skip for now',
     'action.continue':   'Continue',
@@ -363,6 +364,13 @@ const strings = {
     'vault.preparing':     'Preparing…',
     'vault.count':         '{done} / {total} files',
     'vault.failed.title':  'Library move failed',
+    'vault.err.busy':      'A download is running. Wait until it finishes, then move the library.',
+    'vault.err.same':      'The library is already in that folder.',
+    'vault.err.inside':    'Choose a folder outside your current library.',
+    'vault.err.not_empty': 'That folder already has files in it. Choose an empty one.',
+    'vault.err.too_long':  "That folder's path is too long. Choose a shorter one.",
+    'vault.err.space':     "There isn't enough space on that disk. The move needs {need} GB and {free} GB is free.",
+    'vault.err.generic':   "The library couldn't be moved. Everything is still in its place.",
 
     // Licence
     'license.trial':     'Free trial',
@@ -453,7 +461,7 @@ const strings = {
     'update.size_unknown':   '{done} MB',
     'update.restarts':       'qooti restarts by itself when it’s done',
     'offline.bar':          'You’re offline. Your library still works; downloads will continue when you’re back online.',
-    'update.toast_fail':    'Update failed: {error}',
+    'update.toast_fail':    "The update couldn't be installed. Check your internet and try again.",
 
     // Grid / cards / collections (imperatively rendered)
     'grid.scroll_left':          'Scroll left',
@@ -1009,6 +1017,7 @@ const strings = {
     'action.save':       'Saqlash',
     'action.cancel':     'Bekor qilish',
     'action.confirm':    'Tasdiqlash',
+    'action.create':     'Yaratish',
     'action.done':       'Tayyor',
     'action.skip':       'Hozircha o‘tkazib yuborish',
     'action.continue':   'Davom etish',
@@ -1207,6 +1216,13 @@ const strings = {
     'vault.preparing':     'Tayyorlanmoqda…',
     'vault.count':         '{done} / {total} fayl',
     'vault.failed.title':  'Kutubxonani ko‘chirib bo‘lmadi',
+    'vault.err.busy':      'Yuklab olish davom etmoqda. Tugashini kuting, keyin kutubxonani ko‘chiring.',
+    'vault.err.same':      'Kutubxona allaqachon shu papkada.',
+    'vault.err.inside':    'Hozirgi kutubxonangizdan tashqaridagi papkani tanlang.',
+    'vault.err.not_empty': 'Bu papkada fayllar bor. Bo‘sh papkani tanlang.',
+    'vault.err.too_long':  'Bu papkaning yo‘li juda uzun. Qisqaroq yo‘lni tanlang.',
+    'vault.err.space':     'Bu diskda joy yetarli emas. Ko‘chirish uchun {need} GB kerak, {free} GB bo‘sh.',
+    'vault.err.generic':   'Kutubxonani ko‘chirib bo‘lmadi. Hammasi o‘z joyida turibdi.',
 
     // Licence
     'license.trial':     'Bepul sinov',
@@ -1296,7 +1312,7 @@ const strings = {
     'update.restarts':       'Tugagach, qooti o‘zi qayta ishga tushadi',
     'update.failed':        'Yangilab bo‘lmadi',
     'update.dismiss':       'Yopish',
-    'update.toast_fail':    'Yangilab bo‘lmadi: {error}',
+    'update.toast_fail':    'Yangilanishni o‘rnatib bo‘lmadi. Internetni tekshirib, qayta urinib ko‘ring.',
 
     // Grid / cards / collections (imperatively rendered)
     'grid.scroll_left':          'Chapga surish',

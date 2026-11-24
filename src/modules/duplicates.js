@@ -15,6 +15,8 @@ import * as motion from './motion.js'
 let _root   = null
 let _loaded = false
 
+const toSrc = p => ('__TAURI_INTERNALS__' in window ? convertFileSrc(p) : p)   // the browser preview has plain addresses
+
 const I = (name, size = 16) =>
   `<span class="icon icon-${size}" style="mask-image:url('/icons/${name}.svg');-webkit-mask-image:url('/icons/${name}.svg')" aria-hidden="true"></span>`
 
@@ -123,9 +125,11 @@ function renderGroup(group) {
   group.items.forEach((item, idx) => grid.appendChild(renderItem(item, idx === 0, el)))
   el.appendChild(grid)
 
-  // Keep oldest, delete the rest.
+  // Keep oldest, delete the rest. What is still on screen decides: copies may have been
+  // deleted one by one since the group was drawn, and the oldest one left must stay.
   head.querySelector('.dup-keep-btn').addEventListener('click', async () => {
-    const rest = group.items.slice(1)
+    const rest = liveItems(el).slice(1).map(n => n.dataset.id)
+    if (!rest.length) return
     const ok = await showConfirm({
       title: t('duplicates.confirm_title'),
       message: t('duplicates.confirm_msg', { n: rest.length }),
@@ -134,12 +138,15 @@ function renderGroup(group) {
       icon: 'trash',
     })
     if (!ok) return
-    for (const it of rest) await deleteItem(it.id, el)
+    for (const id of rest) await deleteItem(id, el)
     reconcileGroup(el)
   })
 
   return el
 }
+
+// The group's copies that are still there (oldest first), without the ones animating out
+const liveItems = groupEl => [...groupEl.querySelectorAll('.dup-item:not([data-leaving])')]
 
 function renderItem(item, isOriginal, groupEl) {
   const el = document.createElement('div')
@@ -154,12 +161,12 @@ function renderItem(item, isOriginal, groupEl) {
 
   el.innerHTML = `
     <div class="dup-thumb">
-      <img loading="lazy" decoding="async" src="${esc(convertFileSrc(item.thumb))}" alt="" />
+      <img loading="lazy" decoding="async" src="${esc(toSrc(item.thumb))}" alt="" />
       ${item.kind === 'video' ? `<span class="dup-play">${I('play', 14)}</span>` : ''}
       <button class="dup-del" title="${esc(t('duplicates.delete'))}" aria-label="${esc(t('duplicates.delete'))}">${I('trash', 14)}</button>
     </div>
     <div class="dup-item-meta">
-      <span class="dup-item-date">${esc(isOriginal ? t('duplicates.original') : t('duplicates.copy'))} · ${esc(shortDate(item.created_at))}${colLabel}</span>
+      <span class="dup-item-date"><span class="dup-item-kind">${esc(isOriginal ? t('duplicates.original') : t('duplicates.copy'))}</span> · ${esc(shortDate(item.created_at))}${colLabel}</span>
     </div>
   `
 
@@ -195,21 +202,16 @@ async function deleteItem(id, groupEl) {
 // After deletions, drop groups that no longer have ≥2 items and refresh the summary.
 // Items still animating out (data-leaving) no longer count.
 function reconcileGroup(groupEl) {
-  const left = groupEl.querySelectorAll('.dup-item:not([data-leaving])').length
-  if (left < 2) { motion.collapseOut(groupEl, refreshSummary); return }
-  else {
-    // Re-mark the first remaining item as the original + refresh the count.
-    groupEl.querySelectorAll('.dup-original').forEach(n => n.remove())
-    const first = groupEl.querySelector('.dup-item .dup-thumb')
-    if (first && !first.querySelector('.dup-original')) {
-      const tag = document.createElement('span')
-      tag.className = 'dup-original'
-      tag.textContent = t('duplicates.original')
-      first.appendChild(tag)
-    }
-    const count = groupEl.querySelector('.dup-group-count')
-    if (count) count.textContent = t('duplicates.copies', { n: left })
-  }
+  if (!groupEl) return
+  const left = liveItems(groupEl)
+  if (left.length < 2) { motion.collapseOut(groupEl, refreshSummary); return }
+  // The oldest one left is the original now, and the button says how many it would delete
+  left.forEach((n, i) => {
+    const kind = n.querySelector('.dup-item-kind')
+    if (kind) kind.textContent = i === 0 ? t('duplicates.original') : t('duplicates.copy')
+  })
+  const keep = groupEl.querySelector('.dup-keep-btn')
+  if (keep) keep.textContent = t('duplicates.keep_oldest', { n: left.length - 1 })
   refreshSummary()
 }
 
@@ -236,6 +238,15 @@ export function init(root) {
   _root = root
   store.on(events.NAV_CHANGE, ({ view }) => {
     if (view === 'duplicates') { _loaded = true; render() }
+  })
+  // Deleted from the viewer (opened from here): its tile goes too, so it can't be counted
+  // as the copy that stays
+  store.on(events.GRID_ITEM_DELETED, ({ id }) => {
+    const tile = [...(_root?.querySelectorAll('.dup-item:not([data-leaving])') ?? [])].find(n => n.dataset.id === String(id))
+    if (!tile) return
+    const groupEl = tile.closest('.dup-group')
+    motion.removeWithFlow(tile)
+    reconcileGroup(groupEl)
   })
   // Re-render on language change while the view is open.
   document.addEventListener('i18n:changed', () => { if (_loaded && !_root?.hidden) render() })

@@ -64,19 +64,15 @@ pub struct QueueItem {
     pub preview: Option<String>,
 }
 
-/// What a link can be saved as. A video: the video, its thumbnail (when the page had
-/// one) or just the link. A picture: the picture or the link. A frame taken in the
-/// browser is already a picture.
+/// What a link can be saved as. A video: the video or its thumbnail (when the page had
+/// one). A picture: the picture. A frame taken in the browser is already a picture. (There
+/// was "Link only" too, but qooti has no link items: it downloaded the file anyway.)
 pub fn formats_for(kind: &str, has_thumbnail: bool) -> Vec<&'static str> {
     match kind {
-        "video" => {
-            let mut f = vec!["video"];
-            if has_thumbnail { f.push("thumbnail"); }
-            f.push("link");
-            f
-        }
+        "video" if has_thumbnail => vec!["video", "thumbnail"],
+        "video" => vec!["video"],
         "frame" => vec!["frame"],
-        _ => vec!["image", "link"],
+        _ => vec!["image"],
     }
 }
 
@@ -230,7 +226,6 @@ pub fn payload_for(row: &Row, choice: &str) -> serde_json::Value {
             p
         }
         "thumbnail" => base(row.thumbnail_url.as_deref().unwrap_or(&row.url), "image"),
-        "link" => base(if row.page_url.is_empty() { &row.url } else { &row.page_url }, "link"),
         "frame" => serde_json::json!({
             "file_path": row.file_path, "page_url": row.page_url, "title": row.title,
             "type": "image", "source_platform": row.source_platform,
@@ -383,7 +378,7 @@ pub fn browser_queue_start(app: AppHandle, state: State<'_, AppState>, picks: Ve
                     continue;
                 }
             }
-            // The Free limit is about downloads: links and frames aren't downloads.
+            // The Free limit is about downloads: frames aren't downloads.
             let counts = matches!(choice, "video" | "image" | "thumbnail");
             if free && counts {
                 if crate::extension_server::ext_dl_used_today(&db) >= crate::extension_server::FREE_EXT_DAILY_LIMIT {
@@ -459,9 +454,9 @@ mod tests {
 
     #[test]
     fn formats_follow_what_the_link_is() {
-        assert_eq!(formats_for("video", true), ["video", "thumbnail", "link"]);
-        assert_eq!(formats_for("video", false), ["video", "link"]);
-        assert_eq!(formats_for("image", false), ["image", "link"]);
+        assert_eq!(formats_for("video", true), ["video", "thumbnail"]);
+        assert_eq!(formats_for("video", false), ["video"]);
+        assert_eq!(formats_for("image", false), ["image"]);
         assert_eq!(formats_for("frame", false), ["frame"]);
     }
 
@@ -474,8 +469,6 @@ mod tests {
         assert_eq!(v["thumbnail_url"], "https://img.youtube.com/vi/abc/maxresdefault.jpg");
         let t = payload_for(&r, "thumbnail");
         assert_eq!((t["type"].as_str(), t["url"].as_str()), (Some("image"), Some("https://img.youtube.com/vi/abc/maxresdefault.jpg")));
-        let l = payload_for(&r, "link");
-        assert_eq!((l["type"].as_str(), l["url"].as_str()), (Some("link"), Some("https://www.youtube.com/watch?v=abc&t=10")));
         let mut f = sample_row("frame", None);
         f.file_path = Some("C:/q/frame.jpg".into());
         let fp = payload_for(&f, "frame");
@@ -502,7 +495,7 @@ mod tests {
         }
         let items = list(&db);
         assert_eq!(items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["new", "old"]);
-        assert_eq!(items[0].formats, ["video", "thumbnail", "link"]);
+        assert_eq!(items[0].formats, ["video", "thumbnail"]);
         assert_eq!(items[1].site, "example.com");
     }
 

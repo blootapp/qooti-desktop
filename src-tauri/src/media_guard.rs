@@ -146,8 +146,23 @@ fn classify_or_err(
     }
 }
 
+/// Matroska (.mkv) and WebM start with the same four bytes; what tells them apart is the
+/// DocType further into the EBML header, which `infer` doesn't find in every file. Without
+/// this an .mkv was kept as .webm, and macOS can't play Matroska at all.
+fn is_matroska(header: &[u8]) -> bool {
+    const DOC_TYPE: &[u8] = &[0x42, 0x82, 0x88, b'm', b'a', b't', b'r', b'o', b's', b'k', b'a'];
+    header.starts_with(&[0x1A, 0x45, 0xDF, 0xA3])
+        && header[..header.len().min(256)].windows(DOC_TYPE.len()).any(|w| w == DOC_TYPE)
+}
+
 /// Explicit whitelist: only these content types may enter the vault.
 fn classify(header: &[u8]) -> Option<ValidatedMedia> {
+    if is_matroska(header) {
+        return Some(ValidatedMedia {
+            db_type: "video", subdir: "videos", mime: "video/x-matroska",
+            real_ext: "mkv",  default_ratio: 1.78,
+        });
+    }
     let kind = infer::get(header)?;
     match kind.mime_type() {
         "image/jpeg" => Some(ValidatedMedia {
@@ -247,6 +262,31 @@ mod tests {
     }
 
     // ── Spoofed / malicious files rejected ────────────────────────
+
+    #[test]
+    fn matroska_is_not_webm() {
+        // The first bytes of an Instagram save that ffmpeg merged (VP9 + AAC), and the shorter
+        // header other tools write.
+        const FFMPEG_MKV: &[u8] = &[
+            0x1A, 0x45, 0xDF, 0xA3, 0xA3, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81, 0x01, 0x42, 0xF2, 0x81,
+            0x04, 0x42, 0xF3, 0x81, 0x08, 0x42, 0x82, 0x88, b'm', b'a', b't', b'r', b'o', b's', b'k', b'a',
+            0x42, 0x87, 0x81, 0x04, 0x42, 0x85, 0x81, 0x02, 0x18, 0x53, 0x80, 0x67,
+        ];
+        const SHORT_MKV: &[u8] = &[
+            0x1A, 0x45, 0xDF, 0xA3, 0x93, 0x42, 0x82, 0x88, b'm', b'a', b't', b'r', b'o', b's', b'k', b'a',
+            0x42, 0x87, 0x81, 0x01,
+        ];
+        for (bytes, name) in [(FFMPEG_MKV, "clip.mkv"), (FFMPEG_MKV, "clip.webm"), (SHORT_MKV, "clip.mkv")] {
+            let m = validate_bytes(bytes, name).unwrap();
+            assert_eq!((m.db_type, m.real_ext, m.mime), ("video", "mkv", "video/x-matroska"), "{name}");
+        }
+        // A real WebM stays one.
+        const REAL_WEBM: &[u8] = &[
+            0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81, 0x01, 0x42, 0xF2, 0x81,
+            0x04, 0x42, 0xF3, 0x81, 0x08, 0x42, 0x82, 0x84, b'w', b'e', b'b', b'm', 0x42, 0x87, 0x81, 0x04,
+        ];
+        assert_eq!(validate_bytes(REAL_WEBM, "clip.webm").unwrap().real_ext, "webm");
+    }
 
     #[test]
     fn plaintext_renamed_jpg_rejected() {

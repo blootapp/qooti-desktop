@@ -232,6 +232,7 @@ const tauriApi = {
   getMobileConnectionQr: () => _invoke('get_mobile_connection_qr'),
   resetMobileConnectionKey: () => _invoke('reset_mobile_connection_key'),
   answerExtensionPair:  (origin, allow) => _invoke('answer_extension_pair', { origin, allow }),
+  extensionPageReady:   ()              => _invoke('extension_page_ready'),
   listExtensionClients: () => _invoke('list_extension_clients'),
   removeExtensionClient: origin => _invoke('remove_extension_client', { origin }),
 

@@ -360,6 +360,7 @@ function showColCtxMenu(triggerCard, col) {
       placeholder: t('collection.name_ph'),
       icon: 'folder',
       value: col.name,
+      confirmLabel: t('action.save'),
     })
     if (!name || name === col.name) return
     try {
@@ -481,7 +482,7 @@ async function promptCreate() {
   }
 }
 
-function showCollectionsUpgradeModal() {
+export function showCollectionsUpgradeModal() {
   const existing = document.getElementById('collections-upgrade-modal')
   if (existing) { existing.remove() }
 

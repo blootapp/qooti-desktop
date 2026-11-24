@@ -155,6 +155,10 @@ pub fn run() {
                     if name.starts_with("qooti_cookies_") && name.ends_with(".txt") {
                         std::fs::remove_file(entry.path()).ok();
                     }
+                    // A Notion export unpacked for an import that's long done
+                    if name.starts_with("qooti_notion_") && entry.path().is_dir() {
+                        std::fs::remove_dir_all(entry.path()).ok();
+                    }
                 }
             }
 
@@ -165,7 +169,8 @@ pub fn run() {
                 if tmp_dir.exists() {
                     if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
                         for entry in entries.flatten() {
-                            std::fs::remove_file(entry.path()).ok();
+                            let path = entry.path();   // one folder per download, and loose frames
+                            if path.is_dir() { std::fs::remove_dir_all(&path).ok(); } else { std::fs::remove_file(&path).ok(); }
                         }
                     }
                 }
@@ -230,7 +235,7 @@ pub fn run() {
                 loop {
                     let secs = secs_until_local_midnight();
                     std::thread::sleep(std::time::Duration::from_secs(secs));
-                    process_ext_queue(&queue_handle);
+                    process_ext_queue(&queue_handle, true);
                 }
             });
 
@@ -483,6 +488,7 @@ pub fn run() {
             browser_queue::browser_queue_remove,
             browser_queue::browser_queue_start,
             commands::take_launch_file,
+            extension_server::extension_page_ready,
             commands::find_duplicates,
             updater::apply_update,
             updater::check_for_update,
@@ -505,12 +511,25 @@ pub fn run() {
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
                         if path.extension().and_then(|e| e.to_str()) == Some("qooti") {
-                            let _ = _app.emit("open-qooti-file", path.to_string_lossy().to_string());
+                            let path = path.to_string_lossy().to_string();
+                            // Started by opening the file: the page isn't listening yet, it takes
+                            // the path once it's ready (take_launch_file)
+                            if commands::launch_file_taken() { let _ = _app.emit("open-qooti-file", path); }
+                            else { commands::set_launch_file(Some(path)); }
                         }
                     }
                 }
             }
         });
+}
+
+/// The start of today, local time, in milliseconds.
+fn local_midnight_ms() -> i64 {
+    let today = chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap();
+    match today.and_local_timezone(chrono::Local) {
+        chrono::LocalResult::Single(t) | chrono::LocalResult::Ambiguous(t, _) => t.timestamp_millis(),
+        chrono::LocalResult::None => chrono::Local::now().timestamp_millis() - 86_400_000,
+    }
 }
 
 fn secs_until_local_midnight() -> u64 {
@@ -524,19 +543,24 @@ fn secs_until_local_midnight() -> u64 {
     midnight_local.signed_duration_since(now).num_seconds().max(60) as u64
 }
 
-fn process_ext_queue(app: &tauri::AppHandle) {
-    use tauri::Emitter;
+/// Send the links that wait for the next day to the downloader. At midnight (`all`) every one of
+/// them, and today's count starts at 0. When qooti starts, the ones from earlier days: it may
+/// not have been running at midnight. On Pro nothing has to wait.
+pub(crate) fn process_ext_queue(app: &tauri::AppHandle, all: bool) {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
 
+    let pro = !extension_server::is_free_plan(&extension_server::get_plan(&db));
+    let before = if all || pro { i64::MAX } else { local_midnight_ms() };
+
     let items: Vec<(String, String, String, String, String)> = {
         let mut stmt = match db.prepare(
-            "SELECT id, url, page_url, title, source_platform FROM ext_download_queue ORDER BY queued_at ASC"
+            "SELECT id, url, page_url, title, source_platform FROM ext_download_queue WHERE queued_at < ?1 ORDER BY queued_at ASC"
         ) {
             Ok(s)  => s,
             Err(_) => return,
         };
-        stmt.query_map([], |row| {
+        stmt.query_map([before], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -551,18 +575,20 @@ fn process_ext_queue(app: &tauri::AppHandle) {
 
     if items.is_empty() { return; }
 
-    let _ = db.execute("DELETE FROM ext_download_queue", []);
-    let _ = db.execute(
-        "INSERT OR REPLACE INTO preferences (key, value) VALUES ('ext_dl_count', '0')",
-        [],
-    );
+    let _ = db.execute("DELETE FROM ext_download_queue WHERE queued_at < ?1", [before]);
+    if all {
+        let _ = db.execute(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES ('ext_dl_count', '0')",
+            [],
+        );
+    }
     drop(db);
 
     log::info!(target: "QueueProcessor", "processing {} queued ext items", items.len());
 
     for (_, url, page_url, title, platform) in items {
         let ext_id = uuid::Uuid::new_v4().to_string();
-        let _ = app.emit("extension-item-received", serde_json::json!({
+        extension_server::deliver(app, serde_json::json!({
             "url":             url,
             "page_url":        page_url,
             "title":           title,

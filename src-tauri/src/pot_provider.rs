@@ -120,7 +120,11 @@ pub fn ensure_downloaded(app: &AppHandle) -> Result<PathBuf, String> {
 
     let url = format!("https://api.bloot.app/download/qooti-pot-{TARGET}.gz");
     diag(app, format!("downloading provider ({TARGET})…"));
-    let resp = ureq::get(&url).call().map_err(|e| format!("download failed: {e}"))?;
+    let resp = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(20))
+        .timeout_read(std::time::Duration::from_secs(60))   // per read: a stalled line can't hold the queue
+        .build()
+        .get(&url).call().map_err(|e| format!("download failed: {e}"))?;
     let mut gz = Vec::new();
     resp.into_reader().read_to_end(&mut gz).map_err(|e| e.to_string())?;
     diag(app, format!("downloaded {} MB (gz), decompressing…", gz.len() / 1_048_576));

@@ -1,9 +1,9 @@
 import { api } from './tauri-api.js'
 import { t } from './i18n.js'
 import { isStarterPreview } from './starter.js'
+import { EXT_URL } from './links.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
-const EXT_URL  = 'https://chromewebstore.google.com/detail/feopgkjmnlaokclcpphaejjlpgdncdjf?utm_source=item-share-cb'
 
 const PAD = 6   // spotlight padding around target element
 
@@ -212,9 +212,7 @@ function _showExtensionPromo() {
   // Guide A3·6: the extension's own icon, title, one line, then "Maybe later" + the primary
   card.style.cssText = 'background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:12px;padding:24px 20px 20px;max-width:360px;width:90%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;animation:ep-card-in 0.32s cubic-bezier(0.16,1,0.3,1) forwards'
   card.innerHTML = `
-    <div style="width:44px;height:44px;border-radius:10px;background:#0338FA;display:flex;align-items:center;justify-content:center;margin-bottom:8px">
-      <img src="/assets/brand/mark-white.svg" alt="" style="width:24px;height:24px" />
-    </div>
+    <img src="/assets/brand/extension-icon.svg" alt="" width="44" height="44" style="display:block;margin-bottom:8px" />
     <h2 style="margin:0;font-size:15px;font-weight:600;color:var(--text-primary);line-height:1.4">${t('ext.promo.title')}</h2>
     <p style="margin:0;font-size:12px;color:var(--text-secondary);line-height:1.5">${t('ext.promo.body')}</p>
     <div style="display:flex;gap:8px;margin-top:12px">

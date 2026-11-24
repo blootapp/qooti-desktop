@@ -1,11 +1,11 @@
-# Generates extension/icons/ PNG files from assets/logo solo.png
+# Generates extension/icons/ PNG files from assets/extension-logo.png
 # Run once from the repo root: .\scripts\setup-extension-icons.ps1
 
 param([string]$Root = $PSScriptRoot + '\..')
 
 Add-Type -AssemblyName System.Drawing
 
-$src  = Join-Path $Root 'assets\logo solo.png'
+$src  = Join-Path $Root 'assets\extension-logo.png'
 $dest = Join-Path $Root 'extension\icons'
 
 if (!(Test-Path $src)) {

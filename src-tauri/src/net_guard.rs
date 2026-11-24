@@ -104,7 +104,12 @@ impl ureq::Resolver for PublicOnly {
 /// An HTTP client that only talks to the public internet. Use it for every fetch of
 /// an address that came from a page, the phone or a pasted link.
 pub fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().resolver(PublicOnly).build()
+    ureq::AgentBuilder::new()
+        .resolver(PublicOnly)
+        .timeout_connect(std::time::Duration::from_secs(20))
+        // Per read, not in total: a connection that stalls can't hold the download queue forever
+        .timeout_read(std::time::Duration::from_secs(60))
+        .build()
 }
 
 #[cfg(test)]

@@ -170,6 +170,10 @@ pub fn start(app: AppHandle) {
                             continue;
                         }
 
+                        // A frame taken from a video is a new picture, not a download: it is never
+                        // "already saved" (its address is the video's page) and doesn't count.
+                        let is_frame = payload.get("data_url").and_then(|v| v.as_str()).is_some();
+
                         // Duplicate check: if this URL is already in the library,
                         // return immediately with the existing inspiration_id — no download needed.
                         let check_url = payload.get("url")
@@ -177,7 +181,7 @@ pub fn start(app: AppHandle) {
                             .or_else(|| payload.get("page_url").and_then(|v| v.as_str()))
                             .unwrap_or("")
                             .to_string();
-                        if !check_url.is_empty() {
+                        if !check_url.is_empty() && !is_frame {
                             let state = app.state::<crate::AppState>();
                             let existing: Option<String> = {
                                 let db = state.db.lock().unwrap();
@@ -202,7 +206,7 @@ pub fn start(app: AppHandle) {
                             let state = app.state::<crate::AppState>();
                             let db = state.db.lock().unwrap();
                             let plan = get_plan(&db);
-                            if is_free_plan(&plan) {
+                            if is_free_plan(&plan) && !is_frame {
                                 let used = ext_dl_used_today(&db);
                                 if used >= FREE_EXT_DAILY_LIMIT {
                                     // Queue the URL for midnight processing
@@ -287,7 +291,6 @@ pub fn start(app: AppHandle) {
                         // Frame capture: data_url field → decode, write temp JPEG, replace with file_path
                         let data_url_opt = payload.get("data_url")
                             .and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let is_frame = data_url_opt.is_some();
                         if let Some(data_url) = data_url_opt {
                             match save_frame(&app, &data_url) {
                                 Ok(path) => {
@@ -299,7 +302,7 @@ pub fn start(app: AppHandle) {
                             }
                         }
                         log::info!(target: "ExtServer", "save_queued ext_id={ext_id} is_frame={is_frame}");
-                        app.emit("extension-item-received", &payload).ok();
+                        deliver(&app, payload);
                         respond_json(request, &serde_json::json!({
                             "ok": true,
                             "ext_id": ext_id,
@@ -375,7 +378,7 @@ pub fn start(app: AppHandle) {
                     // stuck longer than their budget.  Prevents immortal toasts
                     // when JS-side finalization silently fails.
                     let budget = match prog.status.as_str() {
-                        "finalizing"  => std::time::Duration::from_secs(60),
+                        "finalizing"  => std::time::Duration::from_secs(240),   // a big MKV is repackaged here
                         "pending"     => std::time::Duration::from_secs(120),
                         "downloading" => std::time::Duration::from_secs(900),
                         _             => std::time::Duration::MAX,
@@ -423,6 +426,7 @@ pub fn start(app: AppHandle) {
                     if !insp_id.is_empty() {
                         if let Some(w) = app.get_webview_window("main") {
                             let _ = w.show();
+                            let _ = w.unminimize();
                             let _ = w.set_focus();
                         }
                         let _ = app.emit("extension:open-item",
@@ -915,6 +919,45 @@ fn check_extension_auth(request: &tiny_http::Request, app: &AppHandle) -> bool {
     let db = state.db.lock().unwrap();
     load_clients(&db).iter().any(|c|
         same_secret(given.as_bytes(), c.key.as_bytes()) && origin.as_deref().map_or(true, |o| o == c.origin))
+}
+
+// The server runs before the window's page listens (the first second or so after start). What
+// comes in meanwhile waits here: an event nobody hears is gone, though the browser was told
+// "saved" and the Free plan's save was counted.
+static PAGE_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static EARLY: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+
+/// Hand a save to the window's page: now, or as soon as it listens.
+pub fn deliver(app: &AppHandle, payload: serde_json::Value) {
+    {
+        let mut early = EARLY.lock().unwrap_or_else(|e| e.into_inner());
+        if !PAGE_READY.load(std::sync::atomic::Ordering::SeqCst) { early.push(payload); return; }
+    }
+    let _ = app.emit("extension-item-received", &payload);
+}
+
+/// The questions to a person that are still open: browsers waiting for Allow.
+fn open_questions() -> Vec<serde_json::Value> {
+    pairing().lock().unwrap_or_else(|e| e.into_inner()).iter().filter_map(|(origin, s)| match s {
+        PairState::Pending { browser, .. } => Some(serde_json::json!({ "origin": origin, "browser": browser })),
+        PairState::Denied { .. } => None,
+    }).collect()
+}
+
+/// The page listens now: it gets the saves that came before, yesterday's "at midnight" links, and
+/// the browsers that asked to connect before anyone could be asked.
+#[tauri::command]
+pub fn extension_page_ready(app: AppHandle) -> Vec<serde_json::Value> {
+    let waiting = {
+        let mut early = EARLY.lock().unwrap_or_else(|e| e.into_inner());
+        PAGE_READY.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::mem::take(&mut *early)
+    };
+    if !waiting.is_empty() { log::info!(target: "ExtServer", "early_items={}", waiting.len()); }
+    for payload in waiting { let _ = app.emit("extension-item-received", &payload); }
+    let due = app.clone();
+    std::thread::spawn(move || crate::process_ext_queue(&due, false));
+    open_questions()
 }
 
 /// The user's answer to "Connect your browser?" in the app.

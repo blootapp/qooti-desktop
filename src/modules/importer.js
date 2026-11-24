@@ -6,6 +6,7 @@ import { startTask } from './progress-ring.js'
 import { logAction } from './diagnostics.js'
 import { t } from './i18n.js'
 import { friendlyDownloadError } from './download-errors.js'
+import { showCollectionsUpgradeModal } from './collections.js'
 
 const IS_TAURI = '__TAURI_INTERNALS__' in window
 const YT_RE   = /(?:youtube\.com|youtu\.be)/i
@@ -26,6 +27,9 @@ let _isOpen = false
 let _analysis = null  // { source_type, media_count, display_name }
 let _sourcePath = null
 
+// The collection what's imported goes into ("Add items" of an empty collection), or null
+let _into = null      // { id, name }
+
 // Active video download state (reset each time startVideoDownload runs)
 let _activeDownloadId  = null
 let _activeRingTask    = null
@@ -44,7 +48,7 @@ export function init() {
   // data-i18n covers the static text; attributes/placeholders are re-applied here.
   document.addEventListener('i18n:changed', applyAttrLabels)
 
-  store.on(events.IMPORT_REQUESTED, () => openModal())
+  store.on(events.IMPORT_REQUESTED, detail => openModal(detail?.collection ?? null))   // no payload arrives as null
 
   // Files dropped onto the window while modal is open → handle here
   store.on(events.FILES_DROPPED, ({ paths }) => {
@@ -68,9 +72,10 @@ export function openWith(paths) {
   handleDroppedPaths(paths)
 }
 
-export function openModal() {
+export function openModal(into = null) {
   if (_isOpen) return
   _isOpen = true
+  _into = into
   resetState()
   _modal.hidden = false
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -111,7 +116,19 @@ function resetState() {
   clearDropZoneThumbnail()
   _modal.querySelector('#import-drop-zone').classList.remove('drag-over')
   _modal.querySelector('#import-save-as-collection').checked = true
+  _modal.querySelector('.import-save-collection-row').hidden = false
   _modal.querySelector('#import-collection-field').hidden    = false
+}
+
+/** Put items into the collection the importer was opened for. */
+async function fileInto(into, ids) {
+  if (!into || !ids.length) return
+  for (const id of ids) {
+    try { await api.addToCollection(into.id, id) }
+    catch (err) { console.error('[importer] add to collection failed:', err); return }
+  }
+  store.emit(events.COLLECTION_UPDATED, { collection: into })
+  store.emit(events.GRID_RELOAD)   // the open collection is read again, with its count
 }
 
 // ─── Build modal HTML ────────────────────────────────────────────
@@ -359,7 +376,7 @@ async function browseFiles() {
   }
   const selected = await open({
     multiple: true,
-    filters: [{ name: t('import.filter_name'), extensions: ['jpg','jpeg','png','webp','avif','gif','mp4','webm','mov','avi','mkv','zip','qooti'] }],
+    filters: [{ name: t('import.filter_name'), extensions: ['jpg','jpeg','png','webp','avif','gif','mp4','webm','mov','mkv','zip','qooti'] }],
   }).catch(() => null)
   if (!selected) return
   const paths = Array.isArray(selected) ? selected : [selected]
@@ -413,6 +430,12 @@ function showAnalysis(analysis, sourcePath) {
   const nameInput = _modal.querySelector('#import-collection-input')
   nameInput.value = analysis.display_name || ''
 
+  // A qooti pack brings its own collection: nothing to choose
+  const isPack = analysis.source_type === 'qooti'
+  _modal.querySelector('.import-save-collection-row').hidden = isPack
+  _modal.querySelector('#import-collection-field').hidden =
+    isPack || !_modal.querySelector('#import-save-as-collection').checked
+
   showPane('analysis')
   setTimeout(() => nameInput.focus(), 50)
 }
@@ -464,6 +487,7 @@ async function startArchiveImport() {
 
 // ─── Direct file import ──────────────────────────────────────────
 async function runFileImport(paths, collectionName) {
+  const into = collectionName ? null : _into
   showPane('progress')
   setProgress(0, t('import.progress', { i: 0, n: paths.length }))
 
@@ -482,7 +506,7 @@ async function runFileImport(paths, collectionName) {
 
   // Everything was already here: say so right away (and offer to show it) instead of a
   // silent "0 files" that looks like the import failed.
-  if (!imported.length && existing.length && !failed && !collectionName) {
+  if (!imported.length && existing.length && !failed && !collectionName && !into) {
     closeModal()
     const one = existing.length === 1
     store.emit(events.SYSTEM_TOAST, {
@@ -509,13 +533,16 @@ async function runFileImport(paths, collectionName) {
       }
       store.emit(events.COLLECTION_CREATED, { collection: col })
     } catch (err) {
-      console.error('[importer] collection creation failed:', err)
+      // The items are in; the Free plan's collections are full, so say why there's no new one
+      if (String(err).includes('UPGRADE_REQUIRED:collections_limit')) showCollectionsUpgradeModal()
+      else console.error('[importer] collection creation failed:', err)
     }
   }
+  await fileInto(into, [...imported.map(i => i.id), ...existing])
 
   if (imported.length) {
     sfx.success()
-    store.emit(events.GRID_RELOAD)
+    if (!into) store.emit(events.GRID_RELOAD)
   }
 
   // Stay on modal, close after a beat (a little longer when there's more to read)
@@ -564,6 +591,7 @@ function clearDropZoneThumbnail() {
 async function startThumbDownload() {
   const url = _modal.querySelector('#import-url-input').value.trim()
   if (!url) return
+  const into = _into
   showPane('progress')
   setProgress(0, t('import.fetching_thumb'), true)
   try {
@@ -571,9 +599,10 @@ async function startThumbDownload() {
     setProgress(0.5, t('import.importing'), true)
     const result = await api.importFiles([thumbPath])
     setProgress(1, t('import.cover_saved'))
+    await fileInto(into, [...(result.imported ?? []).map(i => i.id), ...(result.existing ?? [])])
     if (result.imported?.length) {
       sfx.success()
-      store.emit(events.GRID_RELOAD)
+      if (!into) store.emit(events.GRID_RELOAD)
     }
     setTimeout(() => { if (_isOpen) closeModal() }, 1400)
   } catch (err) {
@@ -584,11 +613,13 @@ async function startThumbDownload() {
 async function startVideoDownload() {
   const url = _modal.querySelector('#import-url-input').value.trim()
   if (!url) return
+  const into = _into
 
   // Saved from this link before (also as a share link, youtu.be, …): no download, just say so
   const existing = await api.checkUrlExists(url).catch(() => null)
   if (existing) {
     closeModal()
+    await fileInto(into, [existing.id])
     store.emit(events.SYSTEM_TOAST, {
       type: 'info',
       message: t('import.already_one'),
@@ -642,19 +673,23 @@ async function startVideoDownload() {
 
     const finalize = async () => {
       let imported = 0
+      const ids = []
       for (const filePath of paths) {
         try {
-          await api.finalizeDownload(filePath, url)
+          const item = await api.finalizeDownload(filePath, url)
+          if (item?.id) ids.push(item.id)
           imported++
         } catch (err) {
           const msg = String(err)
           if (msg.includes('duplicate')) {
             imported++
+            const have = msg.match(/duplicate:([\w-]+)/)?.[1]
+            if (have) ids.push(have)   // it was in the library already: file that one
           } else {
             console.error('[importer] finalizeDownload failed, falling back to importFiles:', msg)
             try {
               const r = await api.importFiles([filePath])
-              if (r?.imported?.length) imported++
+              if (r?.imported?.length) { imported++; ids.push(...r.imported.map(i => i.id)) }
             } catch (err2) {
               console.error('[importer] importFiles fallback failed:', String(err2))
               if (!_downloadMinimized) setProgress(0, t('dl.err.save_failed'))
@@ -662,6 +697,7 @@ async function startVideoDownload() {
           }
         }
       }
+      await fileInto(into, ids)
       return imported
     }
 

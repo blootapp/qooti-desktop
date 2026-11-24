@@ -93,9 +93,12 @@ export function applyVisualSettings(s) {
   if (accent !== 'blue') html.classList.add(`accent-${accent}`)
 
   // Card label visibility
-  document.body.classList.toggle('hide-platform-label',   !(s.show_platform_label   ?? true))
-  document.body.classList.toggle('hide-collection-label', !(s.show_collection_label ?? true))
+  document.body.classList.toggle('hide-platform-label',   !isOn(s.show_platform_label))
+  document.body.classList.toggle('hide-collection-label', !isOn(s.show_collection_label))
 }
+
+// A saved switch: preferences are text, so "off" is the word 'false' (not set = on)
+function isOn(v) { return String(v ?? 'true') !== 'false' }
 
 export async function setSetting(key, value) {
   await api.setSetting(key, value)
@@ -595,7 +598,7 @@ async function render() {
             </div>
             <div class="settings-row-control">
               <label class="s-switch">
-                <input type="checkbox" id="s-platform-label" ${(settings.show_platform_label ?? true) ? 'checked' : ''} />
+                <input type="checkbox" id="s-platform-label" ${isOn(settings.show_platform_label) ? 'checked' : ''} />
                 <span class="s-switch-track"></span>
               </label>
             </div>
@@ -607,7 +610,7 @@ async function render() {
             </div>
             <div class="settings-row-control">
               <label class="s-switch">
-                <input type="checkbox" id="s-collection-label" ${(settings.show_collection_label ?? true) ? 'checked' : ''} />
+                <input type="checkbox" id="s-collection-label" ${isOn(settings.show_collection_label) ? 'checked' : ''} />
                 <span class="s-switch-track"></span>
               </label>
             </div>
@@ -938,12 +941,12 @@ async function render() {
 
 
   container.querySelector('#s-platform-label')?.addEventListener('change', e => {
-    setSetting('show_platform_label', e.target.checked)
+    setSetting('show_platform_label', String(e.target.checked))
     document.body.classList.toggle('hide-platform-label', !e.target.checked)
   })
 
   container.querySelector('#s-collection-label')?.addEventListener('change', e => {
-    setSetting('show_collection_label', e.target.checked)
+    setSetting('show_collection_label', String(e.target.checked))
     document.body.classList.toggle('hide-collection-label', !e.target.checked)
   })
 
@@ -979,7 +982,7 @@ async function render() {
           checkUpdateBtn.classList.add('s-update-available')
           checkUpdateBtn.disabled  = false
           checkUpdateBtn.textContent = tr('settings.update.install', { version: info.version })
-          store.emit(events.UPDATE_AVAILABLE, info)   // also surface the home banner
+          store.emit(events.UPDATE_AVAILABLE, { ...info, asked: true })   // also surface the home banner
         } else {
           checkUpdateBtn.textContent = tr('settings.update.uptodate')
           checkUpdateBtn.classList.add('saved')
@@ -1252,6 +1255,18 @@ async function handleVaultReset(defaultPath) {
   showVaultMigrationOverlay(defaultPath, true)
 }
 
+// Why the library didn't move, in the app's language (the raw reason goes to the log)
+function vaultError(raw) {
+  if (raw.includes('A download is running'))       return tr('vault.err.busy')
+  if (raw.includes('same as the current'))         return tr('vault.err.same')
+  if (raw.includes('cannot be inside'))            return tr('vault.err.inside')
+  if (raw.includes('already contains files'))      return tr('vault.err.not_empty')
+  if (raw.includes('path is too long'))            return tr('vault.err.too_long')
+  const space = raw.match(/Need ([\d.]+) GB, only ([\d.]+) GB/)
+  if (space) return tr('vault.err.space', { need: space[1], free: space[2] })
+  return tr('vault.err.generic')
+}
+
 function showVaultMigrationOverlay(newPath, migrate) {
   const overlay = document.createElement('div')
   overlay.className = 'vault-migrate-overlay'
@@ -1284,6 +1299,8 @@ function showVaultMigrationOverlay(newPath, migrate) {
       bar.style.width = '100%'
       unlistenProgress?.()
       unlistenComplete?.()
+      // Home and the viewer hold the old places of every file: read the library again
+      store.emit(events.GRID_RELOAD, {})
       setTimeout(() => { overlay.remove(); render() }, 600)
     }),
   ]).then(([a, b]) => {
@@ -1295,13 +1312,9 @@ function showVaultMigrationOverlay(newPath, migrate) {
     unlistenComplete?.()
     overlay.remove()
 
-    const deletePath = String(err).match(/You can delete the incomplete folder at (.+)\./)
-    const message = deletePath
-      ? `Your library is safe at its original location.\n\nThe incomplete folder can be deleted:\n${deletePath[1]}`
-      : String(err)
-
+    console.error('[settings] library move failed:', String(err))
     const { showAlert } = await import('./dialog.js')
-    showAlert({ title: tr('vault.failed.title'), message, danger: true })
+    showAlert({ title: tr('vault.failed.title'), message: vaultError(String(err)), danger: true })
   })
 }
 
@@ -1318,6 +1331,12 @@ function bindPlanRefreshBtn() {
     btn.textContent = '…'
 
     store.emit(events.LICENSE_MANUAL_REFRESH)
+
+    // No answer (offline, bloot apps closed): the button doesn't stay on "…"
+    setTimeout(() => {
+      const b = container?.querySelector('#s-plan-refresh')
+      if (b?.textContent === '…') b.textContent = '↻'
+    }, 12_000)
 
     // Re-enable after cooldown; label updates when LICENSE_STATUS_CHANGED fires
     setTimeout(() => {

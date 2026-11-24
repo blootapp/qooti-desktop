@@ -171,9 +171,15 @@ pub fn set_launch_file(path: Option<String>) {
     *launch_file().lock().unwrap() = path;
 }
 
+/// The page has asked for its launch file: from here on a .qooti file opens through the event.
+static LAUNCH_TAKEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn launch_file_taken() -> bool { LAUNCH_TAKEN.load(Ordering::SeqCst) }
+
 /// Frontend pulls (and clears) the launch file on boot.
 #[tauri::command]
 pub fn take_launch_file() -> Option<String> {
+    LAUNCH_TAKEN.store(true, Ordering::SeqCst);
     launch_file().lock().unwrap().take()
 }
 
@@ -213,6 +219,11 @@ pub fn mark_ext_quota_charged(ext_id: &str) {
     charged_ext_ids().lock().unwrap().insert(ext_id.to_string());
 }
 
+// ext_ids whose counted download is under way or finished but not in the library yet. When
+// the file turns out to be there already (finalize_download), the save is given back.
+static COUNTED_EXT_IDS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+fn counted_ext_ids() -> &'static Mutex<HashSet<String>> { COUNTED_EXT_IDS.get_or_init(Default::default) }
+
 /// Attempt to pop one request from the queue and start it.
 /// Uses compare_exchange(0 → 1) so only one caller wins the slot.
 fn try_start_next() {
@@ -234,10 +245,15 @@ fn try_start_next() {
             running_downloads().lock().unwrap().insert(r.download_id.clone());
             std::thread::spawn(move || {
                 let (app, id, charged, from_ext) = (r.app.clone(), r.download_id.clone(), r.charged, r.ext_id.is_some());
+                let (tmp_dir, eid) = (r.tmp_dir.clone(), r.ext_id.clone());
                 run_ytdlp(r.app, r.download_id, r.url, r.quality, r.tmp_dir, r.ext_id);
                 // All run_ytdlp exit paths (success, error, cancel, early-return) land here.
                 let succeeded = completed_downloads().lock().unwrap().remove(&id);
                 if charged && !succeeded { refund_download_quota(&app, from_ext); }
+                if !succeeded {
+                    if let Some(eid) = &eid { counted_ext_ids().lock().unwrap().remove(eid); }
+                    std::fs::remove_dir_all(&tmp_dir).ok();   // this download's own folder, with its partial files
+                }
                 running_downloads().lock().unwrap().remove(&id);
                 cancelled_downloads().lock().unwrap().remove(&id);
                 ACTIVE_DOWNLOADS.fetch_sub(1, Ordering::SeqCst);
@@ -283,6 +299,8 @@ fn cancel_download_by_id(app: &AppHandle, download_id: &str) -> bool {
         "message": "Cancelled",
     }));
     cancelled_downloads().lock().unwrap().insert(download_id.to_string());
+    let eid = app.state::<AppState>().ext_id_map.lock().unwrap().get(download_id).cloned();
+    if let Some(eid) = eid { set_ext_progress(app, &eid, 0.0, "", "cancelled", "Cancelled"); }
     let pid = active_pids().lock().unwrap().remove(download_id);
     log::info!(target: "Download", "cancel_running pid={pid:?} download_id={download_id}");
     if let Some(pid) = pid { kill_process_tree(pid); }
@@ -465,13 +483,15 @@ pub struct ImportResult {
     pub existing: Vec<String>,
 }
 
-#[tauri::command]
+// Off the main thread: reading, hashing and copying a big video would freeze the window.
+#[tauri::command(async)]
 pub fn import_files(
     paths: Vec<String>,
     import_source: Option<String>,
     app: AppHandle,
     state: State<AppState>,
 ) -> Result<ImportResult, String> {
+    let _one_at_a_time = FINALIZING.lock().unwrap_or_else(|e| e.into_inner());
     log::info!(target: "Import", "start count={}", paths.len());
     let src_label = import_source.as_deref().unwrap_or("file_import");
     let vault_path = vault::get_vault_path(&app).map_err(|e| e.to_string())?;
@@ -882,8 +902,8 @@ fn fold_sql(expr: &str) -> String {
 fn search_condition(q: &str) -> (String, Vec<String>) {
     let like = format!("%{}%", fold_apostrophes(&q.to_lowercase()));
     let fts = to_fts_query(q);
-    let mut ors: Vec<String> = Vec::with_capacity(2);
-    let mut args: Vec<String> = Vec::with_capacity(4);
+    let mut ors: Vec<String> = Vec::with_capacity(4);
+    let mut args: Vec<String> = Vec::with_capacity(8);
     if !fts.is_empty() {
         ors.push("rowid IN (SELECT rowid FROM inspirations_fts WHERE inspirations_fts MATCH ?)".into());
         args.push(fts);
@@ -899,6 +919,19 @@ fn search_condition(q: &str) -> (String, Vec<String>) {
         uz = fold_sql("json_extract(c.labels_json, '$.uz')"),
     ));
     args.extend([like.clone(), like.clone(), like]);
+    // SQLite's LOWER only knows A–Z: a tag saved as "Дизайн" keeps its capital there, so the
+    // query is also tried with a capital first letter and in capitals.
+    if !q.is_ascii() {
+        let lower = fold_apostrophes(&q.to_lowercase());
+        let mut first = lower.chars();
+        let capital = first.next().map(|c| c.to_uppercase().chain(first).collect::<String>()).unwrap_or_default();
+        for v in [capital, lower.to_uppercase()] {
+            ors.push(format!(
+                "id IN (SELECT it.inspiration_id FROM inspiration_tags it JOIN tags t ON t.id = it.tag_id \
+                        WHERE (t.concept_id IS NULL OR t.source IN ('user', 'import')) AND {} LIKE ?)", fold_sql("t.name")));
+            args.push(format!("%{v}%"));
+        }
+    }
     (format!("({})", ors.join(" OR ")), args)
 }
 
@@ -1131,7 +1164,8 @@ pub fn update_inspiration(id: String, title: Option<String>, palette: Option<Str
     let db = state.db.lock().unwrap();
     let now = now_ms();
     if let Some(t) = title {
-        db.execute("UPDATE inspirations SET title = ?1, updated_at = ?2 WHERE id = ?3", params![t, now, id]).map_err(|e| e.to_string())?;
+        // An emptied title is "no title" again
+        db.execute("UPDATE inspirations SET title = NULLIF(TRIM(?1), ''), updated_at = ?2 WHERE id = ?3", params![t, now, id]).map_err(|e| e.to_string())?;
     }
     if let Some(p) = palette {
         db.execute("UPDATE inspirations SET palette = ?1, updated_at = ?2 WHERE id = ?3", params![p, now, id]).map_err(|e| e.to_string())?;
@@ -1765,7 +1799,7 @@ fn delete_collection_with(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_collection(
     collection_id: String,
     save_path: String,
@@ -2275,7 +2309,7 @@ pub async fn export_all_items(
     }).await.map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_qooti_pack(
     path: String,
     app: AppHandle,
@@ -2368,11 +2402,21 @@ pub fn import_qooti_pack(
         };
         {
             let db = state.db.lock().unwrap();
-            let count: i64 = db.query_row(
-                "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1",
+            let have: Option<String> = db.query_row(
+                "SELECT id FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1 LIMIT 1",
                 params![hash], |r| r.get(0),
-            ).unwrap_or(0);
-            if count > 0 { skipped_count += 1; continue; }
+            ).ok();
+            if let Some(have) = have {
+                // Already in the library: it goes into the pack's collection all the same, or
+                // importing on a second computer would leave holes in it. Its own tags stay as
+                // they are.
+                db.execute(
+                    "INSERT OR IGNORE INTO collection_items (collection_id, inspiration_id, created_at) VALUES (?1,?2,?3)",
+                    params![col_id, have, now],
+                ).ok();
+                imported_count += 1;
+                continue;
+            }
         }
 
         // Write media to vault
@@ -3836,7 +3880,7 @@ pub fn reindex_library(state: State<AppState>) -> Result<ReindexResult, String> 
 
 // ─── Vault ────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_vault_info(app: AppHandle, state: State<AppState>) -> Result<VaultInfo, String> {
     let vault_path   = vault::get_vault_path(&app).map_err(|e| e.to_string())?;
     let default_path = vault::default_vault_path(&app).map_err(|e| e.to_string())?;
@@ -3914,8 +3958,19 @@ pub async fn relocate_vault(
         }
     }
 
+    // A download writes into the old folder while it runs, and would land in neither
+    if migrate && ACTIVE_DOWNLOADS.load(Ordering::SeqCst) > 0 {
+        return Err("A download is running. Wait until it finishes, then move the library.".into());
+    }
+    // Nothing is put into the library while its files are on the move (finalize_download and
+    // import_files wait for this)
+    let _hold = FINALIZING.lock().unwrap_or_else(|e| e.into_inner());
+
     // Check destination has no existing files (subdirs from a prior vault structure are fine)
-    if new_vault.exists() && vault::dir_size_bytes(&new_vault) > 0 {
+    // (nor do leftovers of a download or a crop: a library that moved away leaves those behind,
+    // and they must not stop it from moving back)
+    if new_vault.exists() && library_files(&new_vault).iter()
+        .any(|(src, _)| std::fs::metadata(src).map(|m| m.len() > 0).unwrap_or(false)) {
         return Err(format!(
             "Destination folder already contains files: {}. Choose an empty folder.",
             new_path
@@ -3946,48 +4001,26 @@ pub async fn relocate_vault(
     // ── Create new vault structure ─────────────────────────────────
     vault::ensure_structure(&new_vault).map_err(|e| e.to_string())?;
 
-    let mut files_moved: u64 = 0;
+    // The files that are safely in the new folder (relative paths): only these may be deleted
+    // from the old one afterwards.
+    let mut copied = std::collections::BTreeMap::new();
 
     if migrate {
-        // Collect all files to copy
-        let files = collect_vault_files(&old_vault);
-        let total = files.len() as u64;
-
-        let _ = app.emit("vault:relocate-progress", serde_json::json!({ "done": 0, "total": total }));
-
-        for (src, rel) in &files {
-            let dst = new_vault.join(rel);
-            if let Some(parent) = dst.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    // cleanup partial new vault
-                    let _ = std::fs::remove_dir_all(&new_vault);
-                    e.to_string()
-                })?;
-            }
-            std::fs::copy(src, &dst).map_err(|e| {
-                let _ = std::fs::remove_dir_all(&new_vault);
-                format!("Failed to copy {:?}: {}", src, e)
-            })?;
-            files_moved += 1;
-            let _ = app.emit("vault:relocate-progress", serde_json::json!({ "done": files_moved, "total": total }));
-        }
-
-        // ── Verify: file count and total size must match ───────────
-        let new_size  = vault::dir_size_bytes(&new_vault);
-        let old_size  = vault::dir_size_bytes(&old_vault);
-        let new_count = collect_vault_files(&new_vault).len();
-        if new_count != files.len() || new_size < old_size {
-            // Verification failed — roll back
+        copied = copy_library(&old_vault, &new_vault, &mut |done, total| {
+            let _ = app.emit("vault:relocate-progress", serde_json::json!({ "done": done, "total": total }));
+        }).map_err(|e| {
             let _ = std::fs::remove_dir_all(&new_vault);
-            return Err(format!(
-                "Verification failed: {}/{} files copied. Rolled back — your library is safe at {}. You can delete the incomplete folder at {}.",
-                new_count, files.len(), old_vault.display(), new_vault.display()
-            ));
-        }
+            e
+        })?;
     }
+    let files_moved = copied.len() as u64;
 
     // ── Commit: write new vault path ───────────────────────────────
-    vault::write_custom_vault_path(&app, &new_vault).map_err(|e| e.to_string())?;
+    // (the default place is "no custom path", so Settings doesn't offer to reset to it)
+    let was_custom = vault::read_custom_vault_path(&app).ok().flatten();
+    let to_default = vault::default_vault_path(&app).is_ok_and(|d| d == new_vault);
+    if to_default { vault::clear_custom_vault_path(&app) } else { vault::write_custom_vault_path(&app, &new_vault) }
+        .map_err(|e| e.to_string())?;
     let _ = app.asset_protocol_scope().allow_directory(&new_vault, true);
 
     // ── Update absolute paths in DB ────────────────────────────────
@@ -3998,16 +4031,25 @@ pub async fn relocate_vault(
         let new_prefix = new_vault.to_string_lossy().into_owned();
         let db = state.db.lock().unwrap();
         move_library_paths(&db, &old_prefix, &new_prefix).map_err(|e| {
-            // DB update failed — revert vault_path.txt so old location is restored
-            let _ = vault::clear_custom_vault_path(&app);
+            // DB update failed — the library is where it was (its files are all still there)
+            let _ = match &was_custom {
+                Some(p) => vault::write_custom_vault_path(&app, p),
+                None    => vault::clear_custom_vault_path(&app),
+            };
+            let _ = std::fs::remove_dir_all(&new_vault);
             format!("Database path update failed: {e}. Vault location reverted.")
         })?;
+        // A preview saved between the copy and this moment is in the old folder: bring it over
+        if let Ok(late) = copy_library_pass(&old_vault, &new_vault, &mut copied, &mut |_, _| {}) {
+            if late > 0 { let _ = move_library_paths(&db, &old_prefix, &new_prefix); }
+        }
     }
 
     // ── Remove old vault files (only after commit + DB update) ─────
+    // Only what is in the new folder now — never a fresh listing of the old one.
     if migrate {
-        for (src, _) in collect_vault_files(&old_vault) {
-            let _ = std::fs::remove_file(&src);
+        for rel in copied.keys() {
+            if new_vault.join(rel).is_file() { let _ = std::fs::remove_file(old_vault.join(rel)); }
         }
     }
 
@@ -4040,6 +4082,76 @@ fn move_library_paths(db: &rusqlite::Connection, old: &str, new: &str) -> rusqli
         params![old, new],
     ).ok(); // best-effort; missing thumbnails are just cosmetic
     Ok(())
+}
+
+/// Folders inside the library whose files aren't part of it (a running download, a half-made
+/// picture): they neither move nor get deleted with it.
+const VAULT_WORK_DIRS: [&str; 2] = ["downloads_tmp", "temp"];
+
+/// Every file of the library itself, with its path inside the library folder.
+fn library_files(vault: &std::path::Path) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
+    collect_vault_files(vault).into_iter()
+        .filter(|(_, rel)| !rel.components().next()
+            .is_some_and(|c| VAULT_WORK_DIRS.iter().any(|d| c.as_os_str() == *d)))
+        .collect()
+}
+
+/// Copy what isn't in `copied` yet (or has another size there now). Returns how many were copied.
+fn copy_library_pass(
+    old: &std::path::Path,
+    new: &std::path::Path,
+    copied: &mut std::collections::BTreeMap<std::path::PathBuf, u64>,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<u64, String> {
+    let todo: Vec<_> = library_files(old).into_iter()
+        .filter(|(src, rel)| std::fs::metadata(src).map(|m| m.len()).ok() != copied.get(rel).copied())
+        .collect();
+    let total = (copied.len() + todo.len()) as u64;
+    let mut done = copied.len() as u64;
+    let mut n = 0;
+    progress(done, total);
+    for (src, rel) in todo {
+        let dst = new.join(&rel);
+        if let Some(parent) = dst.parent() { std::fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+        match std::fs::copy(&src, &dst) {
+            Ok(bytes) => { copied.insert(rel, bytes); n += 1; }
+            // Deleted while the library was being copied: nothing to bring over
+            Err(_) if !src.exists() => { let _ = std::fs::remove_file(&dst); }
+            Err(e) => return Err(format!("Failed to copy {src:?}: {e}")),
+        }
+        done += 1;
+        progress(done, total);
+    }
+    Ok(n)
+}
+
+/// Copy the whole library. Files that appear or change meanwhile are copied in further passes, and
+/// every file is checked on its own at the end: what comes back is in the new folder for sure.
+fn copy_library(
+    old: &std::path::Path,
+    new: &std::path::Path,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<std::collections::BTreeMap<std::path::PathBuf, u64>, String> {
+    let mut copied = std::collections::BTreeMap::new();
+    for _ in 0..5 {
+        if copy_library_pass(old, new, &mut copied, progress)? == 0 { break; }
+    }
+    // Deleted in the meantime: not part of the library any more
+    copied.retain(|rel, _| {
+        let there = old.join(rel).is_file();
+        if !there { let _ = std::fs::remove_file(new.join(rel)); }
+        there
+    });
+    let missing = copied.iter()
+        .filter(|(rel, size)| std::fs::metadata(new.join(rel)).map(|m| m.len()).ok() != Some(**size))
+        .count();
+    if missing > 0 {
+        return Err(format!(
+            "Verification failed: {}/{} files copied. Rolled back — your library is safe at {}. You can delete the incomplete folder at {}.",
+            copied.len() - missing, copied.len(), old.display(), new.display()
+        ));
+    }
+    Ok(copied)
 }
 
 fn root_component(p: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -4277,15 +4389,19 @@ pub fn download_url(
         return Err(crate::net_guard::PRIVATE_ADDRESS.into());
     }
     let vault_path = vault::get_vault_path(&app).map_err(|e| e.to_string())?;
-    let tmp_dir = vault_path.join("downloads_tmp");
-    std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+    let downloads_tmp = vault_path.join("downloads_tmp");
+    std::fs::create_dir_all(&downloads_tmp).map_err(|e| e.to_string())?;
 
     // In-app downloads (no ext_id) are capped at FREE_DOWNLOAD_DAILY_LIMIT per day for
     // free users. Charged here (so a burst of requests can't overshoot the limit) and
     // refunded by the queue if the download doesn't succeed — failures and cancels
     // don't use up the quota. Extension saves are charged by extension_server.rs.
     let charged = match ext_id {
-        Some(ref eid) => charged_ext_ids().lock().unwrap().remove(eid),
+        Some(ref eid) => {
+            let charged = charged_ext_ids().lock().unwrap().remove(eid);
+            if charged { counted_ext_ids().lock().unwrap().insert(eid.clone()); }
+            charged
+        }
         None => {
             let state = app.state::<AppState>();
             let db = state.db.lock().unwrap();
@@ -4320,6 +4436,10 @@ pub fn download_url(
     };
 
     let download_id = Uuid::new_v4().to_string();
+    // Each download has a folder of its own: two with the same title ("Video by <user>") never
+    // overwrite each other, and what it left behind can't be taken for another one's file.
+    // A short name, because Windows paths are limited to 260 characters.
+    let tmp_dir = downloads_tmp.join(&download_id[..8]);
 
     // Register the ext_id ↔ download_id mapping immediately so that
     // cancel_download_for_ext_id can find queued (not-yet-running) downloads.
@@ -5016,6 +5136,10 @@ fn run_ytdlp(
     }
     log::info!(target: "Download", "start download_id={download_id} url={url:?} quality={quality}");
     let eid = ext_id.as_deref();
+    if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
+        emit_download_error(&app, &download_id, &format!("Failed to save: {e}"), eid);
+        return;
+    }
 
     // Direct image URL: bypass yt-dlp entirely and download via HTTP.
     // yt-dlp cannot handle plain image file URLs (exits with code 1).
@@ -5038,6 +5162,10 @@ fn run_ytdlp(
         let mut candidates: Vec<String> = Vec::new();
         if let Some(hi) = hi_res_image_url(&url) { candidates.push(hi); }
         candidates.push(url.clone());
+        // YouTube has the biggest cover only for HD videos; the smaller ones always exist
+        if url.contains("/maxresdefault.") {
+            for size in ["/sddefault.", "/hqdefault."] { candidates.push(url.replacen("/maxresdefault.", size, 1)); }
+        }
 
         let mut fetched: Option<(Vec<u8>, String)> = None;
         for cand in &candidates {
@@ -5088,8 +5216,10 @@ fn run_ytdlp(
     let ffmpeg_path_str = ffmpeg_binary(&app)
         .map(|p| p.to_string_lossy().into_owned());
 
+    // macOS counts a file name's limit (255) in bytes, so a long Cyrillic title has to be cut by
+    // bytes there; Windows counts characters.
     let out_tpl = tmp_dir
-        .join("%(title).120s.%(ext)s")
+        .join(if cfg!(target_os = "macos") { "%(title).180B.%(ext)s" } else { "%(title).120s.%(ext)s" })
         .to_string_lossy()
         .into_owned();
 
@@ -5350,23 +5480,34 @@ fn run_ytdlp(
         }
     };
 
-    // Watchdog: kill the child if the total download exceeds 15 minutes.
-    // Covers yt-dlp hanging during HLS segment loops, ffmpeg post-processing, or stalled
-    // auth flows that --socket-timeout doesn't catch (socket is open but data never moves).
-    const DOWNLOAD_TIMEOUT_SECS: u64 = 15 * 60;
+    // Watchdog: kill the child when nothing has moved for 15 minutes (yt-dlp hanging in an HLS
+    // segment loop, ffmpeg post-processing or a stalled auth flow that --socket-timeout doesn't
+    // catch: the socket is open but no data comes). A long video on a slow line keeps printing
+    // progress, so it isn't cut off any more; a stream that never ends still is, at 3 hours.
+    const DOWNLOAD_STALL_SECS: u64 = 15 * 60;
+    const DOWNLOAD_MAX_SECS:   u64 = 3 * 60 * 60;
+    let started  = std::time::Instant::now();
+    let activity = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));   // seconds after `started`
     let timed_out = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (wd_done_tx, wd_done_rx) = std::sync::mpsc::channel::<()>();
     {
         let to_flag  = timed_out.clone();
         let wd_did   = download_id.clone();
-        std::thread::spawn(move || {
-            if wd_done_rx.recv_timeout(std::time::Duration::from_secs(DOWNLOAD_TIMEOUT_SECS)).is_err() {
-                to_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                log::warn!(target: "Download", "watchdog_timeout download_id={wd_did}");
-                if let Some(pid) = active_pids().lock().unwrap().remove(&wd_did) {
-                    kill_process_tree(pid);
-                }
+        let wd_seen  = activity.clone();
+        std::thread::spawn(move || loop {
+            match wd_done_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                _ => return,   // the process ended
             }
+            let now = started.elapsed().as_secs();
+            let idle = now.saturating_sub(wd_seen.load(Ordering::SeqCst));
+            if idle < DOWNLOAD_STALL_SECS && now < DOWNLOAD_MAX_SECS { continue; }
+            to_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            log::warn!(target: "Download", "watchdog_timeout download_id={wd_did} idle={idle} total={now}");
+            if let Some(pid) = active_pids().lock().unwrap().remove(&wd_did) {
+                kill_process_tree(pid);
+            }
+            return;
         });
     }
 
@@ -5378,6 +5519,7 @@ fn run_ytdlp(
     let stderr_lines_shared: std::sync::Arc<std::sync::Mutex<String>> =
         std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let sl_clone = stderr_lines_shared.clone();
+    let err_seen = activity.clone();
 
     let stderr_handle = std::thread::spawn(move || {
         let mut reader  = BufReader::new(stderr);
@@ -5390,6 +5532,7 @@ fn run_ytdlp(
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     total += n;
+                    err_seen.store(started.elapsed().as_secs(), Ordering::SeqCst);
                     let chunk = String::from_utf8_lossy(&buf[..n]);
                     log::debug!(target: "Download", "stderr bytes={n}");
                     sl_clone.lock().unwrap().push_str(&chunk);
@@ -5414,6 +5557,7 @@ fn run_ytdlp(
     let mut stage_rank = 0u8;
     let mut named = false;   // name the download after its first stream (video), not the audio that follows
     for line in BufReader::new(stdout).lines().flatten() {
+        activity.store(started.elapsed().as_secs(), Ordering::SeqCst);
         log::debug!(target: "Download", "stdout={:?}", line);
         if let Some((rank, stage, label)) = extraction_stage(&line) {
             if rank > stage_rank {
@@ -5490,6 +5634,14 @@ fn run_ytdlp(
             return;
         }
         Ok(_) => {}
+    }
+
+    // Stopped by the watchdog: it's over. The fallbacks below look for words that ordinary
+    // YouTube warnings contain too, and would hold the queue for more runs.
+    if timed_out.load(Ordering::SeqCst) {
+        remove_new_files(&tmp_dir, &pre_files);
+        emit_download_error(&app, &download_id, "Download timed out after 15 minutes — the source may be slow or unresponsive.", eid);
+        return;
     }
 
     // ── Failure: fallbacks ────────────────────────────────────────────
@@ -5614,9 +5766,7 @@ fn run_ytdlp(
         || raw_err.contains("HTTP Error 403")
         || raw_err.contains("checkpoint")
         || raw_err.contains("empty media response");
-    let msg = if timed_out.load(std::sync::atomic::Ordering::SeqCst) {
-        "Download timed out after 15 minutes — the source may be slow or unresponsive.".to_string()
-    } else if is_youtube && deno.is_none() {
+    let msg = if is_youtube && deno.is_none() {
         "Couldn't set up YouTube support — check your internet connection and try again.".to_string()
     } else if is_chrome_cookie_err {
         "Chrome blocks cookie access on Windows. Open the link in Chrome and save it via the qooti extension — it sends your session automatically.".to_string()
@@ -5763,10 +5913,53 @@ fn detect_platform(url: &str) -> Option<String> {
     None
 }
 
+/// Longest an .mkv may take to repackage; past it the .mkv is kept as it is.
+const REMUX_LIMIT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// Repackage an .mkv as an .mp4 at `out`: the picture and the sound are copied as they are,
+/// nothing is re-encoded. When a site's best picture is VP9 and its sound AAC (most Instagram
+/// reels), yt-dlp can only merge them into Matroska, which macOS can't play and editing apps
+/// don't open. False when MP4 can't hold the streams; `out` is gone then.
+fn mkv_to_mp4(ffmpeg: &std::path::Path, mkv: &std::path::Path, out: &std::path::Path) -> bool {
+    let done = (|| {
+        let mut child = hidden_command(ffmpeg)
+            .args(["-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-i"]).arg(mkv)
+            .args(["-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-movflags", "+faststart", "-f", "mp4"]).arg(out)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn().ok()?;
+        let started = std::time::Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Some(status.success()),
+                Ok(None) if started.elapsed() < REMUX_LIMIT => std::thread::sleep(std::time::Duration::from_millis(40)),
+                _ => { child.kill().ok(); child.wait().ok(); return None }
+            }
+        }
+    })().unwrap_or(false);
+    let sound = done && crate::media_guard::validate_path(out).map(|v| v.real_ext == "mp4").unwrap_or(false);
+    if !sound { std::fs::remove_file(out).ok(); }
+    sound
+}
+
+/// The folder a finished download's file was in (downloads_tmp/<id>/), once nothing is left in it.
+fn remove_download_folder(file: &std::path::Path) {
+    let Some(dir) = file.parent() else { return };
+    if dir.parent().and_then(|d| d.file_name()).is_some_and(|n| n == "downloads_tmp") {
+        std::fs::remove_dir(dir).ok();   // an empty folder only
+    }
+}
+
+/// One file is put into the library at a time (the command runs off the main thread), so two
+/// downloads of the same thing can't both pass the "already saved" check.
+static FINALIZING: Mutex<()> = Mutex::new(());
+
 // ─── finalize_download ────────────────────────────────────────────
 // Called after yt-dlp finishes. Renames the temp file into the vault
 // and inserts the DB record. Handles both video and image downloads.
-#[tauri::command]
+// Off the main thread: hashing, repackaging and probing a big video would freeze the window.
+#[tauri::command(async)]
 pub fn finalize_download(
     path: String,
     url: Option<String>,
@@ -5775,13 +5968,14 @@ pub fn finalize_download(
     app: AppHandle,
     state: State<AppState>,
 ) -> Result<Inspiration, String> {
+    let _one_at_a_time = FINALIZING.lock().unwrap_or_else(|e| e.into_inner());
     log::info!(target: "Download", "finalize_start path={path:?} ext_id={ext_id:?}");
     let vault_path = vault::get_vault_path(&app).map_err(|e| e.to_string())?;
     vault::ensure_structure(&vault_path).map_err(|e| e.to_string())?;
 
     let src = std::path::Path::new(&path);
 
-    let validated = match crate::media_guard::validate_path(src) {
+    let mut validated = match crate::media_guard::validate_path(src) {
         Ok(v)  => v,
         Err(e) => {
             log::warn!(target: "Download", "guard_rejected path={path:?} error={e}");
@@ -5789,6 +5983,24 @@ pub fn finalize_download(
             return Err(e.user_message());
         }
     };
+    let id = Uuid::new_v4().to_string();
+
+    // An .mkv goes in as .mp4 when it can; made straight at its final place, so a download
+    // that starts meanwhile never sees it in downloads_tmp.
+    let mut remuxed: Option<std::path::PathBuf> = None;
+    if validated.real_ext == "mkv" {
+        let out = vault_path.join(validated.subdir).join(format!("{id}.mp4"));
+        if ffmpeg_binary(&app).is_some_and(|ff| mkv_to_mp4(&ff, src, &out)) {
+            if let Ok(v) = crate::media_guard::validate_path(&out) {
+                validated = v;
+                remuxed = Some(out);
+            }
+        }
+        log::info!(target: "Download", "mkv_to_mp4 ok={}", remuxed.is_some());
+    }
+    // What goes into the library: the .mp4, else the file yt-dlp wrote.
+    let work = remuxed.as_deref().unwrap_or(src);
+
     let (file_type, subdir, mime, default_ratio) =
         (validated.db_type, validated.subdir, validated.mime, validated.default_ratio);
 
@@ -5801,27 +6013,44 @@ pub fn finalize_download(
         .filter(|s| !s.is_empty());
     let title: Option<String> = title.filter(|s| !s.trim().is_empty()).or(stem_title);
 
-    let id        = Uuid::new_v4().to_string();
     let dest_name = format!("{}.{}", id, validated.real_ext);
     let dest_path = vault_path.join(subdir).join(&dest_name);
 
-    let hash = stream_hash(src).map_err(|e| e.to_string())?;
+    let hash = match stream_hash(work) {
+        Ok(h)  => h,
+        Err(e) => {
+            if let Some(m) = &remuxed { std::fs::remove_file(m).ok(); }
+            return Err(e.to_string());
+        }
+    };
 
     // Already saved: the same bytes as an item's file, or as the first original a cropped
     // picture keeps
     {
-        let db = state.db.lock().unwrap();
-        let count: i64 = db.query_row(
-            "SELECT COUNT(*) FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1",
+        let have: Option<String> = state.db.lock().unwrap().query_row(
+            "SELECT id FROM inspirations WHERE file_hash = ?1 OR original_hash = ?1 LIMIT 1",
             params![hash], |r| r.get(0),
-        ).unwrap_or(0);
-        if count > 0 {
+        ).ok();
+        if let Some(have) = have {
             std::fs::remove_file(src).ok();
-            return Err("duplicate".to_string());
+            if let Some(m) = &remuxed { std::fs::remove_file(m).ok(); }
+            remove_download_folder(src);
+            // The browser hears that it's there, not that saving failed, and a Free save isn't used up
+            if let Some(ref eid) = ext_id {
+                if let Some(prog) = state.ext_progress.lock().unwrap().get_mut(eid) {
+                    prog.status         = "complete".to_string();
+                    prog.inspiration_id = Some(have.clone());
+                    prog.updated_at     = std::time::Instant::now();
+                }
+                if counted_ext_ids().lock().unwrap().remove(eid) { refund_download_quota(&app, true); }
+            }
+            return Err(format!("duplicate:{have}"));
         }
     }
 
-    rename_or_copy(src, &dest_path).map_err(|e| e.to_string())?;
+    if remuxed.is_none() {
+        rename_or_copy(src, &dest_path).map_err(|e| e.to_string())?;
+    }
 
     let stored_path = dest_path.to_string_lossy().into_owned();
     let save_source = {
@@ -5858,8 +6087,14 @@ pub fn finalize_download(
              VALUES (?1,?2,?3,?4,?5,?6,?7,'',?8,?9,?10,?11,?12,?13,?14,?14)",
             params![id, file_type, title, stored_path, hash, mime, aspect_ratio,
                     ocr_status, source_url, source_platform, palette_json, duration, import_source, now],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            if let Some(m) = &remuxed { std::fs::remove_file(m).ok(); }
+            e.to_string()
+        })?;
     }
+    if remuxed.is_some() { std::fs::remove_file(src).ok(); }
+    remove_download_folder(src);
+    if let Some(ref eid) = ext_id { counted_ext_ids().lock().unwrap().remove(eid); }
 
     // File is now in the vault and recorded in the DB.
     // Advance ext_progress to "complete" so the extension shows "Saved to qooti"
@@ -6001,7 +6236,7 @@ fn is_import_media(name: &str) -> bool {
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn analyze_import_source(path: String) -> Result<ImportAnalysis, String> {
     let p = std::path::Path::new(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -6104,7 +6339,7 @@ fn analyze_notion_zip_source(zip_path: &std::path::Path) -> Result<ImportAnalysi
     Ok(ImportAnalysis { source_type: "notion".to_string(), media_count: total, display_name: stem })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn extract_import_archive(path: String, source_type: String) -> Result<Vec<String>, String> {
     let p = std::path::Path::new(&path);
     match source_type.as_str() {
@@ -6204,7 +6439,7 @@ fn extract_notion_media_paths(zip_path: &std::path::Path) -> Result<Vec<String>,
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fetch_youtube_thumbnail(url: String) -> Result<String, String> {
     use std::io::Read;
     let video_id = extract_yt_video_id(&url)
@@ -8153,6 +8388,114 @@ mod crop_contract_tests {
         assert_eq!(take_reshaped(), vec!["x".to_string(), "y".to_string()]);
         assert!(queue_reshaped("z".into()), "after the run, the next one books a new run");
         assert_eq!(take_reshaped(), vec!["z".to_string()]);
+    }
+
+    #[test]
+    fn moving_the_library_copies_everything_and_deletes_nothing_else() {
+        let base = std::env::temp_dir().join(format!("qooti-move-{}", Uuid::new_v4()));
+        let (old, new) = (base.join("эски папка"), base.join("new"));
+        let put = |rel: &str, data: &[u8]| {
+            let p = old.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, data).unwrap();
+        };
+        put("images/a.jpg", b"aaa");
+        put("videos/b.mp4", b"bbbb");
+        put("thumbnails/b_thumb.jpg", b"t");
+        put("downloads_tmp/1a2b3c4d/Video by someone.mp4.part", b"half");
+        put("temp/crop.png", b"work");
+
+        // A picture is added and another deleted while the copy runs
+        let mut touched = false;
+        let copied = copy_library(&old, &new, &mut |done, _| {
+            if done >= 1 && !touched {
+                touched = true;
+                std::fs::write(old.join("images/late.jpg"), b"late").unwrap();
+                std::fs::remove_file(old.join("thumbnails/b_thumb.jpg")).unwrap();
+            }
+        }).unwrap();
+        let names: Vec<String> = copied.keys().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        assert_eq!(names, ["images/a.jpg", "images/late.jpg", "videos/b.mp4"]);
+        for rel in copied.keys() {
+            assert_eq!(std::fs::read(old.join(rel)).unwrap(), std::fs::read(new.join(rel)).unwrap());
+        }
+        assert!(!new.join("thumbnails/b_thumb.jpg").exists(), "deleted meanwhile: not brought over");
+        assert!(!new.join("downloads_tmp").exists() && !new.join("temp").exists(), "work folders stay");
+
+        // A preview saved after the copy is found by one more pass, and only then is it on the list
+        put("thumbnails/new_thumb.jpg", b"n");
+        let mut copied = copied;
+        assert_eq!(copy_library_pass(&old, &new, &mut copied, &mut |_, _| {}).unwrap(), 1);
+        assert_eq!(copied.len(), 4);
+        assert_eq!(copy_library_pass(&old, &new, &mut copied, &mut |_, _| {}).unwrap(), 0);
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn a_finished_downloads_folder_goes_only_when_it_is_empty() {
+        let base = std::env::temp_dir().join(format!("qooti-dlfolder-{}", Uuid::new_v4()));
+        let one = base.join("downloads_tmp").join("1a2b3c4d");
+        std::fs::create_dir_all(&one).unwrap();
+        std::fs::write(one.join("second.jpg"), b"x").unwrap();
+        remove_download_folder(&one.join("first.mp4"));
+        assert!(one.exists(), "a carousel's other file is still to be saved");
+        std::fs::remove_file(one.join("second.jpg")).unwrap();
+        remove_download_folder(&one.join("first.mp4"));
+        assert!(!one.exists());
+        // Any other folder is left alone
+        let other = base.join("images");
+        std::fs::create_dir_all(&other).unwrap();
+        remove_download_folder(&other.join("x.jpg"));
+        assert!(other.exists() && base.join("downloads_tmp").exists());
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn tags_in_other_alphabets_are_found_whatever_their_capitals() {
+        let (cond, args) = search_condition("дизайн");
+        assert_eq!(cond.matches('?').count(), args.len());
+        assert!(args.contains(&"%Дизайн%".to_string()) && args.contains(&"%ДИЗАЙН%".to_string()) && args.contains(&"%дизайн%".to_string()));
+        let (cond, args) = search_condition("Design");
+        assert_eq!(cond.matches('?').count(), args.len());
+        assert_eq!(args.iter().filter(|a| a.contains("esign")).count(), args.len());
+    }
+
+    /// Needs the bundled ffmpeg (src-tauri/binaries); skipped where it isn't present.
+    #[test]
+    fn mkv_downloads_become_mp4() {
+        #[cfg(windows)] let name = "ffmpeg-x86_64-pc-windows-msvc.exe";
+        #[cfg(target_os = "macos")] let name = "ffmpeg-aarch64-apple-darwin";
+        #[cfg(not(any(windows, target_os = "macos")))] let name = "ffmpeg-x86_64-unknown-linux-gnu";
+        let ff = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries").join(name);
+        if !ff.exists() { eprintln!("skipped: no bundled ffmpeg"); return; }
+        let dir = std::env::temp_dir().join(format!("qooti-remux-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        for (label, video) in [("vp9", "libvpx-vp9"), ("h264", "libx264")] {
+            // A non-ASCII name with spaces, like a real title
+            let mkv = dir.join(format!("Видео by o‘zbek {label}.mkv"));
+            let made = hidden_command(&ff)
+                .args(["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=2",
+                       "-f", "lavfi", "-i", "sine=duration=2", "-c:v", video, "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+                .arg(&mkv).status().unwrap();
+            assert!(made.success());
+            assert_eq!(crate::media_guard::validate_path(&mkv).unwrap().real_ext, "mkv");
+            let out = dir.join(format!("{label}.mp4"));
+            assert!(mkv_to_mp4(&ff, &mkv, &out), "{label}");
+            let v = crate::media_guard::validate_path(&out).unwrap();
+            assert_eq!((v.real_ext, v.mime), ("mp4", "video/mp4"));
+            assert!(mkv.exists(), "the download itself is left for the caller");
+        }
+
+        // What MP4 can't hold, and a broken file: nothing is left behind, the .mkv stays.
+        let bad = dir.join("broken.mkv");
+        std::fs::write(&bad, [&[0x1Au8, 0x45, 0xDF, 0xA3, 0x93, 0x42, 0x82, 0x88][..], b"matroska nothing else"].concat()).unwrap();
+        let out = dir.join("broken.mp4");
+        assert!(!mkv_to_mp4(&ff, &bad, &out));
+        assert!(!out.exists() && bad.exists());
+        assert!(!mkv_to_mp4(&dir.join("no-ffmpeg-here.exe"), &bad, &out));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -2,18 +2,25 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
 
+/// How long until the next look for a new version, and how soon after one that failed.
+const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+const CHECK_AGAIN: Duration = Duration::from_secs(15 * 60);
+
 /// Spawns a background thread that waits 30 s after launch (so startup isn't
-/// impacted), then checks the GitHub Releases endpoint for a new version.
-/// If one is found, emits "update-available" so the frontend can show a pill.
+/// impacted), then checks the update endpoint for a new version, and again every few
+/// hours: closing the window only hides qooti, so one run can last for weeks.
+/// If one is found, emits "update-available" so the frontend can show the bar.
 pub fn spawn_update_check(app: AppHandle) {
     std::thread::spawn(move || {
         remove_moved_aside();
-        std::thread::sleep(std::time::Duration::from_secs(30));
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = check_and_notify(&app).await {
-                eprintln!("[updater] check failed: {e}");
-            }
-        });
+        std::thread::sleep(Duration::from_secs(30));
+        loop {
+            let wait = match tauri::async_runtime::block_on(check_and_notify(&app)) {
+                Ok(())  => CHECK_EVERY,
+                Err(e) => { log::warn!(target: "Update", "check failed: {e}"); CHECK_AGAIN }
+            };
+            std::thread::sleep(wait);
+        }
     });
 }
 

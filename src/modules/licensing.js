@@ -40,7 +40,10 @@ export async function openHub(screen) {
 }
 
 async function refreshNow() {
-  try { await apply(await api.hubRefresh()) } catch {}
+  const before = account
+  try { await apply(await api.hubRefresh()) } catch { return }
+  // Nothing changed (the usual case): whoever asked still waits for an answer
+  if (account === before) store.emit(events.LICENSE_STATUS_CHANGED, { plan: getPlan(), expiresAt: getExpiresAt(), account })
 }
 
 /** Re-read the ticket; returns the account. Cheap enough to call any time. */
